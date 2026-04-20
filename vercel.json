@@ -1,0 +1,36 @@
+{
+  "functions": {
+    "api/index.js": {
+      "maxDuration": 60
+    }
+  },
+  "headers": [
+    {
+      "source": "/api/og-image",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=3600, s-maxage=86400" }
+      ]
+    },
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "private, no-store, no-cache, must-revalidate, proxy-revalidate" },
+        { "key": "CDN-Cache-Control", "value": "no-store" },
+        { "key": "Surrogate-Control", "value": "no-store" },
+        { "key": "Vary", "value": "Cookie, Authorization" }
+      ]
+    }
+  ],
+  "rewrites": [
+    { "source": "/api/og-image", "destination": "/api/og-image.js" },
+    { "source": "/api/(.*)", "destination": "/api/index.js" },
+    { "source": "/share/:id", "destination": "/api/share-meta.js?type=trade" },
+    { "source": "/share-doc/:id", "destination": "/api/share-meta.js?type=doc" },
+    { "source": "/share-idea/:id", "destination": "/api/share-meta.js?type=idea" },
+    { "source": "/share-backtest/:id", "destination": "/api/share-meta.js?type=backtest" },
+    { "source": "/tournament/:slug/vote/:dayToken", "destination": "/api/tournament-meta.js" },
+    { "source": "/tournament/:slug/vote", "destination": "/api/tournament-meta.js?vote=1" },
+    { "source": "/tournament/:slug", "destination": "/api/tournament-meta.js" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}

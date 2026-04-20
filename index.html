@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48x48.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/android-chrome-192x192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/android-chrome-512x512.png" />
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#3B82F6">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Haunted Dev">
+    <meta name="description" content="Торговый журнал для трейдеров">
+    <title>Haunted Dev</title>
+    <script>
+      // Prevent theme flash (FOUC) by applying theme before React renders
+      (function() {
+        try {
+          // Check all localStorage keys that match the pattern tradecrm:user:*
+          var theme = null;
+          
+          // Iterate through localStorage to find user state
+          for (var i = 0; i < localStorage.length; i++) {
+            var key = localStorage.key(i);
+            if (key && key.startsWith('tradecrm:user:')) {
+              try {
+                var userState = JSON.parse(localStorage.getItem(key));
+                if (userState && userState.ui && userState.ui.theme) {
+                  theme = userState.ui.theme;
+                  break;
+                }
+              } catch(e) {}
+            }
+          }
+          
+          // Apply the theme class
+          if (theme === 'dark') {
+            document.documentElement.classList.add('dark');
+          } else if (theme === 'light') {
+            document.documentElement.classList.remove('dark');
+          } else {
+            // If no theme is stored, default to dark (matches app default)
+            document.documentElement.classList.add('dark');
+          }
+        } catch (e) {
+          // Fallback: apply default dark theme
+          document.documentElement.classList.add('dark');
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
