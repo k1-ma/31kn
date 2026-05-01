@@ -2001,7 +2001,7 @@ export function useSyncedDb(userId, seed, options = {}) {
           // Update local state with merged result
           dbRef.current = merged;
           setDb(merged);
-          saveToLocalStorageSync(userId, merged, setLastLocalSaveAt);
+          saveToLocalStorageSync(userId, merged);
           setServerVersion(userId, serverVersion);
           setLastSyncedState(userId, merged);
           

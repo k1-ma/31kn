@@ -1022,6 +1022,7 @@ export async function initDb({ admin }) {
   }
 
   // Materialized counters cache to avoid expensive JSONB full-scans on every admin request
+  // TODO: cache is refreshed only via admin.service.js:refreshUserStatsCache (manual, 10-min rate-limit) — not invalidated on state writes.
   try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS user_stats_cache (
