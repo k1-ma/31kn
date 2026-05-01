@@ -1,6 +1,8 @@
+import crypto from "node:crypto";
 import { Router } from "express";
 import { requireAdmin } from "../middleware/requireAdmin.js";
 import { requireAuth } from "../middleware/requireAuth.js";
+import { voteRateLimit } from "../middleware/rateLimitDb.js";
 import * as svc from "../services/tournament.service.js";
 import * as scoring from "../services/tournamentScoring.service.js";
 import * as importExport from "../services/tournamentImportExport.service.js";
@@ -9,6 +11,22 @@ import * as voting from "../services/tournamentVoting.service.js";
 const adminRouter = Router();
 const publicRouter = Router();
 const userRouter = Router();
+
+/**
+ * Constant-time string comparison to mitigate timing attacks on vote_password.
+ * Pads/aligns lengths so that mismatched-length comparisons still take constant time.
+ */
+function safeEqualString(a, b) {
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  const ab = Buffer.from(a, "utf8");
+  const bb = Buffer.from(b, "utf8");
+  if (ab.length !== bb.length) {
+    // Run a dummy compare for constant time
+    crypto.timingSafeEqual(ab, ab);
+    return false;
+  }
+  return crypto.timingSafeEqual(ab, bb);
+}
 
 // --------------- Admin Routes ---------------
 
@@ -1072,7 +1090,7 @@ publicRouter.get("/:publicSlug/vote-day/current", async (req, res) => {
   }
 });
 
-publicRouter.post("/:publicSlug/vote", async (req, res) => {
+publicRouter.post("/:publicSlug/vote", voteRateLimit, async (req, res) => {
   try {
     const { publicSlug } = req.params;
     if (!publicSlug) return res.status(400).json({ error: "Public slug is required" });
@@ -1093,9 +1111,9 @@ publicRouter.post("/:publicSlug/vote", async (req, res) => {
       return res.status(400).json({ error: "No active voting day" });
     }
 
-    // Check vote password if set
+    // Check vote password if set (constant-time comparison)
     if (config.tournament.vote_password) {
-      if (!submittedPassword || submittedPassword !== config.tournament.vote_password) {
+      if (!safeEqualString(submittedPassword || "", config.tournament.vote_password)) {
         return res.status(403).json({ error: "invalid_vote_password" });
       }
     }
@@ -1125,7 +1143,7 @@ publicRouter.post("/:publicSlug/vote", async (req, res) => {
 });
 
 // Submit vote for a specific day (by vote_token)
-publicRouter.post("/:publicSlug/vote/:voteToken", async (req, res) => {
+publicRouter.post("/:publicSlug/vote/:voteToken", voteRateLimit, async (req, res) => {
   try {
     const { publicSlug, voteToken } = req.params;
     if (!publicSlug || !voteToken) return res.status(400).json({ error: "Slug and vote token are required" });
@@ -1149,9 +1167,9 @@ publicRouter.post("/:publicSlug/vote/:voteToken", async (req, res) => {
       return res.status(400).json({ error: "voting_window_closed" });
     }
 
-    // Check vote password if set
+    // Check vote password if set (constant-time comparison)
     if (config.tournament.vote_password) {
-      if (!submittedPassword || submittedPassword !== config.tournament.vote_password) {
+      if (!safeEqualString(submittedPassword || "", config.tournament.vote_password)) {
         return res.status(403).json({ error: "invalid_vote_password" });
       }
     }

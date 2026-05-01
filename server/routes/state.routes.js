@@ -40,6 +40,11 @@ const MIN_RECORDS_FOR_PROTECTION = 10;
 // If incoming state has >50% fewer records than server, merge instead of overwrite
 const MAX_ACCEPTABLE_DROP_PERCENTAGE = 0.5;
 
+// Per-user quota on the size of the JSON state blob. Anything larger is
+// almost certainly a runaway image cache; reject with 413 instead of letting
+// it blow up the JSONB write or exhaust function memory.
+const MAX_STATE_BYTES = 50 * 1024 * 1024;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // STATEMENT TIMEOUT CONSTANTS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -294,6 +299,28 @@ async function handleStateSave(req, res) {
   }
 
   const { state, expected_version, force } = req.body || {};
+
+  // Validate state shape: must be a plain object (or explicit null to clear).
+  // Rejecting arrays/scalars prevents corrupt JSONB writes downstream.
+  if (state !== null && state !== undefined && (typeof state !== "object" || Array.isArray(state))) {
+    logStateOp("put", userId, { error: "invalid_state_type", typeofState: typeof state });
+    return res.status(400).json({ error: "Invalid state: must be an object" });
+  }
+
+  // Per-user state size quota — see MAX_STATE_BYTES.
+  if (state) {
+    const stateBytes = Buffer.byteLength(JSON.stringify(state), "utf8");
+    if (stateBytes > MAX_STATE_BYTES) {
+      logStateOp("put", userId, {
+        error: "state_too_large",
+        stateBytes,
+        limitBytes: MAX_STATE_BYTES,
+        severity: "WARN"
+      });
+      return res.status(413).json({ error: "state_too_large", limit_bytes: MAX_STATE_BYTES });
+    }
+  }
+
   const incomingTradesCount = state?.trades?.length ?? 0;
 
   try {
@@ -341,131 +368,207 @@ async function handleStateSave(req, res) {
       // The client sends its canonical state after merging locally, so accept it as-is
       let finalState = state;
       
-      // Safety net: if incoming state has no trades/backtests but server has them,
-      // merge instead of overwrite to prevent accidental data wipe.
-      // This protects against buggy clients sending empty state (e.g. new device
-      // where fetchState failed but empty seed was synced to server).
-      // ENHANCED: Compare active (non-deleted) records only. If the drop is
-      // accounted for by matching tombstones, allow it (legitimate bulk delete).
+      // Safety net: if incoming state has fewer records than the server has,
+      // merge instead of overwrite to prevent accidental data wipe. Protects
+      // against buggy clients sending an empty/partial state (e.g. a new
+      // device where fetchState failed but the empty seed was synced).
+      //
+      // Compares ACTIVE (non-tombstoned) records only. If the drop is fully
+      // accounted for by matching tombstones in the incoming state, the
+      // delete is treated as legitimate.
+      //
+      // Applies to: trades, backtests, accounts, documents, libraries
+      // sub-collections (symbols/sessions/models), and the settings object.
       if (currentState && !force) {
-        // Count ACTIVE (non-tombstoned) records for accurate comparison
-        const finalActiveTrades = (finalState?.trades || []).filter(t => !isDeleted(t));
-        const serverActiveTrades = (currentState?.trades || []).filter(t => !isDeleted(t));
-        const finalActiveTradesCount = finalActiveTrades.length;
-        const serverActiveTradesCount = serverActiveTrades.length;
-        const finalBacktestsCount = finalState?.backtests?.length ?? 0;
-        const serverBacktestsCount = currentState?.backtests?.length ?? 0;
-        
-        let shouldMerge = false;
-        let mergeReason = "";
-        
-        // CRITICAL: Block complete data wipe for trades (only if tombstones don't explain it)
-        if (finalActiveTradesCount === 0 && serverActiveTradesCount > 0) {
-          // Check if all server-active trades now have tombstones in the incoming state
-          const serverActiveIds = new Set(serverActiveTrades.map(t => t.id));
+        const reasons = [];
+
+        // Helper: analyse one array collection (full-wipe + >50% drop check).
+        // Returns true if a merge is required for data-loss protection.
+        function shouldMergeForCollection(label, finalArr, serverArr, severityFullWipe = "CRITICAL") {
+          const finalArrSafe = Array.isArray(finalArr) ? finalArr : [];
+          const serverArrSafe = Array.isArray(serverArr) ? serverArr : [];
+          const finalActive = finalArrSafe.filter(item => !isDeleted(item));
+          const serverActive = serverArrSafe.filter(item => !isDeleted(item));
           const incomingTombstonedIds = new Set(
-            (finalState?.trades || []).filter(t => isDeleted(t)).map(t => t.id)
+            finalArrSafe.filter(item => isDeleted(item) && item?.id).map(item => item.id)
           );
-          const allAccountedFor = [...serverActiveIds].every(id => incomingTombstonedIds.has(id));
-          
-          if (!allAccountedFor) {
-            shouldMerge = true;
-            mergeReason = "merge_to_prevent_trades_data_loss";
-            logStateOp("put", userId, {
-              action: mergeReason,
-              incomingTradesCount,
-              serverActiveTradesCount,
-              severity: "CRITICAL"
-            });
-          }
-        }
-        // CRITICAL: Block complete data wipe for backtests
-        else if (finalBacktestsCount === 0 && serverBacktestsCount > 0) {
-          shouldMerge = true;
-          mergeReason = "merge_to_prevent_backtests_data_loss";
-          logStateOp("put", userId, {
-            action: mergeReason,
-            incomingBacktestsCount: finalBacktestsCount,
-            serverBacktestsCount,
-            severity: "CRITICAL"
-          });
-        }
-        // ENHANCED: Detect and prevent partial data loss for trades (>50% active reduction)
-        else if (serverActiveTradesCount > MIN_RECORDS_FOR_PROTECTION && finalActiveTradesCount > 0) {
-          const dropPercentage = (serverActiveTradesCount - finalActiveTradesCount) / serverActiveTradesCount;
-          if (dropPercentage > MAX_ACCEPTABLE_DROP_PERCENTAGE) {
-            // Check if all dropped trades have tombstones
-            const serverActiveIds = new Set(serverActiveTrades.map(t => t.id));
-            const finalActiveIds = new Set(finalActiveTrades.map(t => t.id));
-            const incomingTombstonedIds = new Set(
-              (finalState?.trades || []).filter(t => isDeleted(t)).map(t => t.id)
-            );
-            const droppedIds = [...serverActiveIds].filter(id => !finalActiveIds.has(id));
-            const allDroppedHaveTombstones = droppedIds.every(id => incomingTombstonedIds.has(id));
-            
-            if (!allDroppedHaveTombstones) {
-              shouldMerge = true;
-              mergeReason = "merge_to_prevent_trades_partial_data_loss";
+
+          // Full wipe of an actively-populated collection
+          if (finalActive.length === 0 && serverActive.length > 0) {
+            const serverActiveIds = new Set(serverActive.map(it => it?.id).filter(Boolean));
+            const allAccountedFor =
+              serverActiveIds.size > 0 &&
+              [...serverActiveIds].every(id => incomingTombstonedIds.has(id));
+            if (!allAccountedFor) {
+              const reason = `merge_to_prevent_${label}_data_loss`;
               logStateOp("put", userId, {
-                action: mergeReason,
-                incomingTradesCount,
-                serverActiveTradesCount,
-                dropPercentage: (dropPercentage * 100).toFixed(1) + "%",
-                severity: "HIGH"
+                action: reason,
+                collection: label,
+                incomingActiveCount: finalActive.length,
+                serverActiveCount: serverActive.length,
+                severity: severityFullWipe
               });
+              return reason;
+            }
+            return null;
+          }
+
+          // Partial wipe (>50% active drop) on a sufficiently-large collection
+          if (
+            serverActive.length > MIN_RECORDS_FOR_PROTECTION &&
+            finalActive.length > 0
+          ) {
+            const dropPct = (serverActive.length - finalActive.length) / serverActive.length;
+            if (dropPct > MAX_ACCEPTABLE_DROP_PERCENTAGE) {
+              const finalActiveIds = new Set(finalActive.map(it => it?.id).filter(Boolean));
+              const droppedIds = serverActive
+                .map(it => it?.id)
+                .filter(id => id && !finalActiveIds.has(id));
+              const allDroppedHaveTombstones =
+                droppedIds.length > 0 &&
+                droppedIds.every(id => incomingTombstonedIds.has(id));
+              if (!allDroppedHaveTombstones) {
+                const reason = `merge_to_prevent_${label}_partial_data_loss`;
+                logStateOp("put", userId, {
+                  action: reason,
+                  collection: label,
+                  incomingActiveCount: finalActive.length,
+                  serverActiveCount: serverActive.length,
+                  dropPercentage: (dropPct * 100).toFixed(1) + "%",
+                  severity: "HIGH"
+                });
+                return reason;
+              }
             }
           }
+
+          return null;
         }
-        // ENHANCED: Detect and prevent partial data loss for backtests (>50% reduction)
-        else if (serverBacktestsCount > MIN_RECORDS_FOR_PROTECTION && finalBacktestsCount > 0) {
-          const dropPercentage = (serverBacktestsCount - finalBacktestsCount) / serverBacktestsCount;
-          if (dropPercentage > MAX_ACCEPTABLE_DROP_PERCENTAGE) {
-            shouldMerge = true;
-            mergeReason = "merge_to_prevent_backtests_partial_data_loss";
-            logStateOp("put", userId, {
-              action: mergeReason,
-              incomingBacktestsCount: finalBacktestsCount,
-              serverBacktestsCount,
-              dropPercentage: (dropPercentage * 100).toFixed(1) + "%",
-              severity: "HIGH"
-            });
+
+        // Top-level array collections
+        const checks = [
+          ["trades",     finalState?.trades,     currentState?.trades],
+          ["backtests",  finalState?.backtests,  currentState?.backtests],
+          ["accounts",   finalState?.accounts,   currentState?.accounts],
+          ["documents",  finalState?.documents,  currentState?.documents],
+        ];
+        for (const [label, finalArr, serverArr] of checks) {
+          const r = shouldMergeForCollection(label, finalArr, serverArr);
+          if (r) reasons.push(r);
+        }
+
+        // Library sub-collections (symbols / sessions / models). Each is its
+        // own array with the same tombstone semantics.
+        const incomingLib = finalState?.libraries ?? null;
+        const serverLib = currentState?.libraries ?? null;
+        if (serverLib && typeof serverLib === "object") {
+          for (const subKey of ["symbols", "sessions", "models"]) {
+            const r = shouldMergeForCollection(
+              `libraries.${subKey}`,
+              incomingLib?.[subKey],
+              serverLib?.[subKey]
+            );
+            if (r) reasons.push(r);
           }
         }
-        
-        // Perform merge if needed
-        if (shouldMerge) {
+
+        // Settings object: if the server had a non-empty settings object and
+        // the incoming payload either omits it or sends an empty {}, treat
+        // it as accidental wipe and merge.
+        const serverSettings = currentState?.settings;
+        const incomingSettings = finalState?.settings;
+        const serverHasSettings =
+          serverSettings &&
+          typeof serverSettings === "object" &&
+          !Array.isArray(serverSettings) &&
+          Object.keys(serverSettings).length > 0;
+        const incomingSettingsEmpty =
+          incomingSettings === undefined ||
+          incomingSettings === null ||
+          (typeof incomingSettings === "object" &&
+            !Array.isArray(incomingSettings) &&
+            Object.keys(incomingSettings).length === 0);
+        if (serverHasSettings && incomingSettingsEmpty) {
+          const reason = "merge_to_prevent_settings_data_loss";
+          logStateOp("put", userId, {
+            action: reason,
+            collection: "settings",
+            serverSettingsKeys: Object.keys(serverSettings).length,
+            severity: "HIGH"
+          });
+          reasons.push(reason);
+        }
+
+        // Perform a single merge if any check tripped.
+        if (reasons.length > 0) {
           finalState = mergeStates(finalState, currentState);
+          // Settings aren't covered by mergeStates() (which only merges
+          // arrays-by-id); fall back to taking the server-side object when
+          // the incoming side is empty.
+          if (serverHasSettings && incomingSettingsEmpty) {
+            finalState = { ...finalState, settings: serverSettings };
+          }
           logStateOp("put", userId, {
             action: "merge_completed",
-            reason: mergeReason,
+            reasons,
             mergedTradesCount: finalState?.trades?.length ?? 0,
-            mergedBacktestsCount: finalState?.backtests?.length ?? 0
+            mergedBacktestsCount: finalState?.backtests?.length ?? 0,
+            mergedAccountsCount: finalState?.accounts?.length ?? 0,
+            mergedDocumentsCount: finalState?.documents?.length ?? 0
           });
-        }
-        // Log normal state changes for audit trail
-        else if (finalTradesCount !== serverTradesCount || finalBacktestsCount !== serverBacktestsCount) {
-          logStateOp("put", userId, {
-            action: "accepting_client_state",
-            incomingTradesCount,
-            serverTradesCount,
-            finalTradesCount,
-            tradesChange: finalTradesCount - serverTradesCount,
-            incomingBacktestsCount: finalBacktestsCount,
-            serverBacktestsCount,
-            backtestsChange: finalBacktestsCount - serverBacktestsCount
-          });
+        } else {
+          // Audit: log normal state-size deltas for visibility.
+          const finalTradesCount = finalState?.trades?.length ?? 0;
+          const serverTradesCount = currentState?.trades?.length ?? 0;
+          const finalBacktestsCount = finalState?.backtests?.length ?? 0;
+          const serverBacktestsCount = currentState?.backtests?.length ?? 0;
+          if (
+            finalTradesCount !== serverTradesCount ||
+            finalBacktestsCount !== serverBacktestsCount
+          ) {
+            logStateOp("put", userId, {
+              action: "accepting_client_state",
+              incomingTradesCount,
+              serverTradesCount,
+              finalTradesCount,
+              tradesChange: finalTradesCount - serverTradesCount,
+              incomingBacktestsCount: finalBacktestsCount,
+              serverBacktestsCount,
+              backtestsChange: finalBacktestsCount - serverBacktestsCount
+            });
+          }
         }
       }
 
       // Safety net: restore any [IMAGE_STRIPPED] placeholders from the current
       // server state. This should not happen via the normal PUT/POST path (beacon
       // stripping was removed in PR #499), but guards against regressions.
-      if (currentState && finalState && hasStrippedImages(finalState)) {
-        finalState = restoreStrippedImages(finalState, currentState);
-        logStateOp("put", userId, {
-          action: "restored_stripped_images",
-          severity: "WARN"
-        });
+      if (finalState && hasStrippedImages(finalState)) {
+        if (currentState) {
+          finalState = restoreStrippedImages(finalState, currentState);
+          logStateOp("put", userId, {
+            action: "restored_stripped_images",
+            severity: "WARN"
+          });
+        } else {
+          // No server-side state to restore from — placeholders will be
+          // persisted as-is, permanently losing those images. We don't crash
+          // here (better a degraded write than a 500), but flag it loudly so
+          // the regression is visible in logs.
+          let placeholderCount = 0;
+          const countPlaceholders = (node) => {
+            if (node === "[IMAGE_STRIPPED]") { placeholderCount++; return; }
+            if (node == null || typeof node !== "object") return;
+            if (Array.isArray(node)) { node.forEach(countPlaceholders); return; }
+            for (const v of Object.values(node)) countPlaceholders(v);
+          };
+          countPlaceholders(finalState);
+          logStateOp("put", userId, {
+            action: "stripped_images_unrestorable",
+            severity: "WARN",
+            count: placeholderCount
+          });
+        }
       }
 
       // Atomic insert/update with version increment
@@ -512,9 +615,7 @@ async function handleStateSave(req, res) {
 
 router.put("/", requireAuth, idempotency(), handleStateSave);
 // POST is used by navigator.sendBeacon() which always sends POST requests.
-// Not wired through idempotency() in this step — sendBeacon is fire-and-forget
-// (no client-side retry, no need for HTTP-level dedupe). Wire later if needed.
-router.post("/", requireAuth, handleStateSave);
+router.post("/", requireAuth, idempotency(), handleStateSave);
 
 // PATCH /api/state - Partial state update with optimistic locking
 // Supports expected_version for conflict detection to prevent data loss
@@ -642,8 +743,9 @@ router.patch("/", requireAuth, idempotency(), async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const TOMBSTONE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-const TOMBSTONE_GC_INTERVAL_MS = 24 * 60 * 60 * 1000; // Run at most once per day per user
-const lastGcByUser = new Map(); // userId → timestamp of last GC run
+// "At most once per day per user" — the actual gate lives in the
+// tombstone_gc_runs table (see maybeRunTombstoneGc). Previously this was an
+// in-memory Map, which silently reset on every serverless cold start.
 
 /**
  * Remove expired tombstones from an array of items.
@@ -715,14 +817,22 @@ function gcStateExpiredTombstones(state) {
  * Middleware-style function that runs tombstone GC on GET /api/state
  * if at least 24 hours have passed since the last GC for this user.
  * Runs asynchronously after returning the response to the client.
+ *
+ * The "last run" timestamp is persisted in the tombstone_gc_runs table so
+ * that the throttle survives serverless cold starts.
  */
 async function maybeRunTombstoneGc(pool, userId) {
-  const now = Date.now();
-  const lastRun = lastGcByUser.get(userId) || 0;
-  if (now - lastRun < TOMBSTONE_GC_INTERVAL_MS) return;
-  lastGcByUser.set(userId, now);
-
   try {
+    const lastRunResult = await pool.query(
+      "SELECT last_run_at FROM tombstone_gc_runs WHERE user_id = $1",
+      [userId]
+    );
+    const lastRunAt = lastRunResult.rows?.[0]?.last_run_at;
+    if (lastRunAt) {
+      const lastRunMs = new Date(lastRunAt).getTime();
+      if (Date.now() - lastRunMs < 24 * 60 * 60 * 1000) return;
+    }
+
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -733,23 +843,38 @@ async function maybeRunTombstoneGc(pool, userId) {
       const currentState = current.rows?.[0]?.state_json;
       if (!currentState) {
         await client.query("ROLLBACK");
+        // Still mark the run so we don't re-check on every GET for users
+        // who have no state yet.
+        await pool.query(
+          `INSERT INTO tombstone_gc_runs (user_id, last_run_at)
+           VALUES ($1, now())
+           ON CONFLICT (user_id) DO UPDATE SET last_run_at = now()`,
+          [userId]
+        );
         return;
       }
 
       const { state: cleanedState, totalRemoved } = gcStateExpiredTombstones(currentState);
       if (totalRemoved === 0) {
         await client.query("ROLLBACK");
-        return;
+      } else {
+        await client.query(
+          `UPDATE states SET state_json = $1, updated_at = now(), version = version + 1
+           WHERE user_id = $2`,
+          [cleanedState, userId]
+        );
+        await client.query("COMMIT");
+        logStateOp("tombstone_gc", userId, { totalRemoved });
       }
 
-      await client.query(
-        `UPDATE states SET state_json = $1, updated_at = now(), version = version + 1
-         WHERE user_id = $2`,
-        [cleanedState, userId]
+      // Record the run regardless of whether anything was removed — the
+      // throttle is about "we already looked", not "we found work".
+      await pool.query(
+        `INSERT INTO tombstone_gc_runs (user_id, last_run_at)
+         VALUES ($1, now())
+         ON CONFLICT (user_id) DO UPDATE SET last_run_at = now()`,
+        [userId]
       );
-      await client.query("COMMIT");
-
-      logStateOp("tombstone_gc", userId, { totalRemoved });
     } finally {
       client.release();
     }

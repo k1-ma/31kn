@@ -11,7 +11,7 @@
 //       2. Cache hit → replay status + response_body. Done.
 //       3. Cache miss → release lock, run handler, capture response,
 //          INSERT into idempotency_keys ON CONFLICT (key) DO NOTHING when
-//          the response finishes (only for 2xx and non-{408,429} 4xx).
+//          the response finishes (only for 2xx — see shouldCacheStatus).
 //
 // res.json patch chain:
 //   This middleware patches res.json. server/middleware/metrics.js (a global
@@ -36,15 +36,12 @@ const UUID_RE =
 // Methods we intercept. GET/HEAD/OPTIONS pass through.
 const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
-// Response status codes worth caching. 2xx is success. 4xx (except the
-// transient 408/429) is a deterministic client-side error: the same key
-// implies the same input implies the same answer for 24h, so caching is
-// correct. 5xx is always transient — never cache.
+// Response status codes worth caching. Only 2xx is cached: caching 4xx
+// produced "zombie" idempotency entries (e.g. a 409 version conflict on
+// PUT /api/state would replay the conflict on retry, even after the client
+// re-fetched and reconciled). 5xx is always transient — never cache.
 function shouldCacheStatus(status) {
-  if (status >= 200 && status < 300) return true;
-  if (status === 408 || status === 429) return false;
-  if (status >= 400 && status < 500) return true;
-  return false;
+  return status >= 200 && status < 300;
 }
 
 // Hash (key|method|path) → two int32 for pg_advisory_xact_lock(int4, int4).

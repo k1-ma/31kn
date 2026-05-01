@@ -87,6 +87,18 @@ const shareRateLimiter = new SlidingWindowRateLimiter({
   maxRequests: 10,
 });
 
+// Per-IP public vote rate limiter (short window): 10 votes per minute
+const voteRateLimiterMinute = new SlidingWindowRateLimiter({
+  windowMs: 60 * 1000,
+  maxRequests: 10,
+});
+
+// Per-IP public vote rate limiter (long window): 100 votes per hour
+const voteRateLimiterHour = new SlidingWindowRateLimiter({
+  windowMs: 60 * 60 * 1000,
+  maxRequests: 100,
+});
+
 /**
  * Get rate limit key — prefer userId (authenticated), fall back to IP.
  */
@@ -135,6 +147,48 @@ export function shareRateLimit(req, res, next) {
       error: "Too many share requests",
       code: "RATE_LIMITED",
       retryAfterMs: result.retryAfterMs,
+    });
+  }
+  return next();
+}
+
+/**
+ * Get rate limit key for public (unauthenticated) endpoints — IP only.
+ * Honors X-Forwarded-For (first hop) when present, then falls back to req.ip.
+ */
+function getPublicIpKey(req) {
+  const fwd = req.headers?.["x-forwarded-for"];
+  if (typeof fwd === "string" && fwd.length > 0) {
+    const first = fwd.split(",")[0]?.trim();
+    if (first) return first;
+  }
+  return req.ip || req.connection?.remoteAddress || "unknown";
+}
+
+/**
+ * Middleware: rate limit public vote endpoints by IP.
+ * 10 votes/min per IP, 100 votes/hour per IP. No session is required.
+ */
+export function voteRateLimit(req, res, next) {
+  const key = getPublicIpKey(req);
+
+  const minuteResult = voteRateLimiterMinute.check(key);
+  const hourResult = voteRateLimiterHour.check(key);
+
+  res.set("X-RateLimit-Limit", "10");
+  res.set("X-RateLimit-Remaining", String(Math.min(minuteResult.remaining, hourResult.remaining)));
+
+  if (!minuteResult.allowed || !hourResult.allowed) {
+    const retryAfterMs = Math.max(
+      minuteResult.allowed ? 0 : minuteResult.retryAfterMs,
+      hourResult.allowed ? 0 : hourResult.retryAfterMs,
+    );
+    const retryAfterSec = Math.ceil(retryAfterMs / 1000);
+    res.set("Retry-After", String(retryAfterSec));
+    return res.status(429).json({
+      error: "Too many vote requests",
+      code: "RATE_LIMITED",
+      retryAfterMs,
     });
   }
   return next();
