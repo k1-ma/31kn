@@ -38,21 +38,49 @@ function isRetryable(err, data) {
 // API CLIENT WITH RETRY
 // ─────────────────────────────────────────────────────────────────────────────
 
+const MUTATION_METHODS_API = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+// Generate a UUID v4 for the Idempotency-Key header. Returns null when
+// crypto.randomUUID is unavailable (very old browsers); the server
+// middleware passes the request through when the header is missing, so
+// callers degrade to "no idempotency" rather than failing.
+function newIdempotencyKey() {
+  try {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID();
+    }
+  } catch {}
+  return null;
+}
+
 export async function apiJson(url, options = {}) {
-  const { method = "GET", body, headers } = options;
+  const { method = "GET", body, headers, idempotencyKey } = options;
+
+  // For mutations, send an Idempotency-Key header. Caller may provide one
+  // (so syncDb.js can reuse the same key across outbox retries of the same
+  // logical save). If not provided, auto-generate ONCE per apiJson call so
+  // the internal retry loop reuses the same key.
+  const isMutation = MUTATION_METHODS_API.has(method);
+  const effectiveIdempotencyKey =
+    idempotencyKey ?? (isMutation ? newIdempotencyKey() : null);
 
   let lastError = null;
   let attempts = 0;
 
   while (attempts <= MAX_RETRIES) {
     try {
+      const requestHeaders = {
+        "Content-Type": "application/json",
+        ...(headers || {}),
+      };
+      if (effectiveIdempotencyKey) {
+        requestHeaders["Idempotency-Key"] = effectiveIdempotencyKey;
+      }
+
       const res = await fetch(url, {
         method,
         credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          ...(headers || {}),
-        },
+        headers: requestHeaders,
         body: body !== undefined ? JSON.stringify(body) : undefined,
       });
 
