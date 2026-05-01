@@ -1886,15 +1886,15 @@ export function useSyncedDb(userId, seed, options = {}) {
     }
     
     perfMark("syncDb:apiSave:start");
-    
+
     // Calculate payload size to determine sync strategy
     const payload = { state: stateToSync };
     const payloadSize = getPayloadSize(payload);
-    
+
     if (IS_DEV) {
       const imageCount = countBase64Images(stateToSync);
       const imageSize = getBase64ImageSize(stateToSync);
-      console.log("[syncDb] Payload analysis:", { 
+      console.log("[syncDb] Payload analysis:", {
         totalSizeKb: Math.round(payloadSize / 1024),
         tradesCount: stateToSync?.trades?.length ?? 0,
         imageCount,
@@ -1902,11 +1902,27 @@ export function useSyncedDb(userId, seed, options = {}) {
         willChunk: payloadSize > MAX_SINGLE_REQUEST_SIZE_BYTES
       });
     }
-    
+
+    // B14: Hard ceiling — Vercel rejects bodies > 4.5MB outright.  Even chunked
+    // sync may struggle if individual chunks approach this size after JSON
+    // overhead.  Surface this as an error in all environments so it is visible
+    // in production logs.
+    if (payloadSize > VERCEL_HARD_LIMIT_BYTES) {
+      console.error(
+        "[syncDb] Payload exceeds Vercel hard limit — sync will likely fail",
+        {
+          sizeKb: Math.round(payloadSize / 1024),
+          hardLimitKb: Math.round(VERCEL_HARD_LIMIT_BYTES / 1024),
+        }
+      );
+    }
+
     try {
       let result;
-      
-      // Use chunked sync if payload is too large
+
+      // Use chunked sync if payload is too large.  This branch runs in all
+      // environments (not gated on IS_DEV) — production users with large
+      // payloads must also take the chunked path or sync will fail.
       if (payloadSize > MAX_SINGLE_REQUEST_SIZE_BYTES) {
         if (IS_DEV) {
           console.log("[syncDb] Using chunked sync:", {
@@ -1914,9 +1930,32 @@ export function useSyncedDb(userId, seed, options = {}) {
             limitKb: Math.round(MAX_SINGLE_REQUEST_SIZE_BYTES / 1024)
           });
         }
-        
+
+        // Defensive: if chunked sync helper is unavailable for any reason
+        // (bundler tree-shake, mocked import, etc.), fall back to the outbox
+        // instead of attempting a single PUT that the server will reject.
+        if (typeof sendFullStateChunked !== "function") {
+          console.warn(
+            "[syncDb] Chunked sync unavailable — saving to outbox for later retry",
+            { sizeKb: Math.round(payloadSize / 1024) }
+          );
+          saveToOutbox(
+            userId,
+            stateToSync,
+            { code: "CHUNKED_UNAVAILABLE", message: "Chunked sync helper missing" },
+            effectiveIdempotencyKey
+          );
+          setHasUnsavedChanges(true);
+          setLastError({
+            code: "CHUNKED_UNAVAILABLE",
+            message: "Payload too large and chunked sync unavailable",
+            status: 0,
+          });
+          return { success: false, error: true };
+        }
+
         setSyncProgress({ current: 0, total: 0, percent: 0 });
-        
+
         try {
           // BUG #5 FIX: Pass expected_version for chunked sync too
           const knownVersion = getServerVersion(userId);
@@ -1933,7 +1972,7 @@ export function useSyncedDb(userId, seed, options = {}) {
           // Clear progress after sync completes
           setSyncProgress(null);
         }
-        
+
         // Chunked sync must return "complete" status to be considered successful
         if (result?.status !== "complete") {
           const err = new Error("Chunked sync did not complete");
