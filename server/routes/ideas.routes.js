@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { getPool, ensurePool, dbUnavailableResponse } from "../services/db.service.js";
 import { requireAuth } from "../middleware/requireAuth.js";
+import { idempotency } from "../middleware/idempotency.js";
 
 const router = Router();
 
@@ -194,7 +195,7 @@ router.get("/stats", requireAuth, async (req, res) => {
 });
 
 // POST /api/ideas - Create new trading idea
-router.post("/", requireAuth, async (req, res) => {
+router.post("/", requireAuth, idempotency(), async (req, res) => {
   let pool = getPool();
   if (!pool) {
     try { pool = await ensurePool(); } catch { /* retry failed */ }
@@ -239,7 +240,7 @@ router.post("/", requireAuth, async (req, res) => {
 });
 
 // PATCH /api/ideas/:id - Update trading idea
-router.patch("/:id", requireAuth, async (req, res) => {
+router.patch("/:id", requireAuth, idempotency(), async (req, res) => {
   let pool = getPool();
   if (!pool) {
     try { pool = await ensurePool(); } catch { /* retry failed */ }
@@ -306,7 +307,7 @@ router.patch("/:id", requireAuth, async (req, res) => {
 });
 
 // DELETE /api/ideas/:id - Delete trading idea
-router.delete("/:id", requireAuth, async (req, res) => {
+router.delete("/:id", requireAuth, idempotency(), async (req, res) => {
   let pool = getPool();
   if (!pool) {
     try { pool = await ensurePool(); } catch { /* retry failed */ }

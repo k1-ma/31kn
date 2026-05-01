@@ -284,9 +284,31 @@ function getLastLocalSaveTime(userId) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Save pending state to outbox when server sync fails
+ * Generate a UUID v4 for the Idempotency-Key header. Returns null when
+ * crypto.randomUUID is unavailable; the server middleware passes the
+ * request through when the header is missing, so callers degrade safely.
  */
-function saveToOutbox(userId, state, errorInfo = {}) {
+function newIdempotencyKey() {
+  try {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID();
+    }
+  } catch {}
+  return null;
+}
+
+/**
+ * Save pending state to outbox when server sync fails.
+ *
+ * @param {string} userId
+ * @param {object} state - Latest in-memory state to retry
+ * @param {object} errorInfo - { status, code, message }
+ * @param {string|null} idempotencyKey - Reused on every retry of this
+ *   logical save, so the server's idempotency middleware dedupes replays
+ *   that may have already reached the DB. Pass null for legacy callers;
+ *   retryOutbox() will then run without a key (server still accepts).
+ */
+function saveToOutbox(userId, state, errorInfo = {}, idempotencyKey = null) {
   if (!userId) return;
   try {
     const outbox = {
@@ -294,10 +316,11 @@ function saveToOutbox(userId, state, errorInfo = {}) {
       timestamp: new Date().toISOString(),
       error: errorInfo,
       schemaVersion: CURRENT_SCHEMA_VERSION,
+      idempotencyKey,
     };
     localStorage.setItem(`${OUTBOX_KEY_PREFIX}${userId}`, JSON.stringify(outbox));
     if (IS_DEV) {
-      console.log("[syncDb] Saved to outbox:", { timestamp: outbox.timestamp, error: errorInfo.code, schemaVersion: CURRENT_SCHEMA_VERSION });
+      console.log("[syncDb] Saved to outbox:", { timestamp: outbox.timestamp, error: errorInfo.code, schemaVersion: CURRENT_SCHEMA_VERSION, hasKey: !!idempotencyKey });
     }
   } catch (e) {
     if (IS_DEV) {
@@ -1685,18 +1708,29 @@ export function useSyncedDb(userId, seed, options = {}) {
   // ─────────────────────────────────────────────────────────────────────────────
   const syncToServer = useCallback(async (stateToSync) => {
     if (!userId) return { success: false };
-    
+
     // Prevent concurrent sync requests
     if (syncInFlight.current) {
       if (IS_DEV) console.log("[syncDb] Sync already in flight, skipping");
       return { success: false, skipped: true };
     }
-    
+
     // Fast pre-check: if browser says offline, skip immediately
     if (!navigator.onLine) {
       return { success: false, offline: true };
     }
-    
+
+    // ─── Idempotency key for this logical save attempt ─────────────────
+    // Reuse the existing outbox key if there's a pending save — that lets
+    // the server dedupe replays of the same logical operation even though
+    // the body (dbRef.current) may be a more recent state than the
+    // snapshot stored in the outbox. If the outbox is empty, generate a
+    // fresh key. The same key is reused across apiJson's internal retry
+    // loop and across outbox-driven retries.
+    const existingOutbox = getOutbox(userId);
+    const effectiveIdempotencyKey =
+      existingOutbox?.idempotencyKey || newIdempotencyKey();
+
     // CRITICAL VALIDATION: Prevent syncing corrupted/empty state that could overwrite server data
     // This prevents data loss when browser state gets corrupted or cleared unexpectedly
     const lastSynced = getLastSyncedState(userId);
@@ -1728,7 +1762,7 @@ export function useSyncedDb(userId, seed, options = {}) {
             "This likely indicates corrupted state. Last synced active trades:", lastSyncedActiveCount
           );
           // Save to outbox so the state is not lost
-          saveToOutbox(userId, stateToSync, { code: "CORRUPTED_STATE_BLOCKED", message: "Prevented syncing empty state" });
+          saveToOutbox(userId, stateToSync, { code: "CORRUPTED_STATE_BLOCKED", message: "Prevented syncing empty state" }, effectiveIdempotencyKey);
           setLastError({ 
             code: "CORRUPTED_STATE_BLOCKED", 
             message: "Prevented syncing empty state - data corruption detected", 
@@ -1772,10 +1806,10 @@ export function useSyncedDb(userId, seed, options = {}) {
               `Blocking sync to prevent data loss.`
             );
             // Save to outbox so the state is not lost
-            saveToOutbox(userId, stateToSync, { 
-              code: "EXCESSIVE_DATA_LOSS_BLOCKED", 
-              message: `Trade count dropped ${(dropPercentage * 100).toFixed(0)}% without tombstones` 
-            });
+            saveToOutbox(userId, stateToSync, {
+              code: "EXCESSIVE_DATA_LOSS_BLOCKED",
+              message: `Trade count dropped ${(dropPercentage * 100).toFixed(0)}% without tombstones`
+            }, effectiveIdempotencyKey);
             setLastError({ 
               code: "EXCESSIVE_DATA_LOSS_BLOCKED", 
               message: `Prevented syncing — trade count dropped by ${(dropPercentage * 100).toFixed(0)}%`, 
@@ -1813,7 +1847,7 @@ export function useSyncedDb(userId, seed, options = {}) {
       // Update reachability state based on ping result
       setIsServerReachable(false);
       // Save to outbox so it retries later
-      saveToOutbox(userId, stateToSync, { code: "PING_FAILED", message: `Server unreachable (${reason})` });
+      saveToOutbox(userId, stateToSync, { code: "PING_FAILED", message: `Server unreachable (${reason})` }, effectiveIdempotencyKey);
       setHasUnsavedChanges(true);
       const errorCode = reason === "timeout" ? "TIMEOUT" : reason === "server_error" ? "SERVER_ERROR" : "NETWORK_ERROR";
       setLastError({ code: errorCode, message: `Server unreachable (${reason})`, status: ping.status || 0 });
@@ -1888,9 +1922,10 @@ export function useSyncedDb(userId, seed, options = {}) {
         // BUG #5 FIX: Send expected_version so the server can detect concurrent writes
         // from multiple devices. On mismatch, server returns 409 with latest state.
         const knownVersion = getServerVersion(userId);
-        result = await apiJson("/api/state", { 
-          method: "PUT", 
-          body: { ...payload, expected_version: knownVersion }
+        result = await apiJson("/api/state", {
+          method: "PUT",
+          body: { ...payload, expected_version: knownVersion },
+          idempotencyKey: effectiveIdempotencyKey,
         });
       }
       
@@ -1970,9 +2005,18 @@ export function useSyncedDb(userId, seed, options = {}) {
           setServerVersion(userId, serverVersion);
           setLastSyncedState(userId, merged);
           
-          // Retry once with merged state and correct version
+          // Retry once with merged state and correct version.
+          // Use a FRESH idempotency key. The original effectiveIdempotencyKey
+          // is already cached server-side mapped to the 409 response — re-using
+          // it would just replay the 409 forever instead of letting the merged
+          // body succeed.
           const retryPayload = { state: merged, expected_version: serverVersion };
-          const retryResult = await apiJson("/api/state", { method: "PUT", body: retryPayload });
+          const retryIdempotencyKey = newIdempotencyKey();
+          const retryResult = await apiJson("/api/state", {
+            method: "PUT",
+            body: retryPayload,
+            idempotencyKey: retryIdempotencyKey,
+          });
           
           if (retryResult?.db === "down" || retryResult?.ok === false) {
             throw new Error("Retry after merge failed");
@@ -1996,16 +2040,20 @@ export function useSyncedDb(userId, seed, options = {}) {
           if (IS_DEV) {
             console.warn("[syncDb] Retry after version conflict failed:", retryErr?.message);
           }
-          // Fall through to normal error handling
-          saveToOutbox(userId, stateToSync, { status, code: "VERSION_CONFLICT_RETRY_FAILED", message: retryErr?.message });
+          // Fall through to normal error handling. Save the outbox under
+          // the FRESH retry key so subsequent outbox retries reuse a key
+          // not already poisoned by the cached 409 response.
+          saveToOutbox(userId, stateToSync, { status, code: "VERSION_CONFLICT_RETRY_FAILED", message: retryErr?.message }, retryIdempotencyKey);
           setHasUnsavedChanges(true);
           setLastError({ code: "VERSION_CONFLICT", message: "Conflict with another device — will retry", status: 409 });
           return { success: false, versionConflict: true };
         }
       }
       
-      // Save to outbox for later retry
-      saveToOutbox(userId, stateToSync, { status, code, message });
+      // Save to outbox for later retry. Reuse effectiveIdempotencyKey so
+      // subsequent outbox retries hit the server's idempotency cache and
+      // dedupe replays of this same logical save.
+      saveToOutbox(userId, stateToSync, { status, code, message }, effectiveIdempotencyKey);
       setHasUnsavedChanges(true);
       
       // Determine error type

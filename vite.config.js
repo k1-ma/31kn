@@ -33,20 +33,53 @@ export default defineConfig({
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
+          // Auth + state: never cache, never abort.
+          { urlPattern: /\/api\/auth\//, handler: 'NetworkOnly', method: 'GET' },
+          { urlPattern: /\/api\/state/, handler: 'NetworkOnly', method: 'GET' },
+
+          // Mutations: NetworkOnly has no timeout, so the SW never aborts a
+          // slow save. Workbox runtimeCaching matches a single method per
+          // entry, so every verb gets its own rule.
+          //
+          // Intentionally NOT using Workbox BackgroundSyncPlugin here. With
+          // the current full-state-blob model (PUT /api/state replaces the
+          // entire user state), a queued original request body becomes stale
+          // the moment the user makes another offline edit — replaying it
+          // would overwrite the newer in-memory state and lose data.
+          // src/lib/syncDb.js's localStorage outbox already handles offline
+          // retry correctly: it uses dbRef.current (the latest state) on
+          // each retry, not the snapshot from the time of the failed save.
+          // Revisit BackgroundSync after the migration to per-entity tables
+          // (each mutation becomes idempotent and stateless).
+          { urlPattern: /\/api\//, handler: 'NetworkOnly', method: 'POST' },
+          { urlPattern: /\/api\//, handler: 'NetworkOnly', method: 'PUT' },
+          { urlPattern: /\/api\//, handler: 'NetworkOnly', method: 'PATCH' },
+          { urlPattern: /\/api\//, handler: 'NetworkOnly', method: 'DELETE' },
+
+          // Admin-managed changelog — stale-while-revalidate keeps the
+          // changelog instant on slow networks.
           {
-            urlPattern: /\/api\/auth\//,
-            handler: 'NetworkOnly',
+            urlPattern: /\/api\/updates(\?|$|\/)/,
+            handler: 'StaleWhileRevalidate',
+            method: 'GET',
+            options: {
+              cacheName: 'api-updates-cache-v1',
+              expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 },
+            },
           },
-          {
-            urlPattern: /\/api\/state/,
-            handler: 'NetworkOnly',
-          },
+
+          // All other GET /api/* — NetworkFirst with raised timeout.
+          // 30 s absorbs slow Neon cold-starts and large reads while still
+          // falling back to cache when the network is genuinely dead.
+          // cacheName bumped to v2 so the old 10 s-timeout cache is evicted
+          // on rollout instead of lingering for up to 5 min.
           {
             urlPattern: /\/api\//,
             handler: 'NetworkFirst',
+            method: 'GET',
             options: {
-              cacheName: 'api-cache',
-              networkTimeoutSeconds: 10,
+              cacheName: 'api-cache-v2',
+              networkTimeoutSeconds: 30,
               expiration: {
                 maxEntries: 50,
                 maxAgeSeconds: 5 * 60,

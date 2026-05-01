@@ -2,6 +2,7 @@ import { Router } from "express";
 import { randomUUID } from "crypto";
 import { getPool, ensurePool, dbUnavailableResponse } from "../services/db.service.js";
 import { requireAuth } from "../middleware/requireAuth.js";
+import { idempotency } from "../middleware/idempotency.js";
 import { restoreStrippedImages, hasStrippedImages } from "../utils/imageRestore.js";
 import { isDeleted } from "../utils/tombstones.js";
 
@@ -269,7 +270,7 @@ async function cleanupExpiredSessions(pool) {
 // CHUNKED OPERATIONS SYNC
 // POST /api/sync/chunk - Receive a chunk of operations
 // ─────────────────────────────────────────────────────────────────────────────
-router.post("/chunk", requireAuth, async (req, res) => {
+router.post("/chunk", requireAuth, idempotency(), async (req, res) => {
   let pool = getPool();
   if (!pool) {
     try { pool = await ensurePool(); } catch { /* retry failed */ }
@@ -455,7 +456,7 @@ router.post("/chunk", requireAuth, async (req, res) => {
 // CHUNKED STATE SYNC
 // POST /api/sync/state-chunk - Receive a chunk of full state
 // ─────────────────────────────────────────────────────────────────────────────
-router.post("/state-chunk", requireAuth, async (req, res) => {
+router.post("/state-chunk", requireAuth, idempotency(), async (req, res) => {
   let pool = getPool();
   if (!pool) {
     try { pool = await ensurePool(); } catch { /* retry failed */ }

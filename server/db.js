@@ -193,6 +193,23 @@ export async function initDb({ admin }) {
 
     CREATE INDEX IF NOT EXISTS rate_limits_key_action_idx ON rate_limits(key, action);
 
+    -- Idempotency keys for mutation endpoints (Step 3 of sync-reliability patch).
+    -- Maps client-supplied UUID to the cached response of a successful mutation,
+    -- so retries of the same logical operation are deduped at the HTTP layer.
+    CREATE TABLE IF NOT EXISTS idempotency_keys (
+      key UUID PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      method TEXT NOT NULL,
+      path TEXT NOT NULL,
+      status_code INTEGER NOT NULL,
+      response_body JSONB NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_idempotency_expires ON idempotency_keys (expires_at);
+    CREATE INDEX IF NOT EXISTS idx_idempotency_user ON idempotency_keys (user_id);
+
     -- Ideas & Plans Tracker table
     CREATE TABLE IF NOT EXISTS ideas (
       id SERIAL PRIMARY KEY,

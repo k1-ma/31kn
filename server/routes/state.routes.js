@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { getPool, ensurePool, dbUnavailableResponse } from "../services/db.service.js";
 import { requireAuth } from "../middleware/requireAuth.js";
+import { idempotency } from "../middleware/idempotency.js";
 import { restoreStrippedImages, hasStrippedImages } from "../utils/imageRestore.js";
 import { isDeleted } from "../utils/tombstones.js";
 
@@ -509,13 +510,15 @@ async function handleStateSave(req, res) {
   }
 }
 
-router.put("/", requireAuth, handleStateSave);
-// POST is used by navigator.sendBeacon() which always sends POST requests
+router.put("/", requireAuth, idempotency(), handleStateSave);
+// POST is used by navigator.sendBeacon() which always sends POST requests.
+// Not wired through idempotency() in this step — sendBeacon is fire-and-forget
+// (no client-side retry, no need for HTTP-level dedupe). Wire later if needed.
 router.post("/", requireAuth, handleStateSave);
 
 // PATCH /api/state - Partial state update with optimistic locking
 // Supports expected_version for conflict detection to prevent data loss
-router.patch("/", requireAuth, async (req, res) => {
+router.patch("/", requireAuth, idempotency(), async (req, res) => {
   let pool = getPool();
   if (!pool) {
     try { pool = await ensurePool(); } catch { /* retry failed */ }
