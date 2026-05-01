@@ -443,13 +443,13 @@ async function handleStateSave(req, res) {
           });
         }
         // Log normal state changes for audit trail
-        else if (finalTradesCount !== serverTradesCount || finalBacktestsCount !== serverBacktestsCount) {
+        else if (finalActiveTradesCount !== serverActiveTradesCount || finalBacktestsCount !== serverBacktestsCount) {
           logStateOp("put", userId, {
             action: "accepting_client_state",
             incomingTradesCount,
-            serverTradesCount,
-            finalTradesCount,
-            tradesChange: finalTradesCount - serverTradesCount,
+            serverActiveTradesCount,
+            finalActiveTradesCount,
+            tradesChange: finalActiveTradesCount - serverActiveTradesCount,
             incomingBacktestsCount: finalBacktestsCount,
             serverBacktestsCount,
             backtestsChange: finalBacktestsCount - serverBacktestsCount
