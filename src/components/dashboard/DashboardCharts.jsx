@@ -252,7 +252,7 @@ export function WinLossDistribution({ metrics, loading = false }) {
       </CardHeader>
       <CardContent className="pt-0">
         <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 min-w-0">
-          <div className="w-[clamp(80px,12vw,110px)] h-[clamp(80px,12vw,110px)] shrink-0">
+          <div className="relative w-[clamp(80px,12vw,110px)] h-[clamp(80px,12vw,110px)] shrink-0">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
@@ -271,6 +271,11 @@ export function WinLossDistribution({ metrics, loading = false }) {
                 </Pie>
               </PieChart>
             </ResponsiveContainer>
+            {isEmpty && (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">No trades</span>
+              </div>
+            )}
           </div>
           <div className="flex-1 min-w-0 pl-2 sm:pl-4 space-y-2">
             <div className="flex items-center gap-2">

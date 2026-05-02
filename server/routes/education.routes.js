@@ -96,13 +96,54 @@ async function reconcileProcessingVideos(pool) {
   }
 }
 
-// Configure multer for in-memory file upload (up to 2GB)
+// Configure multer for in-memory file upload (up to 2GB).
+// fileFilter restricts uploads to video MIME types — without it the legacy
+// /admin/upload endpoint accepts any file type, and an attacker (or a
+// confused admin) could upload arbitrary blobs that we'd then ship to Bunny.
+const ALLOWED_VIDEO_MIME = new Set([
+  "video/mp4",
+  "video/quicktime",
+  "video/webm",
+  "video/x-matroska",
+  "video/mpeg",
+  "video/x-msvideo",
+  "video/3gpp",
+  "video/3gpp2",
+  "application/octet-stream", // some browsers omit a real video/* type
+]);
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 2000 * 1024 * 1024, // 2GB
   },
+  fileFilter(req, file, cb) {
+    const mime = String(file?.mimetype || "").toLowerCase();
+    if (mime.startsWith("video/") || ALLOWED_VIDEO_MIME.has(mime)) {
+      return cb(null, true);
+    }
+    const err = new Error("Only video files are allowed");
+    err.code = "INVALID_MIME";
+    return cb(err);
+  },
 });
+
+// Wrap upload.single() so multer errors (size limit, MIME filter rejection)
+// surface as 400 JSON instead of bubbling to the default 500 handler.
+function uploadVideoMiddleware(field) {
+  const handler = upload.single(field);
+  return (req, res, next) => {
+    handler(req, res, (err) => {
+      if (!err) return next();
+      if (err.code === "INVALID_MIME") {
+        return res.status(400).json({ error: err.message });
+      }
+      if (err.code === "LIMIT_FILE_SIZE") {
+        return res.status(413).json({ error: "File too large" });
+      }
+      return res.status(400).json({ error: err.message || "Upload failed" });
+    });
+  };
+}
 
 /**
  * Auto-create education tables if they don't exist
@@ -512,7 +553,7 @@ router.post("/admin/confirm-upload", requireAdmin, async (req, res) => {
 });
 
 // POST /api/education/admin/upload - Upload new video
-router.post("/admin/upload", requireAdmin, upload.single("file"), async (req, res) => {
+router.post("/admin/upload", requireAdmin, uploadVideoMiddleware("file"), async (req, res) => {
   let pool = getPool();
   if (!pool) {
     try { pool = await ensurePool(); } catch { /* retry failed */ }

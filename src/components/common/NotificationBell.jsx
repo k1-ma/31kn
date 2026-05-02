@@ -14,6 +14,7 @@ export default function NotificationBell({ onInboxClick, onOpenUpdates, onOpenFe
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   const dropdownRef = useRef(null);
 
   // Fetch unread count
@@ -34,6 +35,7 @@ export default function NotificationBell({ onInboxClick, onOpenUpdates, onOpenFe
   // Fetch recent notifications (unread only for dropdown)
   const fetchNotifications = async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch("/api/notifications?limit=5&unreadOnly=true", {
         credentials: "include",
@@ -41,9 +43,12 @@ export default function NotificationBell({ onInboxClick, onOpenUpdates, onOpenFe
       if (res.ok) {
         const data = await res.json();
         setNotifications(data.notifications || []);
+      } else {
+        setError("load_failed");
       }
     } catch (err) {
       console.error("Failed to fetch notifications:", err);
+      setError("load_failed");
     } finally {
       setLoading(false);
     }
@@ -223,6 +228,19 @@ export default function NotificationBell({ onInboxClick, onOpenUpdates, onOpenFe
               {loading ? (
                 <div className="p-8 text-center text-sm text-muted-foreground">
                   {t("common.loading")}
+                </div>
+              ) : error ? (
+                <div className="p-6 text-center space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    {t("notifications.loadError") || "Failed to load notifications"}
+                  </p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => fetchNotifications()}
+                  >
+                    {t("common.retry") || "Retry"}
+                  </Button>
                 </div>
               ) : notifications.length === 0 ? (
                 <div className="p-8 text-center text-sm text-muted-foreground">

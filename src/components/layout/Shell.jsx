@@ -46,6 +46,8 @@ function NavItem({ icon, label, active, onClick, collapsed, badge }) {
     <button
       onClick={onClick}
       title={collapsed ? label : undefined}
+      aria-label={label}
+      aria-current={active ? "page" : undefined}
       className={
         `group relative flex items-center transition-all duration-200 ${
           collapsed ? "w-11 h-11 justify-center rounded-lg mx-auto" : "w-full gap-3 px-3 py-[7px] rounded-lg"
@@ -325,10 +327,19 @@ export default function Shell({
 
   return (
     <div className="min-h-screen app-bg">
+      {/* Skip-to-content link for keyboard/screen-reader users.
+          Visually hidden until focused, then floats above the nav. */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[100] focus:px-3 focus:py-2 focus:rounded-md focus:bg-accent focus:text-white focus:shadow-lg focus:outline-none"
+      >
+        {t("a11y.skipToContent") || "Skip to content"}
+      </a>
       <div className="pointer-events-none fixed inset-0 grid-overlay opacity-[0.12]" />
       <div className="relative flex min-h-screen w-full">
         {/* Desktop Sidebar */}
         <aside
+          aria-label={t("shell.sidebar") || "Sidebar navigation"}
           className={`hidden md:flex flex-col ${sidebarWidth} shrink-0 border-r border-border/50 dark:border-white/[0.04] bg-card dark:bg-[#060910]/95 transition-[width] duration-200 ease-out fixed top-0 left-0 h-screen z-40`}
         >
           <SidebarContent />
@@ -342,8 +353,14 @@ export default function Shell({
           <div className="md:hidden sticky top-0 z-40 border-b border-border/50 dark:border-white/[0.05] bg-card dark:bg-[#060910]/95 safe-top">
             <div className="flex items-center justify-between gap-2 px-3 h-14">
               <div className="flex items-center gap-2.5 min-w-0">
-                <button onClick={() => setMobileOpen(true)} className="text-muted-foreground hover:text-foreground transition-colors p-1.5 rounded-lg hover:bg-accent/5 dark:hover:bg-white/[0.04]" title={t("shell.menu")}>
-                  <Menu className="h-5 w-5" />
+                <button
+                  onClick={() => setMobileOpen(true)}
+                  className="text-muted-foreground hover:text-foreground transition-colors p-1.5 rounded-lg hover:bg-accent/5 dark:hover:bg-white/[0.04]"
+                  title={t("shell.menu")}
+                  aria-label={t("shell.menu") || "Open navigation menu"}
+                  aria-expanded={mobileOpen}
+                >
+                  <Menu className="h-5 w-5" aria-hidden="true" />
                 </button>
                 <div className="flex items-center gap-2 min-w-0">
                   <div className="h-7 w-7 shrink-0 rounded-md overflow-hidden ring-1 ring-border/50 dark:ring-white/[0.08]">
@@ -359,7 +376,7 @@ export default function Shell({
             </div>
           </div>
 
-          <main className="flex-1 min-w-0 p-2.5 sm:p-3 md:p-5 lg:p-6">
+          <main id="main-content" tabIndex={-1} className="flex-1 min-w-0 p-2.5 sm:p-3 md:p-5 lg:p-6">
             <div className="mb-3 hidden md:flex items-center justify-end">{topRight}</div>
             <AnimatePresence mode="popLayout" initial={false}>
               <motion.div key={active} {...page(false)}>
@@ -373,8 +390,22 @@ export default function Shell({
       {/* Mobile slide-over nav */}
       <AnimatePresence>
         {mobileOpen ? (
-          <motion.div className="fixed inset-0 z-50" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
+          <motion.div
+            className="fixed inset-0 z-50"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("shell.menu") || "Navigation menu"}
+            onKeyDown={(e) => { if (e.key === "Escape") setMobileOpen(false); }}
+          >
+            <button
+              type="button"
+              aria-label={t("common.close") || "Close menu"}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm cursor-default"
+              onClick={() => setMobileOpen(false)}
+            />
             <motion.div
               initial={{ x: -260 }}
               animate={{ x: 0 }}

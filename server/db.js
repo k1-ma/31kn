@@ -594,6 +594,21 @@ export async function initDb({ admin }) {
     console.warn("[db] user_feedback admin_read_at migration:", e?.message || e);
   }
 
+  // Index admin_read_at for the admin panel "unread feedback" counter query.
+  // The query "SELECT COUNT(*) FILTER (WHERE admin_read_at IS NULL)" runs on
+  // every admin panel load — without this index it sequential-scans the
+  // entire feedback table.
+  try {
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS user_feedback_admin_read_at_idx
+        ON user_feedback(admin_read_at)
+        WHERE admin_read_at IS NULL;
+    `);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn("[db] user_feedback admin_read_at index:", e?.message || e);
+  }
+
   // Chunked sync session tables (replaces in-memory Map for serverless compatibility)
   try {
     await pool.query(`
