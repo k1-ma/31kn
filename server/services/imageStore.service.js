@@ -193,6 +193,12 @@ export async function writeStateV2({ pool, userId, canonicalState, statementTime
 
     // Post-DB verify: re-read the persisted images back so we know the BYTEA
     // round-trips through Postgres, not just through our in-memory map.
+    //
+    // PostgreSQL's encode(bytea, 'base64') follows RFC 2045 and inserts a '\n'
+    // every 76 characters. Browsers send (and parseDataUrl produces) base64
+    // without line breaks, so we strip whitespace on read-back to compare
+    // apples-to-apples. We could also do this in SQL via translate(...) but
+    // keeping it in JS makes the fix obvious and keeps the SQL simple.
     const refIdSet = collectRefIds(rewrittenState);
     let imageMap = {};
     if (refIdSet.size > 0) {
@@ -204,7 +210,10 @@ export async function writeStateV2({ pool, userId, canonicalState, statementTime
         [userId, refIds]
       );
       for (const row of fetched.rows) {
-        imageMap[row.image_id] = { contentType: row.content_type, base64: row.base64 };
+        imageMap[row.image_id] = {
+          contentType: row.content_type,
+          base64: String(row.base64 || "").replace(/\s+/g, ""),
+        };
       }
     }
 

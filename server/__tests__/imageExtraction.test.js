@@ -221,6 +221,17 @@ test("ref structure is stable: {__imgRef, v}", () => {
   expect(ref.v).toBe(1);
 });
 
+test("regression: PG-style 76-char line-wrapped base64 still round-trips after whitespace strip", () => {
+  // Simulates how Postgres' encode(bytea, 'base64') wraps output every 76 chars
+  // with '\n'. The post-write verify path in imageStore.service.js strips
+  // whitespace before deep-equal — this test guards that contract from the
+  // pure-helper side.
+  const longBase64 = PNG_1x1.repeat(20); // long enough to trigger wrapping in real PG
+  const wrapped = longBase64.match(/.{1,76}/g).join("\n");
+  // After whitespace strip, wrapped must equal the original.
+  expect(wrapped.replace(/\s+/g, "")).toBe(longBase64);
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Run
 // ─────────────────────────────────────────────────────────────────────────────
