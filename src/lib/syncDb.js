@@ -632,9 +632,10 @@ function mergeTradesArrays(localTrades, serverTrades, isInitialLoad = false, ser
       } else if (mergedTrade.deletedAt !== undefined && !(typeof mergedTrade.deletedAt === 'number' && mergedTrade.deletedAt > 0)) {
         // Neither version has a valid deletedAt, but mergedTrade might have deletedAt: 0 or invalid value
         // Remove it to prevent treating the trade as deleted
+        const invalidDeletedAt = mergedTrade.deletedAt;
         mergedTrade = withoutDeletedAt(mergedTrade);
         if (IS_DEV) {
-          console.log("[syncDb] Removing invalid deletedAt:", id, { deletedAt });
+          console.log("[syncDb] Removing invalid deletedAt:", id, { deletedAt: invalidDeletedAt });
         }
       }
       
@@ -2071,6 +2072,8 @@ export function useSyncedDb(userId, seed, options = {}) {
           // Update local state with merged result
           dbRef.current = merged;
           setDb(merged);
+          // setLastLocalSaveAt is not in scope inside useSyncedDb (no such state).
+          // Other call sites in this hook also omit the third arg.
           saveToLocalStorageSync(userId, merged);
           setServerVersion(userId, serverVersion);
           setLastSyncedState(userId, merged);

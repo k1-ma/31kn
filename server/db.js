@@ -131,6 +131,10 @@ export async function initDb({ admin }) {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
+    -- Admin queries like "users active in the last N days" sort/filter by
+    -- states.updated_at; without an index this falls back to a seq scan.
+    CREATE INDEX IF NOT EXISTS states_updated_at_idx ON states(updated_at DESC);
+
     CREATE TABLE IF NOT EXISTS admin_logs (
       id BIGSERIAL PRIMARY KEY,
       admin_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
