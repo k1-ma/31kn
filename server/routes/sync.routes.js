@@ -619,28 +619,81 @@ router.post("/state-chunk", requireAuth, idempotency(), async (req, res) => {
       // Client-side merge on load handles conflicts when multiple tabs/devices sync
 
       // Fetch current server state for image restoration AND data loss protection.
-      // Both checks need the current state, so we do a single query.
+      // OPTIMIZATION: Loading the full 3-5MB JSONB blob just to count records or
+      // skip the merge entirely is wasteful. We first probe with a cheap counts-only
+      // query; we only pay the cost of pulling the full state_json when:
+      //  (a) the assembled payload contains [IMAGE_STRIPPED] markers we must rehydrate, or
+      //  (b) the cheap probe indicates a potential data-loss scenario.
+      const incomingTradesCount = assembledState?.trades?.length ?? 0;
+      const incomingBacktestsCount = assembledState?.backtests?.length ?? 0;
+      const needsImageRestore = hasStrippedImages(assembledState);
+
       let currentState = null;
-      try {
-        const currentRow = await pool.query(
-          "SELECT state_json FROM states WHERE user_id = $1",
-          [userId]
-        );
-        currentState = currentRow.rows?.[0]?.state_json;
-      } catch (fetchErr) {
-        logSyncOp("state-chunk", userId, {
-          sessionId,
-          warning: "fetch_current_state_failed",
-          error: fetchErr?.message
-        });
-        // Continue — we can still save, just without protection/restoration
+      let serverTradesCount = 0;
+      let serverBacktestsCount = 0;
+      let needFullState = needsImageRestore;
+
+      if (!needFullState) {
+        try {
+          const countRow = await pool.query(
+            `SELECT
+               COALESCE(jsonb_array_length(state_json->'trades'), 0)::int AS trades,
+               COALESCE(jsonb_array_length(state_json->'backtests'), 0)::int AS backtests
+             FROM states WHERE user_id = $1`,
+            [userId]
+          );
+          serverTradesCount = countRow.rows?.[0]?.trades ?? 0;
+          serverBacktestsCount = countRow.rows?.[0]?.backtests ?? 0;
+        } catch (probeErr) {
+          // Probe failed — fall back to full fetch so protection still runs.
+          logSyncOp("state-chunk", userId, {
+            sessionId,
+            warning: "counts_probe_failed",
+            error: probeErr?.message
+          });
+          needFullState = true;
+        }
+
+        // Decide whether the protection logic below would actually trigger.
+        // If counts look safe, skip the full-state fetch entirely.
+        const tradesWipe = incomingTradesCount === 0 && serverTradesCount > 0;
+        const backtestsWipe = incomingBacktestsCount === 0 && serverBacktestsCount > 0;
+        const tradesPartialLoss =
+          serverTradesCount > MIN_RECORDS_FOR_PROTECTION &&
+          incomingTradesCount > 0 &&
+          (serverTradesCount - incomingTradesCount) / serverTradesCount > MAX_ACCEPTABLE_DROP_PERCENTAGE;
+        const backtestsPartialLoss =
+          serverBacktestsCount > MIN_RECORDS_FOR_PROTECTION &&
+          incomingBacktestsCount > 0 &&
+          (serverBacktestsCount - incomingBacktestsCount) / serverBacktestsCount > MAX_ACCEPTABLE_DROP_PERCENTAGE;
+
+        if (tradesWipe || backtestsWipe || tradesPartialLoss || backtestsPartialLoss) {
+          needFullState = true;
+        }
+      }
+
+      if (needFullState) {
+        try {
+          const currentRow = await pool.query(
+            "SELECT state_json FROM states WHERE user_id = $1",
+            [userId]
+          );
+          currentState = currentRow.rows?.[0]?.state_json;
+        } catch (fetchErr) {
+          logSyncOp("state-chunk", userId, {
+            sessionId,
+            warning: "fetch_current_state_failed",
+            error: fetchErr?.message
+          });
+          // Continue — we can still save, just without protection/restoration
+        }
       }
 
       // CRITICAL: Restore images stripped during chunking.
       // ensureChunksFitBodyLimit replaces base64 images with [IMAGE_STRIPPED]
       // when a chunk exceeds the Vercel body limit. Without this restoration,
       // the full state replacement would permanently lose those images.
-      if (hasStrippedImages(assembledState)) {
+      if (needsImageRestore) {
         if (currentState) {
           try {
             assembledState = restoreStrippedImages(assembledState, currentState);
@@ -662,35 +715,33 @@ router.post("/state-chunk", requireAuth, idempotency(), async (req, res) => {
       // with significantly fewer records. This matches the protection in PUT /api/state
       // (state.routes.js) which was previously missing from the chunked sync path.
       if (currentState) {
-        const incomingTradesCount = assembledState?.trades?.length ?? 0;
-        const serverTradesCount = currentState?.trades?.length ?? 0;
-        const incomingBacktestsCount = assembledState?.backtests?.length ?? 0;
-        const serverBacktestsCount = currentState?.backtests?.length ?? 0;
+        const sTrades = currentState?.trades?.length ?? 0;
+        const sBacktests = currentState?.backtests?.length ?? 0;
 
         let shouldMerge = false;
         let mergeReason = "";
 
         // Block complete data wipe for trades
-        if (incomingTradesCount === 0 && serverTradesCount > 0) {
+        if (incomingTradesCount === 0 && sTrades > 0) {
           shouldMerge = true;
           mergeReason = "chunked_merge_prevent_trades_wipe";
         }
         // Block complete data wipe for backtests
-        else if (incomingBacktestsCount === 0 && serverBacktestsCount > 0) {
+        else if (incomingBacktestsCount === 0 && sBacktests > 0) {
           shouldMerge = true;
           mergeReason = "chunked_merge_prevent_backtests_wipe";
         }
         // Detect partial data loss for trades (>50% reduction)
-        else if (serverTradesCount > MIN_RECORDS_FOR_PROTECTION && incomingTradesCount > 0) {
-          const dropPercentage = (serverTradesCount - incomingTradesCount) / serverTradesCount;
+        else if (sTrades > MIN_RECORDS_FOR_PROTECTION && incomingTradesCount > 0) {
+          const dropPercentage = (sTrades - incomingTradesCount) / sTrades;
           if (dropPercentage > MAX_ACCEPTABLE_DROP_PERCENTAGE) {
             shouldMerge = true;
             mergeReason = "chunked_merge_prevent_trades_partial_loss";
           }
         }
         // Detect partial data loss for backtests (>50% reduction)
-        else if (serverBacktestsCount > MIN_RECORDS_FOR_PROTECTION && incomingBacktestsCount > 0) {
-          const dropPercentage = (serverBacktestsCount - incomingBacktestsCount) / serverBacktestsCount;
+        else if (sBacktests > MIN_RECORDS_FOR_PROTECTION && incomingBacktestsCount > 0) {
+          const dropPercentage = (sBacktests - incomingBacktestsCount) / sBacktests;
           if (dropPercentage > MAX_ACCEPTABLE_DROP_PERCENTAGE) {
             shouldMerge = true;
             mergeReason = "chunked_merge_prevent_backtests_partial_loss";
@@ -702,9 +753,9 @@ router.post("/state-chunk", requireAuth, idempotency(), async (req, res) => {
             sessionId,
             action: mergeReason,
             incomingTradesCount,
-            serverTradesCount,
+            serverTradesCount: sTrades,
             incomingBacktestsCount,
-            serverBacktestsCount,
+            serverBacktestsCount: sBacktests,
             severity: "CRITICAL"
           });
           assembledState = mergeStatesForProtection(assembledState, currentState);

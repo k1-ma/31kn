@@ -65,7 +65,7 @@ export async function createPoolOnly() {
 
   const pool = new Pool({
     connectionString: DATABASE_URL,
-    max: 5,
+    max: Number(process.env.PG_POOL_MAX) || 15,
     ssl,
     connectionTimeoutMillis: 20_000,  // Allow time for serverless DB cold start
     idleTimeoutMillis: 30_000,
