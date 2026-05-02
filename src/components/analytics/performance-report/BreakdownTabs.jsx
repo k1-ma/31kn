@@ -204,9 +204,19 @@ function BreakdownTable({ data, currency, onRowClick, sortConfig, onSort, t, act
   );
 }
 
-export default function BreakdownTabs({ breakdowns, currency, reduceMotion, onTradeClick, t }) {
+export default function BreakdownTabs({ breakdowns, currency, reduceMotion, onTradeClick, t, modelsEnabled = true }) {
   const [activeTab, setActiveTab] = useState("byPair");
   const [sortConfig, setSortConfig] = useState({ key: "netPnl", direction: "desc" });
+
+  const visibleTabs = useMemo(() => {
+    return Object.values(TAB_CONFIG).filter((tab) => modelsEnabled || tab.key !== "byModel");
+  }, [modelsEnabled]);
+
+  React.useEffect(() => {
+    if (!modelsEnabled && activeTab === "byModel") {
+      setActiveTab("byPair");
+    }
+  }, [modelsEnabled, activeTab]);
 
   // Get current tab data
   const currentData = breakdowns[activeTab] || [];
@@ -272,7 +282,7 @@ export default function BreakdownTabs({ breakdowns, currency, reduceMotion, onTr
 
       {/* Tabs */}
       <div className="flex flex-wrap gap-2 mb-5 pb-4 border-b border-accent/10">
-        {Object.values(TAB_CONFIG).map((tab) => (
+        {visibleTabs.map((tab) => (
           <TabButton
             key={tab.key}
             tab={{ ...tab, label: getTabLabel(tab.key) }}
