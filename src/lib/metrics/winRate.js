@@ -52,19 +52,24 @@ export function calcWinRatePct({ wins, losses, breakEvens = 0, mode = "ignore" }
 
 /**
  * Count trade outcomes (wins, losses, breakEvens) from trade data.
- * 
+ *
+ * Honors the user-marked `isBreakEven` flag on the trade or any of its
+ * allocations: a trade marked as break-even is classified as "be" (or as
+ * "loss" when mode === "loss") regardless of PnL sign.
+ *
  * @param {Array} trades - Array of trade objects
- * @param {Function} [getPnL] - Optional function to extract PnL from trade. 
+ * @param {Function} [getPnL] - Optional function to extract PnL from trade.
  *                              Defaults to trade.pnl or sum of allocation pnls.
+ * @param {string} [mode="ignore"] - Break-even mode: "ignore" | "loss"
  * @returns {Object} - { wins, losses, breakEvens, total }
  */
-export function countTradeOutcomes(trades, getPnL = null) {
+export function countTradeOutcomes(trades, getPnL = null, mode = "ignore") {
   const activeTrades = (trades || []).filter(t => !isDeleted(t));
-  
+
   let wins = 0;
   let losses = 0;
   let breakEvens = 0;
-  
+
   const defaultGetPnL = (trade) => {
     const allocs = Array.isArray(trade?.allocations) ? trade.allocations : [];
     if (allocs.length > 0) {
@@ -72,22 +77,41 @@ export function countTradeOutcomes(trades, getPnL = null) {
     }
     return clampNum(trade?.pnl);
   };
-  
+
   const pnlFn = typeof getPnL === "function" ? getPnL : defaultGetPnL;
-  
+
   for (const trade of activeTrades) {
     const pnl = pnlFn(trade);
-    if (pnl > 0) wins++;
-    else if (pnl < 0) losses++;
+    const isBreakEven = isTradeBreakEven(trade);
+    const outcome = classifyTradeOutcome({ pnl, isBreakEven, mode });
+    if (outcome === "win") wins++;
+    else if (outcome === "loss") losses++;
     else breakEvens++;
   }
-  
+
   return {
     wins,
     losses,
     breakEvens,
     total: activeTrades.length,
   };
+}
+
+/**
+ * Returns true if the trade or any of its allocations is user-marked as
+ * break-even.
+ *
+ * @param {Object} trade - Trade object
+ * @returns {boolean}
+ */
+export function isTradeBreakEven(trade) {
+  if (!trade) return false;
+  if (trade.isBreakEven === true) return true;
+  const allocs = Array.isArray(trade?.allocations) ? trade.allocations : [];
+  for (const a of allocs) {
+    if (a?.isBreakEven === true) return true;
+  }
+  return false;
 }
 
 /**
@@ -154,25 +178,24 @@ export function getWinRatePrefs(account, fallbackMode = "ignore") {
 }
 
 /**
- * Classify a trade outcome based on PnL only.
- * 
- * IMPORTANT: PnL ALWAYS determines win/loss.
- * 
+ * Classify a trade outcome based on PnL, with optional isBreakEven override.
+ *
  * Classification logic:
- * 1. If pnl > 0 → "win" (ALWAYS)
- * 2. If pnl < 0 → "loss" (ALWAYS)
- * 3. If pnl === 0 → "be" (break-even)
- * 
+ * 1. If pnl > 0 → "win" (ALWAYS, regardless of isBreakEven)
+ * 2. If pnl < 0 AND isBreakEven === true:
+ *    - mode === "loss" → "loss"
+ *    - otherwise → "be" (user marked it as break-even)
+ * 3. If pnl < 0 AND isBreakEven !== true → "loss"
+ * 4. If pnl === 0 → "be"
+ *
  * @param {Object} params - Parameters
  * @param {number} params.pnl - Profit/Loss value
+ * @param {boolean} [params.isBreakEven=false] - User-marked break-even flag
+ * @param {string} [params.mode="ignore"] - Break-even mode: "ignore" | "loss"
  * @returns {string} - "win" | "loss" | "be"
  */
-export function classifyOutcomeByPnL({ pnl }) {
-  const pnlVal = clampNum(pnl);
-  
-  if (pnlVal > 0) return "win";
-  if (pnlVal < 0) return "loss";
-  return "be";
+export function classifyOutcomeByPnL({ pnl, isBreakEven = false, mode = "ignore" }) {
+  return classifyTradeOutcome({ pnl, isBreakEven, mode });
 }
 
 /**
@@ -277,45 +300,50 @@ export function countOutcomes(trades, mode = "ignore", options = {}) {
 }
 
 /**
- * Classify a trade outcome based on PnL.
- * 
- * @deprecated Use classifyOutcomeByPnL instead. The rr and neutralRR parameters
+ * Classify a trade outcome based on PnL, with optional isBreakEven override.
+ *
+ * @deprecated Use classifyTradeOutcome instead. The rr and neutralRR parameters
  * are kept for backward compatibility but have no effect on classification.
- * 
+ *
  * IMPORTANT: PnL ALWAYS determines win/loss. neutralRR does NOT override win/loss.
- * 
+ * If isBreakEven is true and pnl < 0, the trade is treated as break-even
+ * (or as loss when mode === "loss").
+ *
  * @param {Object} params - Parameters
  * @param {number} params.pnl - Profit/Loss value
  * @param {number} [params.rr] - Risk/Reward value (DEPRECATED - not used)
  * @param {number} [params.neutralRR=0] - Neutral zone threshold (DEPRECATED - not used)
+ * @param {boolean} [params.isBreakEven=false] - User-marked break-even flag
+ * @param {string} [params.mode="ignore"] - Break-even mode: "ignore" | "loss"
  * @returns {string} - "win" | "loss" | "be"
  */
-export function classifyOutcomeByRRAndPnL({ pnl, rr, neutralRR = 0 }) {
-  return classifyOutcomeByPnL({ pnl });
+export function classifyOutcomeByRRAndPnL({ pnl, rr, neutralRR = 0, isBreakEven = false, mode = "ignore" }) {
+  return classifyTradeOutcome({ pnl, isBreakEven, mode });
 }
 
 /**
  * Count trade outcomes with account filtering.
- * Uses PnL-based classification only.
- * 
+ * Uses PnL-based classification but honors per-allocation isBreakEven.
+ *
  * @param {Array} trades - Array of trade objects
  * @param {Object} options - Options
  * @param {string} [options.accountId="all"] - Filter by account ID
  * @param {Object} [options.prefs] - Win rate preferences (DEPRECATED - not used)
+ * @param {string} [options.mode="ignore"] - Break-even mode: "ignore" | "loss"
  * @returns {Object} - { wins, losses, breakEvens, total }
  */
-export function countTradeOutcomesWithPrefs(trades, { accountId = "all", prefs = {} } = {}) {
+export function countTradeOutcomesWithPrefs(trades, { accountId = "all", prefs = {}, mode = "ignore" } = {}) {
   const activeTrades = (trades || []).filter(t => !isDeleted(t));
-  
+
   let wins = 0;
   let losses = 0;
   let breakEvens = 0;
-  
+
   for (const trade of activeTrades) {
     const allocs = Array.isArray(trade?.allocations) && trade.allocations.length > 0
       ? trade.allocations
-      : [{ accountId: trade?.accountId, pnl: trade?.pnl, rr: trade?.rr }];
-    
+      : [{ accountId: trade?.accountId, pnl: trade?.pnl, rr: trade?.rr, isBreakEven: trade?.isBreakEven }];
+
     for (const alloc of allocs) {
       // Filter by accountId if specified
       if (accountId !== "all") {
@@ -327,16 +355,17 @@ export function countTradeOutcomesWithPrefs(trades, { accountId = "all", prefs =
           if (allocAccId !== accountId) continue;
         }
       }
-      
+
       const pnl = clampNum(alloc?.pnl);
-      const outcome = classifyOutcomeByPnL({ pnl });
-      
+      const isBreakEven = Boolean(alloc?.isBreakEven);
+      const outcome = classifyTradeOutcome({ pnl, isBreakEven, mode });
+
       if (outcome === "win") wins++;
       else if (outcome === "loss") losses++;
       else breakEvens++;
     }
   }
-  
+
   return {
     wins,
     losses,

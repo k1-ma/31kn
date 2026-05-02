@@ -102,19 +102,19 @@ function getRRBucket(rr) {
 /**
  * Calculate max streak (win or loss)
  */
-function calcStreaks(sortedTrades, accountId = "all") {
+function calcStreaks(sortedTrades, accountId = "all", winRateMode = "ignore") {
   let maxWinStreak = 0;
   let maxLossStreak = 0;
   let currentWin = 0;
   let currentLoss = 0;
 
   for (const trade of sortedTrades) {
-    const pnl = getTradePnL(trade, accountId);
-    if (pnl > 0) {
+    const outcome = getTradeOutcome(trade, accountId, winRateMode);
+    if (outcome === "win") {
       currentWin++;
       currentLoss = 0;
       maxWinStreak = Math.max(maxWinStreak, currentWin);
-    } else if (pnl < 0) {
+    } else if (outcome === "loss") {
       currentLoss++;
       currentWin = 0;
       maxLossStreak = Math.max(maxLossStreak, currentLoss);
@@ -176,18 +176,19 @@ function calcEquityCurve(sortedTrades, startingEquity = 0, accountId = "all") {
 /**
  * Calculate daily PnL data
  */
-function calcDailyPnL(sortedTrades, accountId = "all") {
+function calcDailyPnL(sortedTrades, accountId = "all", winRateMode = "ignore") {
   const byDay = new Map();
 
   for (const trade of sortedTrades) {
     const key = normalizeDateKey(trade?.date);
     if (!key) continue;
     const pnl = getTradePnL(trade, accountId);
+    const outcome = getTradeOutcome(trade, accountId, winRateMode);
     const existing = byDay.get(key) || { date: key, pnl: 0, trades: 0, wins: 0, losses: 0 };
     existing.pnl += pnl;
     existing.trades++;
-    if (pnl > 0) existing.wins++;
-    if (pnl < 0) existing.losses++;
+    if (outcome === "win") existing.wins++;
+    if (outcome === "loss") existing.losses++;
     byDay.set(key, existing);
   }
 
@@ -693,7 +694,7 @@ export function calcPerformanceReport(trades, accounts, libraries = {}, options 
   const payoffRatio = avgLoss > 0 ? avgWin / avgLoss : avgWin > 0 ? INFINITY_PLACEHOLDER : 0;
 
   // Calculate streaks
-  const { maxWinStreak, maxLossStreak } = calcStreaks(sortedTrades, accountId);
+  const { maxWinStreak, maxLossStreak } = calcStreaks(sortedTrades, accountId, winRateMode);
 
   // Calculate equity curve (starts at actual balance: startingEquity + equityCorrection)
   const equityPoints = calcEquityCurve(sortedTrades, startingEquity + clampNum(equityCorrection), accountId);
@@ -709,7 +710,7 @@ export function calcPerformanceReport(trades, accounts, libraries = {}, options 
   }
 
   // Calculate daily PnL
-  const dailyPnL = calcDailyPnL(sortedTrades, accountId);
+  const dailyPnL = calcDailyPnL(sortedTrades, accountId, winRateMode);
 
   // Calculate green/red days and best/worst day
   let greenDays = 0;

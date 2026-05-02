@@ -59,6 +59,26 @@ export function getTradeRR(trade) {
 }
 
 /**
+ * Returns true if the trade or any of its allocations matching `accountId`
+ * is user-marked as break-even.
+ */
+export function getTradeIsBreakEven(trade, accountId = "all") {
+  if (!trade) return false;
+  if (trade.isBreakEven === true) return true;
+  const allocs = Array.isArray(trade?.allocations) ? trade.allocations : [];
+  if (allocs.length === 0) {
+    if (accountId === "all") return false;
+    return trade?.accountId === accountId;
+  }
+  for (const a of allocs) {
+    if (a?.isBreakEven !== true) continue;
+    if (accountId === "all") return true;
+    if ((a?.accountId || "") === accountId) return true;
+  }
+  return false;
+}
+
+/**
  * Check if a trade has risk-defined parameters
  * A trade is risk-defined if it has: rr > 0 OR riskUsd > 0 OR riskPctOverride set OR allocation with riskUsd/rr
  * @param {Object} trade - Trade object
@@ -148,10 +168,11 @@ export function computeHauntedScore(trades, accountId = "all", winRateMode = "ig
   for (const trade of activeTrades) {
     const pnl = getTradesPnL(trade, accountId);
     const rr = getTradeRR(trade);
+    const isBreakEven = getTradeIsBreakEven(trade, accountId);
     totalRR += rr;
 
     // Use classifyOutcomeByRRAndPnL for consistent classification
-    const outcome = classifyOutcomeByRRAndPnL({ pnl, rr: trade?.rr, neutralRR });
+    const outcome = classifyOutcomeByRRAndPnL({ pnl, rr: trade?.rr, neutralRR, isBreakEven, mode: winRateMode });
     if (outcome === "win") {
       wins++;
       winRR += rr;
@@ -298,10 +319,11 @@ export function computeRawMetrics(trades, accountId = "all", winRateMode = "igno
   for (const trade of activeTrades) {
     const pnl = getTradesPnL(trade, accountId);
     const rr = getTradeRR(trade);
+    const isBreakEven = getTradeIsBreakEven(trade, accountId);
     totalRR += rr;
 
     // Use classifyOutcomeByRRAndPnL for consistent classification
-    const outcome = classifyOutcomeByRRAndPnL({ pnl, rr: trade?.rr, neutralRR });
+    const outcome = classifyOutcomeByRRAndPnL({ pnl, rr: trade?.rr, neutralRR, isBreakEven, mode: winRateMode });
     if (outcome === "win") {
       wins++;
       winRR += rr;
