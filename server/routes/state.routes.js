@@ -69,6 +69,14 @@ function getItemTimestamp(item) {
   return 0;
 }
 
+// Normalize an id to a stable string key. Without this, Map.get("123") and
+// Map.get(123) miss each other and the same logical record ends up duplicated
+// in the merged output when client and server agree on the value but disagree
+// on the type. Mirrors src/lib/syncDb.js#idKey.
+function idKey(id) {
+  return id == null ? "" : String(id);
+}
+
 /**
  * Merge arrays by ID with timestamp-based conflict resolution
  * The newer version (by updatedAt/createdAt) wins for each ID
@@ -79,18 +87,18 @@ function mergeArraysById(localArr, serverArr) {
   }
   if (!Array.isArray(localArr)) return serverArr || [];
   if (!Array.isArray(serverArr)) return localArr || [];
-  
+
   const serverMap = new Map();
   for (const item of serverArr) {
     if (item && item.id) {
-      serverMap.set(item.id, item);
+      serverMap.set(idKey(item.id), item);
     }
   }
-  
+
   const localMap = new Map();
   for (const item of localArr) {
     if (item && item.id) {
-      localMap.set(item.id, item);
+      localMap.set(idKey(item.id), item);
     }
   }
   
@@ -164,7 +172,10 @@ function mergeStates(incomingState, serverState) {
     merged.documents = mergeArraysById(incomingState.documents, serverState.documents);
   }
   
-  // Merge libraries (symbols/pairs + sessions + models)
+  // Merge libraries (symbols/pairs + sessions + models + customTags).
+  // customTags is a real id-keyed sub-collection just like the other three —
+  // omitting it caused safety-net merges to silently drop newly-added tags
+  // when the incoming payload looked smaller than the server's view.
   if (incomingState.libraries || serverState.libraries) {
     const incomingLib = incomingState.libraries ?? {};
     const serverLib = serverState.libraries ?? {};
@@ -173,6 +184,7 @@ function mergeStates(incomingState, serverState) {
       symbols: mergeArraysById(incomingLib.symbols, serverLib.symbols),
       sessions: mergeArraysById(incomingLib.sessions, serverLib.sessions),
       models: mergeArraysById(incomingLib.models, serverLib.models),
+      customTags: mergeArraysById(incomingLib.customTags, serverLib.customTags),
     };
   }
   
@@ -462,7 +474,7 @@ async function handleStateSave(req, res) {
         const incomingLib = finalState?.libraries ?? null;
         const serverLib = currentState?.libraries ?? null;
         if (serverLib && typeof serverLib === "object") {
-          for (const subKey of ["symbols", "sessions", "models"]) {
+          for (const subKey of ["symbols", "sessions", "models", "customTags"]) {
             const r = shouldMergeForCollection(
               `libraries.${subKey}`,
               incomingLib?.[subKey],

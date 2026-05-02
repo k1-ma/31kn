@@ -24,11 +24,13 @@ class SlidingWindowRateLimiter {
   }
 
   /**
-   * Check if a request is allowed and record it.
+   * Check if a request would be allowed, without recording it.
+   * Used by callers that need to evaluate multiple limiters atomically
+   * before committing to all of them.
    * @param {string} key - User ID or IP address
-   * @returns {{ allowed: boolean, remaining: number, retryAfterMs: number }}
+   * @returns {{ allowed: boolean, remaining: number, retryAfterMs: number, timestamps: number[] }}
    */
-  check(key) {
+  peek(key) {
     const now = Date.now();
     const cutoff = now - this.windowMs;
     let timestamps = this.store.get(key);
@@ -38,27 +40,56 @@ class SlidingWindowRateLimiter {
       this.store.set(key, timestamps);
     }
 
-    // Prune old timestamps
+    // Prune old timestamps in place
     while (timestamps.length > 0 && timestamps[0] <= cutoff) {
       timestamps.shift();
     }
 
     if (timestamps.length >= this.maxRequests) {
-      // Calculate when the oldest request in the window expires
       const retryAfterMs = timestamps[0] + this.windowMs - now;
       return {
         allowed: false,
         remaining: 0,
         retryAfterMs: Math.max(1000, retryAfterMs),
+        timestamps,
       };
     }
 
-    timestamps.push(now);
     return {
       allowed: true,
-      remaining: this.maxRequests - timestamps.length,
+      remaining: this.maxRequests - timestamps.length - 1,
       retryAfterMs: 0,
+      timestamps,
     };
+  }
+
+  /**
+   * Record a request against the bucket. Caller is responsible for having
+   * checked allowance first via peek(). Used by the multi-limiter
+   * peek-then-commit path.
+   */
+  commit(key, now = Date.now()) {
+    let timestamps = this.store.get(key);
+    if (!timestamps) {
+      timestamps = [];
+      this.store.set(key, timestamps);
+    }
+    timestamps.push(now);
+  }
+
+  /**
+   * Single-bucket check that also records the request when allowed.
+   * Equivalent to peek() + commit() for the common case.
+   * @param {string} key - User ID or IP address
+   * @returns {{ allowed: boolean, remaining: number, retryAfterMs: number }}
+   */
+  check(key) {
+    const peek = this.peek(key);
+    if (!peek.allowed) {
+      return { allowed: false, remaining: 0, retryAfterMs: peek.retryAfterMs };
+    }
+    this.commit(key);
+    return { allowed: true, remaining: peek.remaining, retryAfterMs: 0 };
   }
 
   _cleanup() {
@@ -168,20 +199,24 @@ function getPublicIpKey(req) {
 /**
  * Middleware: rate limit public vote endpoints by IP.
  * 10 votes/min per IP, 100 votes/hour per IP. No session is required.
+ *
+ * Peek-then-commit: a request blocked by EITHER bucket is rejected without
+ * touching ANY bucket, so a user who hammers the minute bucket while
+ * blocked doesn't burn down their hour quota in the process.
  */
 export function voteRateLimit(req, res, next) {
   const key = getPublicIpKey(req);
 
-  const minuteResult = voteRateLimiterMinute.check(key);
-  const hourResult = voteRateLimiterHour.check(key);
+  const minutePeek = voteRateLimiterMinute.peek(key);
+  const hourPeek = voteRateLimiterHour.peek(key);
 
   res.set("X-RateLimit-Limit", "10");
-  res.set("X-RateLimit-Remaining", String(Math.min(minuteResult.remaining, hourResult.remaining)));
+  res.set("X-RateLimit-Remaining", String(Math.max(0, Math.min(minutePeek.remaining, hourPeek.remaining))));
 
-  if (!minuteResult.allowed || !hourResult.allowed) {
+  if (!minutePeek.allowed || !hourPeek.allowed) {
     const retryAfterMs = Math.max(
-      minuteResult.allowed ? 0 : minuteResult.retryAfterMs,
-      hourResult.allowed ? 0 : hourResult.retryAfterMs,
+      minutePeek.allowed ? 0 : minutePeek.retryAfterMs,
+      hourPeek.allowed ? 0 : hourPeek.retryAfterMs,
     );
     const retryAfterSec = Math.ceil(retryAfterMs / 1000);
     res.set("Retry-After", String(retryAfterSec));
@@ -191,6 +226,11 @@ export function voteRateLimit(req, res, next) {
       retryAfterMs,
     });
   }
+
+  // Both buckets allow the request — record it in both atomically.
+  const now = Date.now();
+  voteRateLimiterMinute.commit(key, now);
+  voteRateLimiterHour.commit(key, now);
   return next();
 }
 
