@@ -2326,13 +2326,23 @@ export function useSyncedDb(userId, seed, options = {}) {
     
     // Track visibility fetch timer to prevent race conditions
     let visibilityFetchTimer = null;
-    
+    // Track the cancellation token of any in-flight visibility/bfcache fetch
+    // so we can abort the merge when the page goes hidden again. Without this,
+    // an in-flight fetch can complete and merge stale server state into local
+    // state after the user has already started editing again.
+    let activeFetchCancelToken = null;
+
     const handleVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
         // Clear any pending visibility fetch when going hidden
         if (visibilityFetchTimer) {
           clearTimeout(visibilityFetchTimer);
           visibilityFetchTimer = null;
+        }
+        // Cancel any in-flight visibility fetch's merge
+        if (activeFetchCancelToken) {
+          activeFetchCancelToken.value = true;
+          activeFetchCancelToken = null;
         }
         flushOnHide();
       } else if (document.visibilityState === "visible") {
@@ -2411,8 +2421,13 @@ export function useSyncedDb(userId, seed, options = {}) {
                 console.log("[syncDb] Executing delayed visibility fetch");
               }
               const cancelled = { value: false };
+              activeFetchCancelToken = cancelled;
               fetchState(cancelled).catch(() => {
                 // Ignore errors - this is best effort
+              }).finally(() => {
+                if (activeFetchCancelToken === cancelled) {
+                  activeFetchCancelToken = null;
+                }
               });
             } else {
               if (IS_DEV) {
@@ -2466,7 +2481,12 @@ export function useSyncedDb(userId, seed, options = {}) {
               console.log("[syncDb] Executing bfcache restoration fetch");
             }
             const cancelled = { value: false };
-            fetchState(cancelled).catch(() => {});
+            activeFetchCancelToken = cancelled;
+            fetchState(cancelled).catch(() => {}).finally(() => {
+              if (activeFetchCancelToken === cancelled) {
+                activeFetchCancelToken = null;
+              }
+            });
           }
         }, 2000);
       }
@@ -2482,6 +2502,11 @@ export function useSyncedDb(userId, seed, options = {}) {
       // Clean up visibility fetch timer
       if (visibilityFetchTimer) {
         clearTimeout(visibilityFetchTimer);
+      }
+      // Cancel any in-flight visibility fetch on unmount
+      if (activeFetchCancelToken) {
+        activeFetchCancelToken.value = true;
+        activeFetchCancelToken = null;
       }
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("pagehide", handlePageHide);

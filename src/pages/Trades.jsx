@@ -2504,6 +2504,21 @@ export default function Trades({ trades, accounts, documents, ideas = [], librar
   const [saveSignalEdit, setSaveSignalEdit] = useState(0);
   const [confirmUnsaved, setConfirmUnsaved] = useState({ open: false, target: null }); // target: 'create' | 'edit'
 
+  // Warn the user before navigating away (closing tab, refresh) when a trade
+  // editor has unsaved changes. The in-app modal-close path already shows a
+  // confirmUnsaved dialog; this covers the browser-level navigation case.
+  useEffect(() => {
+    const dirty = createDirty || editDirty;
+    if (!dirty) return;
+    const handler = (e) => {
+      e.preventDefault();
+      e.returnValue = "";
+      return "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [createDirty, editDirty]);
+
   const symById = useMemo(() => new Map((libraries.symbols || []).map((s) => [s.id, s])), [libraries]);
   const sesById = useMemo(() => new Map((libraries.sessions || []).map((s) => [s.id, s])), [libraries]);
   const tagById = useMemo(() => new Map((libraries.customTags || []).map((t) => [t.id, t])), [libraries]);

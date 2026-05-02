@@ -29,6 +29,16 @@ function setLastKnownUserId(userId) {
 }
 
 /**
+ * Remove the last known user ID from localStorage. Called on explicit logout
+ * so the next user on the same device doesn't see the previous user's id.
+ */
+function clearLastKnownUserId() {
+  try {
+    localStorage.removeItem(LAST_KNOWN_USER_ID_KEY);
+  } catch {}
+}
+
+/**
  * Detect network/connectivity errors (as opposed to auth errors like 401/403).
  * Used to avoid resetting user state on transient VPN/network disruptions.
  */
@@ -130,6 +140,7 @@ export function AuthProvider({ children }) {
 
   const logout = async () => {
     try { await apiJson("/api/auth/logout", { method: "POST" }); } catch {}
+    clearLastKnownUserId();
     setUser(null);
   };
 
