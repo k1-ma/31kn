@@ -378,14 +378,15 @@ function getOutbox(userId) {
     if (outbox && typeof outbox.schemaVersion === "number" && outbox.schemaVersion < CURRENT_SCHEMA_VERSION) {
       outbox.state = migrateState(outbox.state, outbox.schemaVersion);
       outbox.schemaVersion = CURRENT_SCHEMA_VERSION;
-      // Re-save the migrated outbox entry
+      // Re-save the migrated outbox entry. If persisting fails (e.g. quota
+      // exceeded), keep the in-memory migrated copy so the caller can still
+      // sync pending changes this session. The original raw entry stays in
+      // localStorage as a fallback for the next load — migrations are
+      // idempotent (loop over fromVersion+1..CURRENT) so re-running is safe.
       try {
         localStorage.setItem(`${OUTBOX_KEY_PREFIX}${userId}`, JSON.stringify(outbox));
       } catch (e) {
-        console.warn("[sync] outbox migration save failed", e);
-        // Don't retry migration on next render; flag this outbox as broken
-        try { localStorage.removeItem(`${OUTBOX_KEY_PREFIX}${userId}`); } catch {}
-        outbox = null;
+        console.warn("[sync] outbox migration persist failed; keeping in-memory copy", e);
       }
     }
     return outbox;

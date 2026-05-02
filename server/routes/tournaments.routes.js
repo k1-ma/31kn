@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { Router } from "express";
 import { requireAdmin } from "../middleware/requireAdmin.js";
 import { requireAuth } from "../middleware/requireAuth.js";
-import { voteRateLimit } from "../middleware/rateLimitDb.js";
+import { voteRateLimit, publicReadRateLimit } from "../middleware/rateLimitDb.js";
 import * as svc from "../services/tournament.service.js";
 import * as scoring from "../services/tournamentScoring.service.js";
 import * as importExport from "../services/tournamentImportExport.service.js";
@@ -11,6 +11,10 @@ import * as voting from "../services/tournamentVoting.service.js";
 const adminRouter = Router();
 const publicRouter = Router();
 const userRouter = Router();
+
+// Per-IP rate limit for unauthenticated public reads (leaderboard, vote-config,
+// participant history, etc.). Prevents trivial DoS / scraping of public DB.
+publicRouter.use(publicReadRateLimit);
 
 /**
  * Constant-time string comparison to mitigate timing attacks on vote_password.

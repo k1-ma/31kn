@@ -1034,6 +1034,12 @@ export async function submitVote(tournamentId, voteDayId, nickname, selections, 
     return { vote };
   } catch (err) {
     await client.query("ROLLBACK");
+    // Race-safe: the UNIQUE(vote_day_id, normalized_nickname) constraint
+    // catches concurrent submitters that both passed the pre-check above.
+    // Return a clean "already_voted" instead of bubbling a 500 to the user.
+    if (err && err.code === "23505") {
+      return { error: "already_voted" };
+    }
     throw err;
   } finally {
     client.release();
@@ -1132,6 +1138,9 @@ export async function addManualVote(tournamentId, voteDayId, nickname, selection
     return { vote };
   } catch (err) {
     await client.query("ROLLBACK");
+    if (err && err.code === "23505") {
+      return { error: "This nickname already has a valid vote for this day" };
+    }
     throw err;
   } finally {
     client.release();

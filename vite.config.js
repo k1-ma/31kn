@@ -63,9 +63,10 @@ export default defineConfig({
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
-          // Auth + state: never cache, never abort.
+          // Auth + state + sync: never cache, never abort.
           { urlPattern: /\/api\/auth\//, handler: 'NetworkOnly', method: 'GET' },
           { urlPattern: /\/api\/state/, handler: 'NetworkOnly', method: 'GET' },
+          { urlPattern: /\/api\/sync\//, handler: 'NetworkOnly', method: 'GET' },
 
           // Mutations: NetworkOnly has no timeout, so the SW never aborts a
           // slow save. Workbox runtimeCaching matches a single method per

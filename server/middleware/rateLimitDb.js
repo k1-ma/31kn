@@ -199,6 +199,32 @@ export async function rateLimitDbMiddleware(req, res, next) {
   return next();
 }
 
+// Per-IP public-read rate limiter: 120 req/min. Generous enough for legitimate
+// users browsing public tournaments / leaderboards but blocks scraping/DoS.
+const publicReadLimiter = new SlidingWindowRateLimiter({
+  windowMs: 60 * 1000,
+  maxRequests: 120,
+});
+
+export function publicReadRateLimit(req, res, next) {
+  const key = getPublicIpKey(req);
+  const result = publicReadLimiter.check(key);
+
+  res.set("X-RateLimit-Limit", "120");
+  res.set("X-RateLimit-Remaining", String(result.remaining));
+
+  if (!result.allowed) {
+    const retryAfterSec = Math.ceil(result.retryAfterMs / 1000);
+    res.set("Retry-After", String(retryAfterSec));
+    return res.status(429).json({
+      error: "Too many requests",
+      code: "RATE_LIMITED",
+      retryAfterMs: result.retryAfterMs,
+    });
+  }
+  return next();
+}
+
 const loginLimiter = new SlidingWindowRateLimiter({
   windowMs: 5 * 60 * 1000,
   maxRequests: 10,

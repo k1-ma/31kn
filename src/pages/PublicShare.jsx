@@ -1,5 +1,20 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useParams, Link } from "react-router-dom";
+import DOMPurify from "dompurify";
+
+// Same allow-list used by PublicDocShare/PublicIdeaShare. Strips script,
+// inline event handlers, and javascript: URLs while preserving Tiptap markup.
+const SAFE_HTML_CONFIG = {
+  ALLOWED_TAGS: [
+    "p", "br", "strong", "em", "u", "s", "code", "pre",
+    "blockquote", "ol", "ul", "li", "a", "img", "h1", "h2", "h3",
+    "h4", "h5", "h6", "hr", "table", "thead", "tbody", "tr", "th",
+    "td", "mark", "span", "div",
+  ],
+  ALLOWED_ATTR: ["href", "src", "alt", "title", "target", "rel", "class", "data-*"],
+  ALLOW_DATA_ATTR: true,
+};
+const sanitizeHtml = (html) => DOMPurify.sanitize(String(html || ""), SAFE_HTML_CONFIG);
 import { motion, AnimatePresence } from "framer-motion";
 import { fetchPublicShare } from "@/lib/share.js";
 import { fmtMoney, fmtRR, sessionTone, clampNum } from "@/lib/utils";
@@ -605,9 +620,9 @@ function DocumentDetailModal({ doc, open, onClose }) {
           {(doc.contentHtml || doc.contentText) && (
             <div className="rounded-xl bg-muted/20 p-4 border border-accent/10">
               {doc.contentHtml ? (
-                <div 
+                <div
                   className="prose prose-sm dark:prose-invert max-w-none"
-                  dangerouslySetInnerHTML={{ __html: doc.contentHtml }}
+                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(doc.contentHtml) }}
                 />
               ) : (
                 <p className="text-sm text-foreground/90 whitespace-pre-wrap">
@@ -738,9 +753,9 @@ function IdeaDetailModal({ idea, open, onClose }) {
           {(idea.notesHtml || idea.notesText) && (
             <div className="rounded-xl bg-muted/20 p-4 border border-accent/10">
               {idea.notesHtml ? (
-                <div 
+                <div
                   className="prose prose-sm dark:prose-invert max-w-none"
-                  dangerouslySetInnerHTML={{ __html: idea.notesHtml }}
+                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(idea.notesHtml) }}
                 />
               ) : (
                 <p className="text-sm text-foreground/90 whitespace-pre-wrap">

@@ -1,14 +1,16 @@
 import crypto from "crypto";
 
-const SESSION_SECRET = process.env.SESSION_SECRET || "dev-secret-change-me";
+const DEFAULT_DEV_SECRET = "dev-secret-change-me";
+const isProd = process.env.NODE_ENV === "production";
+const envSecret = process.env.SESSION_SECRET;
 
-if (
-  process.env.NODE_ENV === "production" &&
-  (!process.env.SESSION_SECRET || process.env.SESSION_SECRET === "dev-secret-change-me")
-) {
-  // eslint-disable-next-line no-console
-  console.warn("[cookies] WARNING: SESSION_SECRET is not set or uses the default value in production. Sessions will not be secure.");
+if (isProd && (!envSecret || envSecret === DEFAULT_DEV_SECRET || envSecret.length < 32)) {
+  throw new Error(
+    "[cookies] SESSION_SECRET must be set to a strong (>=32 char) value in production. Refusing to start with insecure session signing."
+  );
 }
+
+const SESSION_SECRET = envSecret || DEFAULT_DEV_SECRET;
 
 export function b64url(buf) {
   return Buffer.from(buf)
