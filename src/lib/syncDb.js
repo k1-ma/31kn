@@ -2120,22 +2120,32 @@ export function useSyncedDb(userId, seed, options = {}) {
         }
       }
       
+      // 413 PAYLOAD_TOO_LARGE: state exceeds server's per-user quota. Outbox
+      // retries with the same body would loop forever. Clear the outbox so
+      // we don't keep replaying an oversized payload, and surface a distinct
+      // error so the UI can ask the user to clean up images / large data.
+      if (status === 413 || code === "PAYLOAD_TOO_LARGE") {
+        clearOutbox(userId);
+        setHasUnsavedChanges(true);
+        setLastError({
+          code: "PAYLOAD_TOO_LARGE",
+          message: "Saved data exceeds server limit — please remove large images or attachments",
+          status: 413,
+        });
+        return { success: false, payloadTooLarge: true };
+      }
+
       // Save to outbox for later retry. Reuse effectiveIdempotencyKey so
       // subsequent outbox retries hit the server's idempotency cache and
       // dedupe replays of this same logical save.
       saveToOutbox(userId, stateToSync, { status, code, message }, effectiveIdempotencyKey);
       setHasUnsavedChanges(true);
-      
+
       // Determine error type
       if (status === 401 || status === 403) {
         setLastError({ code: "UNAUTHORIZED", message, status });
         return { success: false, unauthorized: true };
       }
-      
-      // 413 / PAYLOAD_TOO_LARGE is no longer treated as a permanent failure.
-      // The chunked sync pipeline now handles oversized chunks by stripping
-      // images and retrying, so a 413 that reaches here is a transient error
-      // that should be retried via the normal outbox mechanism.
       
       // Network or server error — classify for better UI messages
       const errorCategory = classifySyncError(e);

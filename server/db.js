@@ -454,6 +454,22 @@ export async function initDb({ admin }) {
     console.warn("[db] backup_codes table:", e?.message || e);
   }
 
+  // Create totp_used_codes table for replay protection
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS totp_used_codes (
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        code_hash TEXT NOT NULL,
+        used_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (user_id, code_hash)
+      );
+      CREATE INDEX IF NOT EXISTS totp_used_codes_used_at_idx ON totp_used_codes(used_at);
+    `);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn("[db] totp_used_codes table:", e?.message || e);
+  }
+
   // Add display_name and display_name_changed_at columns to users table
   try {
     await pool.query(`

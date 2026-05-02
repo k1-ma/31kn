@@ -24,9 +24,20 @@ const router = Router();
 const NODE_ENV = process.env.NODE_ENV || "development";
 const IS_PROD = NODE_ENV === "production";
 const AUTH_DEBUG = process.env.AUTH_DEBUG === "true";
+
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+if (IS_PROD) {
+  if (!ADMIN_USERNAME || !ADMIN_PASSWORD) {
+    throw new Error("ADMIN_USERNAME and ADMIN_PASSWORD env vars are required in production");
+  }
+  if (ADMIN_PASSWORD === "change-me" || ADMIN_USERNAME === "admin") {
+    throw new Error("ADMIN_USERNAME/ADMIN_PASSWORD must not use insecure defaults in production");
+  }
+}
 const admin = {
-  username: process.env.ADMIN_USERNAME || "admin",
-  password: process.env.ADMIN_PASSWORD || "change-me",
+  username: ADMIN_USERNAME || "admin",
+  password: ADMIN_PASSWORD || "change-me",
 };
 
 // Google OAuth config

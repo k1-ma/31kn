@@ -5,19 +5,29 @@ import bcrypt from "bcryptjs";
 import { getPool, queryWithRecovery, getUserById } from "./db.service.js";
 
 const APP_NAME = "TradeJ";
+const IS_PROD = (process.env.NODE_ENV || "development") === "production";
 
 // Get encryption key from environment (base64-encoded 32 bytes for AES-256)
 function getEncryptionKey() {
   const keyBase64 = process.env.TOTP_ENCRYPTION_KEY;
-  if (!keyBase64) return null;
+  if (!keyBase64) {
+    if (IS_PROD) {
+      throw new Error("TOTP_ENCRYPTION_KEY env var is required in production");
+    }
+    return null;
+  }
   try {
     const key = Buffer.from(keyBase64, "base64");
     if (key.length !== 32) {
+      if (IS_PROD) {
+        throw new Error("TOTP_ENCRYPTION_KEY must be 32 bytes (base64-encoded)");
+      }
       console.warn("[totp] TOTP_ENCRYPTION_KEY must be 32 bytes (base64-encoded)");
       return null;
     }
     return key;
-  } catch {
+  } catch (e) {
+    if (IS_PROD) throw e;
     console.warn("[totp] Invalid TOTP_ENCRYPTION_KEY format");
     return null;
   }
@@ -137,7 +147,7 @@ export function generateBackupCodes(count = 10) {
  * Hash a backup code using bcrypt
  */
 export async function hashBackupCode(code) {
-  return bcrypt.hash(String(code).toUpperCase(), 10);
+  return bcrypt.hash(String(code).toUpperCase(), 12);
 }
 
 /**
@@ -314,6 +324,38 @@ export async function enableTotp(userId, code) {
 }
 
 /**
+ * Hash a TOTP code for replay-protection storage (deterministic).
+ */
+function hashTotpCodeForReplay(userId, code) {
+  return crypto
+    .createHash("sha256")
+    .update(`${userId}:${String(code)}`)
+    .digest("hex");
+}
+
+/**
+ * Atomically claim a TOTP code as "used" for this user.
+ * Returns true if the code was not previously used (claim succeeded),
+ * false if it was already consumed (replay attempt).
+ */
+async function claimTotpCode(userId, code) {
+  const codeHash = hashTotpCodeForReplay(userId, code);
+  try {
+    const r = await queryWithRecovery(
+      `INSERT INTO totp_used_codes (user_id, code_hash)
+       VALUES ($1, $2)
+       ON CONFLICT (user_id, code_hash) DO NOTHING
+       RETURNING user_id`,
+      [userId, codeHash]
+    );
+    return (r.rowCount || 0) > 0;
+  } catch (e) {
+    console.error("[totp] claimTotpCode error:", e?.message);
+    return false;
+  }
+}
+
+/**
  * Verify TOTP or backup code for a user
  */
 export async function verifyUserTotp(userId, code) {
@@ -333,8 +375,13 @@ export async function verifyUserTotp(userId, code) {
     const secret = decryptSecret(user.totp_secret);
     if (!secret) return { valid: false };
 
-    // First, try TOTP code
+    // First, try TOTP code with replay protection
     if (verifyTotp(secret, code)) {
+      const claimed = await claimTotpCode(userId, code);
+      if (!claimed) {
+        // Replay attempt — code was already used in its 30s window
+        return { valid: false, reason: "replay" };
+      }
       return { valid: true, method: "totp" };
     }
 
@@ -352,7 +399,8 @@ export async function verifyUserTotp(userId, code) {
 }
 
 /**
- * Use a backup code (if valid, marks it as used)
+ * Use a backup code (if valid, marks it as used).
+ * Atomic: uses UPDATE ... RETURNING to guarantee single-claim under concurrent requests.
  */
 export async function useBackupCode(userId, code) {
   const pool = getPool();
@@ -368,12 +416,18 @@ export async function useBackupCode(userId, code) {
     for (const row of codes) {
       const match = await compareBackupCode(code, row.code_hash);
       if (match) {
-        // Mark as used
-        await queryWithRecovery(
-          `UPDATE backup_codes SET used_at = now() WHERE id = $1`,
+        // Atomic claim: only succeeds if used_at is still NULL.
+        // Concurrent requests with the same code will lose the race here.
+        const claim = await queryWithRecovery(
+          `UPDATE backup_codes SET used_at = now()
+           WHERE id = $1 AND used_at IS NULL
+           RETURNING id`,
           [row.id]
         );
-        return { valid: true };
+        if ((claim.rowCount || 0) > 0) {
+          return { valid: true };
+        }
+        // Lost the race — keep checking other codes (shouldn't normally happen)
       }
     }
 
@@ -382,6 +436,20 @@ export async function useBackupCode(userId, code) {
     console.error("[totp] useBackupCode error:", e?.message);
     return { valid: false };
   }
+}
+
+/**
+ * Cleanup old TOTP used codes (older than 5 minutes — well past TOTP window).
+ * Called periodically.
+ */
+export async function cleanupExpiredTotpCodes() {
+  const pool = getPool();
+  if (!pool) return;
+  try {
+    await queryWithRecovery(
+      `DELETE FROM totp_used_codes WHERE used_at < now() - INTERVAL '5 minutes'`
+    );
+  } catch {}
 }
 
 /**
