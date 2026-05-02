@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { resizeImageFileToDataUrl } from "@/lib/utils";
 import { uid, clampNum, fmtMoney } from "@/lib/utils";
+import { monoNow } from "@/lib/syncDb.js";
 import { HOVER_GLOW } from "@/lib/ui.js";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import {
@@ -274,7 +275,7 @@ function TemplateEditor({ open, onClose, template, onSave, isNew, t, toast }) {
     const updated = normalizeTemplate({
       ...form,
       sizes,
-      updatedAt: Date.now(),
+      updatedAt: monoNow(),
     });
     
     onSave(updated);
@@ -804,8 +805,8 @@ export default function PropPrograms({ propTemplates = [], onSetPropTemplates, t
       name: `${template.name} (Copy)`,
       isBuiltin: false,
       featured: false,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
+      createdAt: monoNow(),
+      updatedAt: monoNow(),
       sourceBuiltinId: template.isBuiltin ? template.id : template.sourceBuiltinId,
     };
     setEditingTemplate(normalizeTemplate(copy));

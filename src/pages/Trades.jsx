@@ -33,7 +33,7 @@ import { createPublicShare, createShareWithToast, sanitizeTradeForPublic, getSha
 import { HOVER_GLOW } from "@/lib/ui.js";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { calcWinRatePct, getGlobalWinRateMode } from "@/lib/metrics/winRate.js";
-import { isDeleted } from "@/lib/syncDb.js";
+import { isDeleted, monoNow } from "@/lib/syncDb.js";
 import {
   buildMonthGrid,
   addMonths,
@@ -470,7 +470,7 @@ function TradeEditor({ initial, accounts, documents, ideas = [], libraries, onSa
       bestTrade: false,
       docIds: [], // Document IDs linked to this trade
       ideaIds: [], // Trading Idea IDs linked to this trade
-      createdAt: Date.now(),
+      createdAt: monoNow(),
     };
 
     const allocs0 = asAllocations(base, accounts).map(a => sanitizeAlloc(a, !!a?.accountId));

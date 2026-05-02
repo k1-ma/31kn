@@ -25,7 +25,7 @@ import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { createPublicShare, createShareWithToast, sanitizeDocForPublic, getDocShareUrl } from "@/lib/share.js";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
-import { isDeleted } from "@/lib/syncDb.js";
+import { isDeleted, monoNow } from "@/lib/syncDb.js";
 
 // Document type configuration
 const DOC_TYPES = {
@@ -154,8 +154,8 @@ function createEmptyDocument(type = "note", parentId = null) {
     tags: [],
     folderId: null,
     parentId, // null = root document, string = sub-document of parent
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
+    createdAt: monoNow(),
+    updatedAt: monoNow(),
     status: "draft",
     pinned: false,
     linkedTradeIds: [],
@@ -478,7 +478,7 @@ function DocumentEditor({ doc, open, onClose, onSave, onDelete, trades, librarie
   }, [documents, editDoc?.id]);
 
   const handleSave = () => {
-    const updated = { ...editDoc, updatedAt: Date.now() };
+    const updated = { ...editDoc, updatedAt: monoNow() };
     onSave?.(updated);
     setIsDirty(false);
     baselineRef.current = JSON.stringify({ title: updated.title, contentHtml: updated.contentHtml, tags: updated.tags, type: updated.type, status: updated.status });
@@ -492,7 +492,7 @@ function DocumentEditor({ doc, open, onClose, onSave, onDelete, trades, librarie
 
   // Save current doc without closing (used when navigating to sub-document)
   const handleSaveQuiet = () => {
-    const updated = { ...editDoc, updatedAt: Date.now() };
+    const updated = { ...editDoc, updatedAt: monoNow() };
     onSave?.(updated);
     return updated;
   };
@@ -557,7 +557,7 @@ function DocumentEditor({ doc, open, onClose, onSave, onDelete, trades, librarie
     }
     if (docStack.length > 0) {
       // Save current sub-doc before closing
-      const updated = { ...editDoc, updatedAt: Date.now() };
+      const updated = { ...editDoc, updatedAt: monoNow() };
       onSave?.(updated);
     }
     setDocStack([]);
@@ -575,7 +575,7 @@ function DocumentEditor({ doc, open, onClose, onSave, onDelete, trades, librarie
   // Save and close
   const handleSaveAndClose = () => {
     setConfirmUnsaved(false);
-    const updated = { ...editDoc, updatedAt: Date.now() };
+    const updated = { ...editDoc, updatedAt: monoNow() };
     onSave?.(updated);
     setIsDirty(false);
     setDocStack([]);
@@ -1252,7 +1252,7 @@ function DocumentEditor({ doc, open, onClose, onSave, onDelete, trades, librarie
                         evaluation: {
                           ...editDoc.evaluation,
                           result: key,
-                          reviewedAt: Date.now()
+                          reviewedAt: monoNow()
                         }
                       })}
                       className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-colors ${
@@ -1439,7 +1439,7 @@ function WeeklyReviewModal({ open, onClose, onSave, trades, documents }) {
   
   // Calculate week stats
   const weekStats = useMemo(() => {
-    const now = Date.now();
+    const now = monoNow();
     const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
     const weekTrades = (trades || []).filter(t => {
       if (isDeleted(t)) return false;
@@ -1801,7 +1801,7 @@ export default function Documents({
   };
 
   const handlePinDocument = (doc) => {
-    onUpsertDocument?.({ ...doc, pinned: !doc.pinned, updatedAt: Date.now() });
+    onUpsertDocument?.({ ...doc, pinned: !doc.pinned, updatedAt: monoNow() });
   };
 
   return (

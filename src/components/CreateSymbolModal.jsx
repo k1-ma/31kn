@@ -4,7 +4,7 @@ import Input from "@/components/ui/Input.jsx";
 import Button from "@/components/ui/Button.jsx";
 import { uid, resizeImageFileToDataUrl } from "@/lib/utils";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
-import { isDeleted } from "@/lib/syncDb.js";
+import { isDeleted, monoNow } from "@/lib/syncDb.js";
 import { Upload, X } from "lucide-react";
 
 // Default emoji options for quick selection
@@ -107,7 +107,7 @@ export default function CreateSymbolModal({
       name: name.toUpperCase(),
       avatar: avatar,
       color: form.color,
-      createdAt: Date.now(),
+      createdAt: monoNow(),
       deletedAt: null,
     };
     

@@ -4,6 +4,7 @@ import Input from "@/components/ui/Input.jsx";
 import Button from "@/components/ui/Button.jsx";
 import SelectDropdown from "@/components/common/SelectDropdown.jsx";
 import { uid, clampNum } from "@/lib/utils";
+import { monoNow } from "@/lib/syncDb.js";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import {
   mergePropTemplates,
@@ -145,7 +146,7 @@ export default function CreateAccountModal({
       color: "#6366f1",
       isHidden: false,
       manualTradingDays: 0,
-      createdAt: Date.now(),
+      createdAt: monoNow(),
     };
     
     // Add prop settings if enabled
@@ -169,7 +170,7 @@ export default function CreateAccountModal({
         templateId: form.templateId,
         phaseId: form.phaseId || phases[0]?.id || "phase1",
         size: equityValue,
-        startedAt: Date.now(),
+        startedAt: monoNow(),
         autoProgress: true,
         rulesOverride: {},
         profitSplitPctOverride: null,
