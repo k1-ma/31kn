@@ -995,6 +995,7 @@ export const TRANSLATIONS = {
         ideasWinRate: "Ideas Win Rate",
         thisMonth: "this month",
         ideasEvaluated: "ideas evaluated this month",
+        exportError: "Failed to export PDF. Please try again.",
       },
 
       analytics: {
@@ -5584,6 +5585,7 @@ export const TRANSLATIONS = {
         ideasWinRate: "Винрейт идей",
         thisMonth: "за месяц",
         ideasEvaluated: "идей оценено за месяц",
+        exportError: "Не удалось экспортировать PDF. Попробуйте ещё раз.",
         riskMonitor: {
           title: "Контроль рисков",
           equityCurve: "Кривая капитала",
@@ -8022,6 +8024,7 @@ export const TRANSLATIONS = {
         ideasWinRate: "Вінрейт ідей",
         thisMonth: "за місяць",
         ideasEvaluated: "ідей оцінено за місяць",
+        exportError: "Не вдалося експортувати PDF. Спробуйте ще раз.",
       },
 
       analytics: {
