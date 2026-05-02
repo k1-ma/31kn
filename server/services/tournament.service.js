@@ -763,9 +763,24 @@ export async function setDisplayedTournament(id, adminId) {
   const check = await pool.query("SELECT id FROM tournaments WHERE id = $1", [id]);
   if (!check.rows.length) return { error: "Tournament not found" };
 
-  // Clear all displayed flags, then set the chosen one
-  await pool.query("UPDATE tournaments SET is_displayed = false WHERE is_displayed = true");
-  await pool.query("UPDATE tournaments SET is_displayed = true, updated_by = $2 WHERE id = $1", [id, adminId || null]);
+  // Atomic single-statement update: at most one tournament can be is_displayed.
+  // Avoids the race where two concurrent admins both pass the clear+set
+  // sequence and end up with two displayed tournaments.
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("UPDATE tournaments SET is_displayed = false WHERE is_displayed = true AND id <> $1", [id]);
+    await client.query(
+      "UPDATE tournaments SET is_displayed = true, updated_by = $2 WHERE id = $1",
+      [id, adminId || null]
+    );
+    await client.query("COMMIT");
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => {});
+    return { error: e?.message || "Failed to set displayed tournament" };
+  } finally {
+    client.release();
+  }
 
   return { ok: true };
 }

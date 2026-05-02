@@ -2,13 +2,24 @@ import { initDb, createPoolOnly } from "../db.js";
 
 const NODE_ENV = process.env.NODE_ENV || "development";
 const IS_DEV = NODE_ENV === "development";
+const IS_PROD = NODE_ENV === "production";
 
 // Run migrations only if explicitly enabled (default: false)
 const RUN_MIGRATIONS_ON_BOOT = process.env.RUN_MIGRATIONS_ON_BOOT === "1";
 
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+if (IS_PROD) {
+  if (!ADMIN_USERNAME || !ADMIN_PASSWORD) {
+    throw new Error("ADMIN_USERNAME and ADMIN_PASSWORD env vars are required in production");
+  }
+  if (ADMIN_PASSWORD === "change-me" || ADMIN_USERNAME === "admin") {
+    throw new Error("ADMIN_USERNAME/ADMIN_PASSWORD must not use insecure defaults in production");
+  }
+}
 const admin = {
-  username: process.env.ADMIN_USERNAME || "admin",
-  password: process.env.ADMIN_PASSWORD || "change-me",
+  username: ADMIN_USERNAME || "admin",
+  password: ADMIN_PASSWORD || "change-me",
   nickname: process.env.ADMIN_NICKNAME || "Administrator",
 };
 

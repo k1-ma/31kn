@@ -46,6 +46,8 @@ function NavItem({ icon, label, active, onClick, collapsed, badge }) {
     <button
       onClick={onClick}
       title={collapsed ? label : undefined}
+      aria-label={label}
+      aria-current={active ? "page" : undefined}
       className={
         `group relative flex items-center transition-all duration-200 ${
           collapsed ? "w-11 h-11 justify-center rounded-lg mx-auto" : "w-full gap-3 px-3 py-[7px] rounded-lg"
@@ -189,16 +191,21 @@ export default function Shell({
           </div>
           {/* Close (mobile) or Collapse (desktop expanded only) — right of logo */}
           {isMobile ? (
-            <button onClick={() => setMobileOpen(false)} className="shrink-0 text-muted-foreground hover:text-foreground transition-colors p-1.5 rounded-md hover:bg-accent/5 dark:hover:bg-white/[0.04]">
-              <X className="h-4 w-4" />
+            <button
+              onClick={() => setMobileOpen(false)}
+              aria-label={t("common.close") || "Close"}
+              className="shrink-0 text-muted-foreground hover:text-foreground transition-colors p-1.5 rounded-md hover:bg-accent/5 dark:hover:bg-white/[0.04]"
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
             </button>
           ) : !collapsed ? (
             <button
               onClick={() => setCollapsed(true)}
               title={t("shell.collapse")}
+              aria-label={t("shell.collapse")}
               className="shrink-0 text-muted-foreground hover:text-foreground/70 hover:bg-accent/5 dark:hover:bg-white/[0.03] transition-all duration-150 rounded-md p-1.5"
             >
-              <PanelLeftClose className="h-4 w-4" />
+              <PanelLeftClose className="h-4 w-4" aria-hidden="true" />
             </button>
           ) : null}
         </div>
@@ -276,9 +283,11 @@ export default function Shell({
               <button
                 onClick={() => setCollapsed(false)}
                 title={t("shell.expand")}
+                aria-label={t("shell.expand")}
+                aria-expanded={false}
                 className="w-11 h-11 flex items-center justify-center rounded-lg mx-auto text-muted-foreground hover:text-foreground/70 hover:bg-accent/5 dark:hover:bg-white/[0.03] transition-all duration-150"
               >
-                <PanelLeftOpen className="h-4 w-4" />
+                <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />
               </button>
             )}
             {/* Social Links */}
@@ -291,11 +300,13 @@ export default function Shell({
             <button
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
               title={theme === "dark" ? t("settings.light") : t("settings.dark")}
+              aria-label={theme === "dark" ? t("settings.light") : t("settings.dark")}
+              aria-pressed={theme === "dark"}
               className={`group flex items-center transition-all duration-150 text-muted-foreground hover:bg-accent/5 dark:hover:bg-white/[0.035] hover:text-foreground ${
                 collapsed && !isMobile ? "w-11 h-11 justify-center rounded-lg mx-auto" : "w-full gap-3 px-3 py-[7px] rounded-lg"
               }`}
             >
-              {theme === "dark" ? <Sun className={`${iconSize} text-muted-foreground group-hover:text-foreground/70 transition-colors`} /> : <Moon className={`${iconSize} text-muted-foreground group-hover:text-foreground/70 transition-colors`} />}
+              {theme === "dark" ? <Sun className={`${iconSize} text-muted-foreground group-hover:text-foreground/70 transition-colors`} aria-hidden="true" /> : <Moon className={`${iconSize} text-muted-foreground group-hover:text-foreground/70 transition-colors`} aria-hidden="true" />}
               {(!collapsed || isMobile) && <span className="text-[13px] font-medium">{theme === "dark" ? t("settings.light") : t("settings.dark")}</span>}
             </button>
             
@@ -307,11 +318,12 @@ export default function Shell({
               <button
                 onClick={() => { onLogout(); if (isMobile) setMobileOpen(false); }}
                 title={t("shell.logout")}
+                aria-label={t("shell.logout")}
                 className={`group flex items-center transition-all duration-150 text-muted-foreground hover:bg-red-500/8 hover:text-red-500 dark:hover:text-red-400 ${
                   collapsed && !isMobile ? "w-11 h-11 justify-center rounded-lg mx-auto" : "w-full gap-3 px-3 py-[7px] rounded-lg"
                 }`}
               >
-                <LogOut className={`${iconSize} text-muted-foreground group-hover:text-red-500 dark:group-hover:text-red-400 transition-colors`} />
+                <LogOut className={`${iconSize} text-muted-foreground group-hover:text-red-500 dark:group-hover:text-red-400 transition-colors`} aria-hidden="true" />
                 {(!collapsed || isMobile) && <span className="text-[13px] font-medium">{t("shell.logout")}</span>}
               </button>
             )}
@@ -325,10 +337,19 @@ export default function Shell({
 
   return (
     <div className="min-h-screen app-bg">
+      {/* Skip-to-content link for keyboard/screen-reader users.
+          Visually hidden until focused, then floats above the nav. */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[100] focus:px-3 focus:py-2 focus:rounded-md focus:bg-accent focus:text-white focus:shadow-lg focus:outline-none"
+      >
+        {t("a11y.skipToContent") || "Skip to content"}
+      </a>
       <div className="pointer-events-none fixed inset-0 grid-overlay opacity-[0.12]" />
       <div className="relative flex min-h-screen w-full">
         {/* Desktop Sidebar */}
         <aside
+          aria-label={t("shell.sidebar") || "Sidebar navigation"}
           className={`hidden md:flex flex-col ${sidebarWidth} shrink-0 border-r border-border/50 dark:border-white/[0.04] bg-card dark:bg-[#060910]/95 transition-[width] duration-200 ease-out fixed top-0 left-0 h-screen z-40`}
         >
           <SidebarContent />
@@ -342,8 +363,14 @@ export default function Shell({
           <div className="md:hidden sticky top-0 z-40 border-b border-border/50 dark:border-white/[0.05] bg-card dark:bg-[#060910]/95 safe-top">
             <div className="flex items-center justify-between gap-2 px-3 h-14">
               <div className="flex items-center gap-2.5 min-w-0">
-                <button onClick={() => setMobileOpen(true)} className="text-muted-foreground hover:text-foreground transition-colors p-1.5 rounded-lg hover:bg-accent/5 dark:hover:bg-white/[0.04]" title={t("shell.menu")}>
-                  <Menu className="h-5 w-5" />
+                <button
+                  onClick={() => setMobileOpen(true)}
+                  className="text-muted-foreground hover:text-foreground transition-colors p-1.5 rounded-lg hover:bg-accent/5 dark:hover:bg-white/[0.04]"
+                  title={t("shell.menu")}
+                  aria-label={t("shell.menu") || "Open navigation menu"}
+                  aria-expanded={mobileOpen}
+                >
+                  <Menu className="h-5 w-5" aria-hidden="true" />
                 </button>
                 <div className="flex items-center gap-2 min-w-0">
                   <div className="h-7 w-7 shrink-0 rounded-md overflow-hidden ring-1 ring-border/50 dark:ring-white/[0.08]">
@@ -359,7 +386,7 @@ export default function Shell({
             </div>
           </div>
 
-          <main className="flex-1 min-w-0 p-2.5 sm:p-3 md:p-5 lg:p-6">
+          <main id="main-content" tabIndex={-1} className="flex-1 min-w-0 p-2.5 sm:p-3 md:p-5 lg:p-6">
             <div className="mb-3 hidden md:flex items-center justify-end">{topRight}</div>
             <AnimatePresence mode="popLayout" initial={false}>
               <motion.div key={active} {...page(false)}>
@@ -373,8 +400,22 @@ export default function Shell({
       {/* Mobile slide-over nav */}
       <AnimatePresence>
         {mobileOpen ? (
-          <motion.div className="fixed inset-0 z-50" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
+          <motion.div
+            className="fixed inset-0 z-50"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("shell.menu") || "Navigation menu"}
+            onKeyDown={(e) => { if (e.key === "Escape") setMobileOpen(false); }}
+          >
+            <button
+              type="button"
+              aria-label={t("common.close") || "Close menu"}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm cursor-default"
+              onClick={() => setMobileOpen(false)}
+            />
             <motion.div
               initial={{ x: -260 }}
               animate={{ x: 0 }}

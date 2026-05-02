@@ -366,7 +366,11 @@ async function handleStateSave(req, res) {
         limitBytes: MAX_STATE_BYTES,
         severity: "WARN"
       });
-      return res.status(413).json({ error: "state_too_large", limit_bytes: MAX_STATE_BYTES });
+      return res.status(413).json({
+        error: "state_too_large",
+        code: "PAYLOAD_TOO_LARGE",
+        limit_bytes: MAX_STATE_BYTES,
+      });
     }
   }
 

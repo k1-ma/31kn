@@ -643,7 +643,7 @@ export async function performChunkedSync(operations, { onProgress, maxRestarts =
             sessionId,
             operationsInChunk: chunks[i].length,
             progress: `${progress}%`,
-            sizeKb: formatBytes(getPayloadSize(chunk)),
+            sizeKb: formatBytes(getPayloadSize(chunks[i])),
           });
         }
       } catch (err) {

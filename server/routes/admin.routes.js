@@ -271,9 +271,12 @@ router.delete("/bans/ip/:id", requireAdmin, async (req, res) => {
 });
 
 // Logs
+const ADMIN_LOGS_MAX_LIMIT = 500;
 router.get("/logs", requireAdmin, async (req, res) => {
-  const limit = Number(req.query.limit || 50);
-  const offset = Number(req.query.offset || 0);
+  const rawLimit = Number(req.query.limit || 50);
+  const rawOffset = Number(req.query.offset || 0);
+  const limit = Math.min(Math.max(Number.isFinite(rawLimit) ? rawLimit : 50, 1), ADMIN_LOGS_MAX_LIMIT);
+  const offset = Math.max(Number.isFinite(rawOffset) ? rawOffset : 0, 0);
   const action = req.query.action || null;
   const adminUsername = req.query.admin || null;
 

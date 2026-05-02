@@ -34,6 +34,7 @@ import { HOVER_GLOW } from "@/lib/ui.js";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { calcWinRatePct, getGlobalWinRateMode } from "@/lib/metrics/winRate.js";
 import { isDeleted } from "@/lib/syncDb.js";
+import { setDirty } from "@/lib/navGuard.js";
 import {
   buildMonthGrid,
   addMonths,
@@ -2503,6 +2504,32 @@ export default function Trades({ trades, accounts, documents, ideas = [], librar
   const [saveSignalCreate, setSaveSignalCreate] = useState(0);
   const [saveSignalEdit, setSaveSignalEdit] = useState(0);
   const [confirmUnsaved, setConfirmUnsaved] = useState({ open: false, target: null }); // target: 'create' | 'edit'
+
+  // Warn the user before navigating away (closing tab, refresh) when a trade
+  // editor has unsaved changes. The in-app modal-close path already shows a
+  // confirmUnsaved dialog; this covers the browser-level navigation case.
+  useEffect(() => {
+    const dirty = createDirty || editDirty;
+    if (!dirty) return;
+    const handler = (e) => {
+      e.preventDefault();
+      e.returnValue = "";
+      return "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [createDirty, editDirty]);
+
+  // Register dirty state with the cross-component navGuard so the layout's
+  // setActive() can prompt for confirmation before switching pages.
+  useEffect(() => {
+    setDirty("trades:create", createDirty);
+    return () => setDirty("trades:create", false);
+  }, [createDirty]);
+  useEffect(() => {
+    setDirty("trades:edit", editDirty);
+    return () => setDirty("trades:edit", false);
+  }, [editDirty]);
 
   const symById = useMemo(() => new Map((libraries.symbols || []).map((s) => [s.id, s])), [libraries]);
   const sesById = useMemo(() => new Map((libraries.sessions || []).map((s) => [s.id, s])), [libraries]);
