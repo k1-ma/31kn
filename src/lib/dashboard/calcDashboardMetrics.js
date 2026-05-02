@@ -104,14 +104,45 @@ function getTradeRR(trade) {
 }
 
 /**
+ * Get the user-marked break-even flag for a trade, scoped to an accountId.
+ * Returns true if the trade itself is marked break-even, or if any
+ * matching allocation is marked break-even.
+ */
+function getTradeIsBreakEven(trade, accountId = "all") {
+  if (!trade) return false;
+  if (trade.isBreakEven === true) return true;
+  const allocs = Array.isArray(trade?.allocations) ? trade.allocations : [];
+  if (allocs.length === 0) {
+    if (accountId === "all") return false;
+    if (accountId === NO_ACCOUNT_ID) {
+      return (!trade?.accountId || trade?.accountId === "");
+    }
+    return trade?.accountId === accountId;
+  }
+  for (const a of allocs) {
+    if (a?.isBreakEven !== true) continue;
+    if (accountId === "all") return true;
+    const accId = a?.accountId || "";
+    if (accountId === NO_ACCOUNT_ID) {
+      if (!accId) return true;
+    } else if (accId === accountId) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Determine if trade is a win/loss/BE (with optional neutral zone support)
  * @param {Object} trade - Trade object
  * @param {number} [neutralRR=0] - Neutral zone threshold
+ * @param {string} [winRateMode="ignore"] - Break-even mode
  */
-function getTradeOutcome(trade, neutralRR = 0) {
+function getTradeOutcome(trade, neutralRR = 0, winRateMode = "ignore") {
   const pnl = getTradesPnL(trade);
   const rr = trade?.rr;
-  return classifyOutcomeByRRAndPnL({ pnl, rr, neutralRR });
+  const isBreakEven = getTradeIsBreakEven(trade);
+  return classifyOutcomeByRRAndPnL({ pnl, rr, neutralRR, isBreakEven, mode: winRateMode });
 }
 
 /**
@@ -143,7 +174,7 @@ function getRRBucket(rr) {
 /**
  * Calculate max streak (win or loss)
  */
-function calcStreaks(sortedTrades, accountId = "all") {
+function calcStreaks(sortedTrades, accountId = "all", winRateMode = "ignore") {
   let maxWinStreak = 0;
   let maxLossStreak = 0;
   let currentWin = 0;
@@ -151,11 +182,13 @@ function calcStreaks(sortedTrades, accountId = "all") {
 
   for (const trade of sortedTrades) {
     const pnl = getTradesPnL(trade, accountId);
-    if (pnl > 0) {
+    const isBreakEven = getTradeIsBreakEven(trade, accountId);
+    const outcome = classifyOutcomeByRRAndPnL({ pnl, rr: trade?.rr, isBreakEven, mode: winRateMode });
+    if (outcome === "win") {
       currentWin++;
       currentLoss = 0;
       maxWinStreak = Math.max(maxWinStreak, currentWin);
-    } else if (pnl < 0) {
+    } else if (outcome === "loss") {
       currentLoss++;
       currentWin = 0;
       maxLossStreak = Math.max(maxLossStreak, currentLoss);
@@ -228,18 +261,20 @@ function calcEquityCurve(sortedTrades, startingEquity = 0, accountId = "all") {
 /**
  * Calculate daily PnL data
  */
-function calcDailyPnL(sortedTrades, accountId = "all") {
+function calcDailyPnL(sortedTrades, accountId = "all", winRateMode = "ignore") {
   const byDay = new Map();
 
   for (const trade of sortedTrades) {
     const key = normalizeDateKey(trade?.date);
     if (!key) continue;
     const pnl = getTradesPnL(trade, accountId);
+    const isBreakEven = getTradeIsBreakEven(trade, accountId);
+    const outcome = classifyOutcomeByRRAndPnL({ pnl, rr: trade?.rr, isBreakEven, mode: winRateMode });
     const existing = byDay.get(key) || { date: key, pnl: 0, trades: 0, wins: 0, losses: 0 };
     existing.pnl += pnl;
     existing.trades++;
-    if (pnl > 0) existing.wins++;
-    if (pnl < 0) existing.losses++;
+    if (outcome === "win") existing.wins++;
+    if (outcome === "loss") existing.losses++;
     byDay.set(key, existing);
   }
 
@@ -263,8 +298,9 @@ function calcBreakdown(trades, getKey, accountId = "all", winRateMode = "ignore"
 
     const pnl = getTradesPnL(trade, accountId);
     const rr = getTradeRR(trade);
+    const isBreakEven = getTradeIsBreakEven(trade, accountId);
     // Determine outcome with neutral zone support
-    const outcome = classifyOutcomeByRRAndPnL({ pnl, rr: trade?.rr, neutralRR });
+    const outcome = classifyOutcomeByRRAndPnL({ pnl, rr: trade?.rr, neutralRR, isBreakEven, mode: winRateMode });
 
     if (!groups.has(key)) {
       groups.set(key, {
@@ -599,11 +635,12 @@ export function calcDashboardMetrics(trades, accounts, options = {}) {
   for (const trade of sortedTrades) {
     const pnl = getTradesPnL(trade, accountId);
     const rr = getTradeRR(trade);
+    const isBreakEven = getTradeIsBreakEven(trade, accountId);
     totalRR += rr;
 
     // Use classifyOutcomeByRRAndPnL for consistent classification with neutral zone
-    const outcome = classifyOutcomeByRRAndPnL({ pnl, rr: trade?.rr, neutralRR });
-    
+    const outcome = classifyOutcomeByRRAndPnL({ pnl, rr: trade?.rr, neutralRR, isBreakEven, mode: winRateMode });
+
     if (outcome === "win") {
       grossProfit += pnl;
       wins++;
@@ -634,7 +671,7 @@ export function calcDashboardMetrics(trades, accounts, options = {}) {
   const payoffRatio = avgLoss > 0 ? avgWin / avgLoss : avgWin > 0 ? INFINITY_PLACEHOLDER : 0;
 
   // Calculate streaks
-  const { maxWinStreak, maxLossStreak } = calcStreaks(sortedTrades, accountId);
+  const { maxWinStreak, maxLossStreak } = calcStreaks(sortedTrades, accountId, winRateMode);
 
   // Calculate equity curve (starts at actual balance: startingEquity + equityCorrection)
   const equityPoints = calcEquityCurve(sortedTrades, startingEquity + clampNum(equityCorrection), accountId);
@@ -650,7 +687,7 @@ export function calcDashboardMetrics(trades, accounts, options = {}) {
   }
 
   // Calculate daily PnL
-  const dailyPnL = calcDailyPnL(sortedTrades, accountId);
+  const dailyPnL = calcDailyPnL(sortedTrades, accountId, winRateMode);
 
   // Calculate green/red days and best/worst day
   let greenDays = 0;
@@ -718,16 +755,18 @@ export function calcDashboardMetrics(trades, accounts, options = {}) {
   let longWins = 0, longLosses = 0, longBreakEvens = 0;
   for (const t of longTrades) {
     const p = getTradesPnL(t, accountId);
-    const outcome = classifyOutcomeByRRAndPnL({ pnl: p, rr: t?.rr, neutralRR });
+    const isBreakEven = getTradeIsBreakEven(t, accountId);
+    const outcome = classifyOutcomeByRRAndPnL({ pnl: p, rr: t?.rr, neutralRR, isBreakEven, mode: winRateMode });
     if (outcome === "win") longWins++;
     else if (outcome === "loss") longLosses++;
     else longBreakEvens++;
   }
-  
+
   let shortWins = 0, shortLosses = 0, shortBreakEvens = 0;
   for (const t of shortTrades) {
     const p = getTradesPnL(t, accountId);
-    const outcome = classifyOutcomeByRRAndPnL({ pnl: p, rr: t?.rr, neutralRR });
+    const isBreakEven = getTradeIsBreakEven(t, accountId);
+    const outcome = classifyOutcomeByRRAndPnL({ pnl: p, rr: t?.rr, neutralRR, isBreakEven, mode: winRateMode });
     if (outcome === "win") shortWins++;
     else if (outcome === "loss") shortLosses++;
     else shortBreakEvens++;

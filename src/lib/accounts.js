@@ -200,8 +200,9 @@ export function calcAccountStats(db, accountId, winRateMode = "ignore", avgRRMod
         
         totalPnL += netPnl;
         
-        // Classify outcome using PnL-based classification
-        const outcome = classifyOutcomeByPnL({ pnl: grossPnl });
+        // Classify outcome — honor user-marked break-even flag on the allocation
+        const isBreakEven = Boolean(alloc?.isBreakEven);
+        const outcome = classifyOutcomeByPnL({ pnl: grossPnl, isBreakEven, mode });
         if (outcome === "win") {
           wins++;
           // Only count positive RR values for winning trades
