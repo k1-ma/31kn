@@ -42,7 +42,7 @@ const idKey = (id) => (id == null ? "" : String(id));
 // SERVER REACHABILITY HEARTBEAT
 // Periodic ping to actual server endpoint to detect VPN/DPI blocking
 // ─────────────────────────────────────────────────────────────────────────────
-const HEARTBEAT_INTERVAL_MS = 20000; // 20 seconds
+const HEARTBEAT_INTERVAL_MS = 30000; // 30 seconds
 const PING_TIMEOUT_MS = 5000;
 const PING_RETRY_ATTEMPTS = 1; // Number of additional retry attempts after first failure
 const PING_RETRY_DELAY_MS = 1500; // Wait 1.5s between retries
@@ -1210,8 +1210,8 @@ export function useSyncedDb(userId, seed, options = {}) {
   syncStatusRef.current = syncStatus;
   const MAX_RETRIES = 3;
   const RETRY_DELAY = 2000; // 2 seconds
-  const DEBOUNCE_FAST_MS = 1500; // When user stops typing for 1.5s after a single change
-  const DEBOUNCE_SLOW_MS = 3000; // When user is actively making changes
+  const DEBOUNCE_FAST_MS = 800; // When user stops typing after a single change
+  const DEBOUNCE_SLOW_MS = 1500; // When user is actively making changes
   // Debounce for userId change effect — VPN reconnections can cause rapid
   // userId oscillation (null→id→null→id) within ~100-200ms.  300ms safely
   // absorbs this while staying imperceptible to the user on normal login.
