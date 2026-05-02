@@ -8,6 +8,21 @@ import { useRef, useState, useCallback, useEffect } from "react";
 export const DEFAULT_SYNC_WARNING_THRESHOLD_MS = 1500;
 
 /**
+ * If sync has been in "saving" state for longer than this, the active sync
+ * attempt is considered stuck and `onStall` is invoked so the caller can
+ * restart it.
+ */
+export const DEFAULT_SYNC_STALL_TIMEOUT_MS = 30000;
+
+/**
+ * If the tick interval hasn't fired for this long while saving, the timer
+ * itself is treated as frozen and we trigger a restart.
+ */
+export const DEFAULT_SYNC_STALL_DETECT_MS = 5000;
+
+const WATCHDOG_INTERVAL_MS = 1000;
+
+/**
  * Hook that exposes a friendly "sync in progress" indicator.
  *
  * Behaviour:
@@ -18,23 +33,41 @@ export const DEFAULT_SYNC_WARNING_THRESHOLD_MS = 1500;
  *   sync has been running.
  * - When sync reaches a terminal state ("synced", "error", "offline",
  *   "unauthorized"), reset everything.
+ * - If the elapsed counter stops progressing (interval frozen) or the sync
+ *   stays in "saving" beyond `stallTimeoutMs`, call `onStall` so the caller
+ *   can restart the sync.
  *
  * @param {Object} options
  * @param {string} options.syncStatus - Current sync status from useSyncedDb
  * @param {number} [options.thresholdMs=1500] - Grace period before showing
+ * @param {number} [options.stallTimeoutMs=30000] - Max sync duration before restart
+ * @param {number} [options.stallDetectMs=5000] - Max gap between ticks before restart
+ * @param {() => void} [options.onStall] - Called when stall is detected
  * @returns {{ shouldShowWarning: boolean, elapsedMs: number, resetWarning: () => void }}
  */
 export function useSyncWarning(options = {}) {
   const {
     syncStatus,
     thresholdMs = DEFAULT_SYNC_WARNING_THRESHOLD_MS,
+    stallTimeoutMs = DEFAULT_SYNC_STALL_TIMEOUT_MS,
+    stallDetectMs = DEFAULT_SYNC_STALL_DETECT_MS,
+    onStall,
   } = options;
 
   const warningTimerRef = useRef(null);
   const tickTimerRef = useRef(null);
+  const watchdogTimerRef = useRef(null);
+  const stallCooldownRef = useRef(null);
   const startedAtRef = useRef(null);
+  const lastTickAtRef = useRef(null);
+  const stallTriggeredRef = useRef(false);
   const isSavingRef = useRef(false);
   const mountedRef = useRef(true);
+  const onStallRef = useRef(onStall);
+
+  useEffect(() => {
+    onStallRef.current = onStall;
+  }, [onStall]);
 
   const [shouldShowWarning, setShouldShowWarning] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -48,15 +81,76 @@ export function useSyncWarning(options = {}) {
       clearInterval(tickTimerRef.current);
       tickTimerRef.current = null;
     }
+    if (watchdogTimerRef.current) {
+      clearInterval(watchdogTimerRef.current);
+      watchdogTimerRef.current = null;
+    }
+    if (stallCooldownRef.current) {
+      clearTimeout(stallCooldownRef.current);
+      stallCooldownRef.current = null;
+    }
   }, []);
 
+  const triggerStall = useCallback(() => {
+    if (stallTriggeredRef.current) return;
+    stallTriggeredRef.current = true;
+    // Reset the visible counter so the user sees a fresh restart attempt;
+    // the actual sync state machine is restarted via the caller-provided cb.
+    startedAtRef.current = Date.now();
+    lastTickAtRef.current = Date.now();
+    if (mountedRef.current) setElapsedMs(0);
+
+    const cb = onStallRef.current;
+    if (typeof cb === "function") {
+      try {
+        const maybePromise = cb();
+        if (maybePromise && typeof maybePromise.catch === "function") {
+          maybePromise.catch((e) => {
+            console.error("[useSyncWarning] onStall callback rejected:", e);
+          });
+        }
+      } catch (e) {
+        console.error("[useSyncWarning] onStall callback failed:", e);
+      }
+    }
+
+    // Cooldown: allow another stall to fire if sync remains stuck after
+    // the restart attempt, so we keep retrying instead of giving up silently.
+    if (stallCooldownRef.current) clearTimeout(stallCooldownRef.current);
+    stallCooldownRef.current = setTimeout(() => {
+      stallTriggeredRef.current = false;
+      stallCooldownRef.current = null;
+    }, Math.max(stallDetectMs, Math.floor(stallTimeoutMs / 2)));
+  }, [stallDetectMs, stallTimeoutMs]);
+
   const startTicking = useCallback(() => {
-    if (tickTimerRef.current) return;
-    tickTimerRef.current = setInterval(() => {
-      if (!mountedRef.current || !startedAtRef.current) return;
-      setElapsedMs(Date.now() - startedAtRef.current);
-    }, 500);
-  }, []);
+    if (!tickTimerRef.current) {
+      lastTickAtRef.current = Date.now();
+      tickTimerRef.current = setInterval(() => {
+        if (!mountedRef.current || !startedAtRef.current) return;
+        lastTickAtRef.current = Date.now();
+        setElapsedMs(Date.now() - startedAtRef.current);
+      }, 500);
+    }
+
+    if (!watchdogTimerRef.current) {
+      watchdogTimerRef.current = setInterval(() => {
+        if (!mountedRef.current || !isSavingRef.current || !startedAtRef.current) return;
+        const now = Date.now();
+        const totalElapsed = now - startedAtRef.current;
+        const sinceLastTick = lastTickAtRef.current ? now - lastTickAtRef.current : 0;
+        // Tick interval frozen — the elapsed counter is no longer progressing.
+        if (sinceLastTick > stallDetectMs) {
+          triggerStall();
+          return;
+        }
+        // Sync exceeded the hard ceiling — restart.
+        if (totalElapsed > stallTimeoutMs) {
+          triggerStall();
+        }
+      }, WATCHDOG_INTERVAL_MS);
+    }
+  }, [stallDetectMs, stallTimeoutMs, triggerStall]);
 
   const isActivelySaving = (status) => status === "saving";
   const isSaveComplete = (status) =>
@@ -69,6 +163,8 @@ export function useSyncWarning(options = {}) {
     if (!wasSaving && nowSaving) {
       isSavingRef.current = true;
       startedAtRef.current = Date.now();
+      lastTickAtRef.current = Date.now();
+      stallTriggeredRef.current = false;
       clearTimers();
 
       warningTimerRef.current = setTimeout(() => {
@@ -84,6 +180,8 @@ export function useSyncWarning(options = {}) {
     if (wasSaving && isSaveComplete(syncStatus)) {
       isSavingRef.current = false;
       startedAtRef.current = null;
+      lastTickAtRef.current = null;
+      stallTriggeredRef.current = false;
       clearTimers();
       if (mountedRef.current) {
         setShouldShowWarning(false);
@@ -105,6 +203,8 @@ export function useSyncWarning(options = {}) {
     }
     if (isSavingRef.current) {
       startedAtRef.current = Date.now();
+      lastTickAtRef.current = Date.now();
+      stallTriggeredRef.current = false;
       warningTimerRef.current = setTimeout(() => {
         if (!mountedRef.current || !isSavingRef.current) return;
         setShouldShowWarning(true);
