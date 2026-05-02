@@ -191,16 +191,21 @@ export default function Shell({
           </div>
           {/* Close (mobile) or Collapse (desktop expanded only) — right of logo */}
           {isMobile ? (
-            <button onClick={() => setMobileOpen(false)} className="shrink-0 text-muted-foreground hover:text-foreground transition-colors p-1.5 rounded-md hover:bg-accent/5 dark:hover:bg-white/[0.04]">
-              <X className="h-4 w-4" />
+            <button
+              onClick={() => setMobileOpen(false)}
+              aria-label={t("common.close") || "Close"}
+              className="shrink-0 text-muted-foreground hover:text-foreground transition-colors p-1.5 rounded-md hover:bg-accent/5 dark:hover:bg-white/[0.04]"
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
             </button>
           ) : !collapsed ? (
             <button
               onClick={() => setCollapsed(true)}
               title={t("shell.collapse")}
+              aria-label={t("shell.collapse")}
               className="shrink-0 text-muted-foreground hover:text-foreground/70 hover:bg-accent/5 dark:hover:bg-white/[0.03] transition-all duration-150 rounded-md p-1.5"
             >
-              <PanelLeftClose className="h-4 w-4" />
+              <PanelLeftClose className="h-4 w-4" aria-hidden="true" />
             </button>
           ) : null}
         </div>
@@ -278,9 +283,11 @@ export default function Shell({
               <button
                 onClick={() => setCollapsed(false)}
                 title={t("shell.expand")}
+                aria-label={t("shell.expand")}
+                aria-expanded={false}
                 className="w-11 h-11 flex items-center justify-center rounded-lg mx-auto text-muted-foreground hover:text-foreground/70 hover:bg-accent/5 dark:hover:bg-white/[0.03] transition-all duration-150"
               >
-                <PanelLeftOpen className="h-4 w-4" />
+                <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />
               </button>
             )}
             {/* Social Links */}
@@ -293,11 +300,13 @@ export default function Shell({
             <button
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
               title={theme === "dark" ? t("settings.light") : t("settings.dark")}
+              aria-label={theme === "dark" ? t("settings.light") : t("settings.dark")}
+              aria-pressed={theme === "dark"}
               className={`group flex items-center transition-all duration-150 text-muted-foreground hover:bg-accent/5 dark:hover:bg-white/[0.035] hover:text-foreground ${
                 collapsed && !isMobile ? "w-11 h-11 justify-center rounded-lg mx-auto" : "w-full gap-3 px-3 py-[7px] rounded-lg"
               }`}
             >
-              {theme === "dark" ? <Sun className={`${iconSize} text-muted-foreground group-hover:text-foreground/70 transition-colors`} /> : <Moon className={`${iconSize} text-muted-foreground group-hover:text-foreground/70 transition-colors`} />}
+              {theme === "dark" ? <Sun className={`${iconSize} text-muted-foreground group-hover:text-foreground/70 transition-colors`} aria-hidden="true" /> : <Moon className={`${iconSize} text-muted-foreground group-hover:text-foreground/70 transition-colors`} aria-hidden="true" />}
               {(!collapsed || isMobile) && <span className="text-[13px] font-medium">{theme === "dark" ? t("settings.light") : t("settings.dark")}</span>}
             </button>
             
@@ -309,11 +318,12 @@ export default function Shell({
               <button
                 onClick={() => { onLogout(); if (isMobile) setMobileOpen(false); }}
                 title={t("shell.logout")}
+                aria-label={t("shell.logout")}
                 className={`group flex items-center transition-all duration-150 text-muted-foreground hover:bg-red-500/8 hover:text-red-500 dark:hover:text-red-400 ${
                   collapsed && !isMobile ? "w-11 h-11 justify-center rounded-lg mx-auto" : "w-full gap-3 px-3 py-[7px] rounded-lg"
                 }`}
               >
-                <LogOut className={`${iconSize} text-muted-foreground group-hover:text-red-500 dark:group-hover:text-red-400 transition-colors`} />
+                <LogOut className={`${iconSize} text-muted-foreground group-hover:text-red-500 dark:group-hover:text-red-400 transition-colors`} aria-hidden="true" />
                 {(!collapsed || isMobile) && <span className="text-[13px] font-medium">{t("shell.logout")}</span>}
               </button>
             )}

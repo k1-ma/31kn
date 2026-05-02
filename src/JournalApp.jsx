@@ -14,6 +14,7 @@ import { uid,
   isoDate,
   clampNum } from "@/lib/utils";
 import { ideasApi } from "@/lib/api.js";
+import { isAnyDirty, clearDirty } from "@/lib/navGuard.js";
 import {
   mergePropTemplates,
   mapLegacyPropToTemplateId,
@@ -2144,6 +2145,16 @@ export default function JournalApp() {
   const BACKTEST_TAB_MAP = { dashboard: "dashboard", analytics: "analytics", trades: "trades" };
 
   const handleSetActive = useCallback((key) => {
+    // Block in-app navigation when a registered editor has unsaved changes.
+    // Pages opt-in via lib/navGuard.js setDirty(). The browser-level beforeunload
+    // guard covers tab close/refresh; this covers sidebar/command-palette nav.
+    if (isAnyDirty()) {
+      const ok = window.confirm(
+        "You have unsaved changes. Leave this page anyway?"
+      );
+      if (!ok) return;
+      clearDirty();
+    }
     if (activeBacktestId) {
       // In backtest mode: map core nav items to backtest tabs
       const mapped = BACKTEST_TAB_MAP[key];

@@ -200,10 +200,13 @@ export default function NotificationBell({ onInboxClick, onOpenUpdates, onOpenFe
         onClick={handleBellClick}
         className="relative p-2 rounded-xl hover:bg-accent/15 transition-colors"
         title={t("notifications.bellTitle")}
+        aria-label={t("notifications.bellTitle")}
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
       >
-        <Bell className="h-5 w-5 text-muted-foreground" />
+        <Bell className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
         {unreadCount > 0 && (
-          <span className="absolute top-0 right-0 h-5 w-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
+          <span className="absolute top-0 right-0 h-5 w-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center" aria-hidden="true">
             {unreadCount > 9 ? "9+" : unreadCount}
           </span>
         )}
