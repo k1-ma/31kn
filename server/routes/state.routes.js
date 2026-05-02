@@ -4,6 +4,7 @@ import { requireAuth } from "../middleware/requireAuth.js";
 import { idempotency } from "../middleware/idempotency.js";
 import { restoreStrippedImages, hasStrippedImages } from "../utils/imageRestore.js";
 import { isDeleted } from "../utils/tombstones.js";
+import { writeStateV2, IMAGE_DUAL_WRITE_ENABLED } from "../services/imageStore.service.js";
 
 // Note: Rate limiting is applied globally to all /api routes in app.js via rateLimitDbMiddleware
 
@@ -589,16 +590,37 @@ async function handleStateSave(req, res) {
       const newVersion = result.rows?.[0]?.version ?? 1;
       const tradeCount = finalState?.trades?.length ?? 0;
 
-      logStateOp("put", userId, { 
-        tradeCount, 
-        hasState: !!finalState, 
+      logStateOp("put", userId, {
+        tradeCount,
+        hasState: !!finalState,
         version: newVersion,
         acceptedClientState: true
       });
-      
-      return res.json({ 
-        ok: true, 
-        updated_at: newUpdatedAt, 
+
+      // Phase 2 dual-write (gated by IMAGE_DUAL_WRITE=1). Best-effort and
+      // fire-and-forget — the canonical state_json write above has already
+      // succeeded, so any failure here only affects the (currently unread)
+      // state_json_v2 mirror. Nothing reads v2 until READ_FROM_V2 is enabled
+      // in a future phase.
+      if (IMAGE_DUAL_WRITE_ENABLED && finalState != null) {
+        Promise.resolve()
+          .then(() => writeStateV2({
+            pool,
+            userId,
+            canonicalState: finalState,
+            statementTimeout: STATEMENT_TIMEOUT_LARGE_WRITE,
+          }))
+          .catch((err) => {
+            logStateOp("put", userId, {
+              warning: "v2_dual_write_threw",
+              error: err?.message,
+            });
+          });
+      }
+
+      return res.json({
+        ok: true,
+        updated_at: newUpdatedAt,
         version: newVersion,
         tradeCount
       });
@@ -719,9 +741,27 @@ router.patch("/", requireAuth, idempotency(), async (req, res) => {
       const tradeCount = newState?.trades?.length ?? 0;
 
       logStateOp("patch", userId, { patchKeys, tradeCount, hasState: true, version: newVersion });
-      return res.json({ 
-        ok: true, 
-        updated_at: newUpdatedAt, 
+
+      // Phase 2 dual-write (gated by IMAGE_DUAL_WRITE=1). Best-effort.
+      if (IMAGE_DUAL_WRITE_ENABLED && newState != null) {
+        Promise.resolve()
+          .then(() => writeStateV2({
+            pool,
+            userId,
+            canonicalState: newState,
+            statementTimeout: STATEMENT_TIMEOUT_LARGE_WRITE,
+          }))
+          .catch((err) => {
+            logStateOp("patch", userId, {
+              warning: "v2_dual_write_threw",
+              error: err?.message,
+            });
+          });
+      }
+
+      return res.json({
+        ok: true,
+        updated_at: newUpdatedAt,
         version: newVersion,
         tradeCount
       });

@@ -5,6 +5,7 @@ import { requireAuth } from "../middleware/requireAuth.js";
 import { idempotency } from "../middleware/idempotency.js";
 import { restoreStrippedImages, hasStrippedImages } from "../utils/imageRestore.js";
 import { isDeleted } from "../utils/tombstones.js";
+import { writeStateV2, IMAGE_DUAL_WRITE_ENABLED } from "../services/imageStore.service.js";
 
 const router = Router();
 
@@ -774,6 +775,28 @@ router.post("/state-chunk", requireAuth, idempotency(), async (req, res) => {
 
       // Clean up session
       await cleanupSession(pool, stateSessionId, userId);
+
+      // Phase 2 dual-write (gated by IMAGE_DUAL_WRITE=1). Best-effort: any
+      // failure here MUST NOT affect the success of the canonical state_json
+      // write that just completed. The v2 column / user_images table are
+      // not read by anything until a future phase enables READ_FROM_V2.
+      if (IMAGE_DUAL_WRITE_ENABLED) {
+        // Fire-and-forget; the response should not wait on the v2 path.
+        Promise.resolve()
+          .then(() => writeStateV2({
+            pool,
+            userId,
+            canonicalState: assembledState,
+            statementTimeout: STATEMENT_TIMEOUT_LARGE_WRITE,
+          }))
+          .catch((err) => {
+            logSyncOp("state-chunk", userId, {
+              sessionId,
+              warning: "v2_dual_write_threw",
+              error: err?.message,
+            });
+          });
+      }
 
       const tradeCount = assembledState?.trades?.length ?? 0;
       const stateSize = JSON.stringify(assembledState).length;

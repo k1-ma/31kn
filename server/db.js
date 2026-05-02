@@ -1062,6 +1062,41 @@ export async function initDb({ admin }) {
     console.warn("[db] user_stats_cache table migration:", e?.message || e);
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // IMAGE EXTRACTION (Phase 1 of base64-out-of-state migration).
+  //
+  // user_images stores extracted base64 image payloads keyed by per-user
+  // image_id. state_json_v2 mirrors state_json but with each base64 string
+  // replaced by a small {__imgRef: <id>} object, shrinking the JSONB blob
+  // by 70-90% for typical journals.
+  //
+  // Phase 1 only creates the schema — nothing reads or writes these tables
+  // until Phase 2 turns on dual-write behind the IMAGE_DUAL_WRITE flag.
+  // The state_json column remains the canonical source of truth.
+  // ─────────────────────────────────────────────────────────────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_images (
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        image_id TEXT NOT NULL,
+        content_type TEXT NOT NULL DEFAULT 'image/png',
+        data BYTEA NOT NULL,
+        sha256 TEXT NOT NULL,
+        byte_size INTEGER NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        last_used_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (user_id, image_id)
+      );
+      CREATE INDEX IF NOT EXISTS user_images_user_sha_idx ON user_images(user_id, sha256);
+      CREATE INDEX IF NOT EXISTS user_images_last_used_idx ON user_images(last_used_at);
+      ALTER TABLE states ADD COLUMN IF NOT EXISTS state_json_v2 JSONB;
+      ALTER TABLE states ADD COLUMN IF NOT EXISTS state_v2_updated_at TIMESTAMPTZ;
+      ALTER TABLE states ADD COLUMN IF NOT EXISTS state_v2_verify_failed_at TIMESTAMPTZ;
+    `);
+  } catch (e) {
+    console.warn("[db] user_images / state_json_v2 migration:", e?.message || e);
+  }
+
   // Ensure initial admin exists (idempotent)
   const adminUsername = String(admin.username || "admin");
   const adminPassword = String(admin.password || "change-me");
