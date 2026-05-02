@@ -4,7 +4,12 @@ import { requireAuth } from "../middleware/requireAuth.js";
 import { idempotency } from "../middleware/idempotency.js";
 import { restoreStrippedImages, hasStrippedImages } from "../utils/imageRestore.js";
 import { isDeleted } from "../utils/tombstones.js";
-import { writeStateV2, IMAGE_DUAL_WRITE_ENABLED } from "../services/imageStore.service.js";
+import {
+  writeStateV2,
+  readStateV2,
+  isReadFromV2Enabled,
+  IMAGE_DUAL_WRITE_ENABLED,
+} from "../services/imageStore.service.js";
 
 // Note: Rate limiting is applied globally to all /api routes in app.js via rateLimitDbMiddleware
 
@@ -248,23 +253,66 @@ router.get("/", requireAuth, async (req, res) => {
   }
 
   const userId = req.session.userId;
-  
+
+  // Phase 3 read path. When READ_FROM_V2_USER_IDS includes this user, try
+  // serving the rehydrated state_json_v2 first. readStateV2 self-validates
+  // (counts match canonical, no missing refs, not stale, no verify-failed
+  // stamp); on ANY failure it returns ok:false and we silently fall back to
+  // the canonical state_json read below.
+  if (isReadFromV2Enabled(userId)) {
+    try {
+      const v2 = await readStateV2({ pool, userId });
+      if (v2?.ok) {
+        const tradesCount = v2.state?.trades?.length ?? 0;
+        logStateOp("get", userId, {
+          source: "v2",
+          found: true,
+          tradesCount,
+          hasState: !!v2.state,
+          version: v2.version ?? 0,
+          metrics: v2.metrics,
+        });
+        res.set("Cache-Control", "no-store");
+        res.json({
+          state: v2.state ?? null,
+          updated_at: v2.updated_at ?? null,
+          version: v2.version ?? 0,
+        });
+        maybeRunTombstoneGc(pool, userId).catch(() => {});
+        return;
+      }
+      // Not ok — log the reason and fall through to v1.
+      if (v2?.reason && v2.reason !== "no_state_row") {
+        logStateOp("get", userId, {
+          source: "v1_fallback",
+          v2_reason: v2.reason,
+          v2_metrics: v2.metrics,
+        });
+      }
+    } catch (err) {
+      // readStateV2 doesn't throw, but defensive guard so a bug there can't
+      // 500 the user. Fall through to canonical path.
+      logStateOp("get", userId, { source: "v1_fallback", v2_error: err?.message });
+    }
+  }
+
   try {
     const r = await pool.query("SELECT state_json, updated_at, version FROM states WHERE user_id = $1", [userId]);
     const row = r.rows?.[0];
     const tradesCount = row?.state_json?.trades?.length ?? 0;
-    
-    logStateOp("get", userId, { 
-      found: !!row, 
+
+    logStateOp("get", userId, {
+      source: "v1",
+      found: !!row,
       tradesCount,
       hasState: !!row?.state_json,
       version: row?.version ?? 0
     });
-    
+
     // Prevent CDN/edge caching of user state — stale reads cause merge conflicts (BUG #7)
     res.set("Cache-Control", "no-store");
-    res.json({ 
-      state: row?.state_json ?? null, 
+    res.json({
+      state: row?.state_json ?? null,
       updated_at: row?.updated_at ?? null,
       version: row?.version ?? 0
     });

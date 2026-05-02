@@ -18,6 +18,38 @@ import {
 export const IMAGE_DUAL_WRITE_ENABLED = String(process.env.IMAGE_DUAL_WRITE || "")
   .trim() === "1";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// READ-PATH FEATURE FLAG (Phase 3)
+//
+// READ_FROM_V2_USER_IDS controls which users get served via the v2 path.
+// Examples:
+//   READ_FROM_V2_USER_IDS=5         → only user 5
+//   READ_FROM_V2_USER_IDS=5,7,12    → users 5, 7, 12
+//   READ_FROM_V2_USER_IDS=*         → every user (post-stabilisation)
+//   READ_FROM_V2_USER_IDS=          → nobody (default; no behaviour change)
+//
+// The v2 path is ALWAYS validated against canonical state_json by comparing
+// per-collection counts. Mismatch / missing-ref / stale / verify-failed rows
+// silently fall back to v1, so this flag cannot cause data to disappear from
+// the user's perspective.
+// ─────────────────────────────────────────────────────────────────────────────
+const READ_FROM_V2_RAW = String(process.env.READ_FROM_V2_USER_IDS || "").trim();
+const READ_FROM_V2_ALL = READ_FROM_V2_RAW === "*";
+const READ_FROM_V2_SET = new Set(
+  READ_FROM_V2_RAW.split(",").map((s) => s.trim()).filter(Boolean)
+);
+
+export function isReadFromV2Enabled(userId) {
+  if (READ_FROM_V2_ALL) return true;
+  if (READ_FROM_V2_SET.size === 0) return false;
+  return READ_FROM_V2_SET.has(String(userId));
+}
+
+// How much wall-clock time v2 may lag behind v1 before we treat it as stale.
+// Dual-write is fire-and-forget so it can take a few seconds to land; longer
+// than that probably indicates a stuck v2 write.
+const V2_STALE_MS = 30_000;
+
 function logImg(op, userId, details = {}) {
   console.log(
     `[imageStore] ${JSON.stringify({ ts: new Date().toISOString(), op, userId, ...details })}`
@@ -282,4 +314,139 @@ function collectRefIds(node, out = new Set()) {
   }
   for (const k of Object.keys(node)) collectRefIds(node[k], out);
   return out;
+}
+
+/**
+ * Phase 3 read path. Attempts to serve the user's state from state_json_v2 +
+ * user_images, validated against the canonical state_json by per-collection
+ * record counts. Caller MUST treat a falsy / `ok: false` result as "fall back
+ * to canonical state_json"; this function never throws.
+ *
+ * Why we still read state_json on every v2 hit during Phase 3: confidence.
+ * We want to spot any silent divergence in production before Phase 5 where
+ * state_json stops being canonical. The extra read cost is acceptable for
+ * the safety margin and goes away in Phase 5.
+ *
+ * @param {{ pool: import('pg').Pool, userId: number }} args
+ * @returns {Promise<{
+ *   ok: boolean,
+ *   reason?: string,
+ *   state?: any,
+ *   updated_at?: any,
+ *   version?: any,
+ *   metrics?: object
+ * }>}
+ */
+export async function readStateV2({ pool, userId }) {
+  let row;
+  try {
+    const r = await pool.query(
+      `SELECT state_json, state_json_v2,
+              state_v2_updated_at, state_v2_verify_failed_at,
+              updated_at, version
+         FROM states WHERE user_id = $1`,
+      [userId]
+    );
+    row = r.rows?.[0];
+  } catch (err) {
+    logImg("v2_read_query_failed", userId, { error: err?.message });
+    return { ok: false, reason: "query_failed" };
+  }
+
+  if (!row) {
+    // No state row at all — let caller's normal "no state" branch handle it.
+    return { ok: false, reason: "no_state_row" };
+  }
+  if (!row.state_json_v2) {
+    return { ok: false, reason: "v2_null" };
+  }
+  if (row.state_v2_verify_failed_at) {
+    return { ok: false, reason: "v2_verify_failed_stamp" };
+  }
+
+  // Staleness gate: dual-write is fire-and-forget; a few seconds of lag is
+  // expected, but a stale v2 must not be returned. Using updated_at on the
+  // canonical row as the reference point.
+  const v2Time = row.state_v2_updated_at instanceof Date
+    ? row.state_v2_updated_at.getTime()
+    : new Date(row.state_v2_updated_at || 0).getTime();
+  const v1Time = row.updated_at instanceof Date
+    ? row.updated_at.getTime()
+    : new Date(row.updated_at || 0).getTime();
+  const lagMs = v1Time - v2Time;
+  if (lagMs > V2_STALE_MS) {
+    return { ok: false, reason: "v2_stale", metrics: { lagMs } };
+  }
+
+  // Fetch the images referenced by v2.
+  const refIdSet = collectRefIds(row.state_json_v2);
+  const imageMap = {};
+  if (refIdSet.size > 0) {
+    try {
+      const refIds = Array.from(refIdSet);
+      const imgRows = await pool.query(
+        `SELECT image_id, content_type, encode(data, 'base64') AS base64
+           FROM user_images
+          WHERE user_id = $1 AND image_id = ANY($2::text[])`,
+        [userId, refIds]
+      );
+      for (const r of imgRows.rows) {
+        imageMap[r.image_id] = {
+          contentType: r.content_type,
+          base64: String(r.base64 || "").replace(/\s+/g, ""),
+        };
+      }
+    } catch (err) {
+      logImg("v2_read_images_failed", userId, { error: err?.message });
+      return { ok: false, reason: "image_fetch_failed" };
+    }
+  }
+
+  const inlined = inlineImagesIntoState(row.state_json_v2, imageMap);
+  if (inlined.missingRefs.length > 0) {
+    logImg("v2_read_missing_refs", userId, {
+      missing: inlined.missingRefs.length,
+      totalRefs: refIdSet.size,
+      severity: "HIGH",
+    });
+    return { ok: false, reason: "missing_refs", metrics: { missing: inlined.missingRefs.length } };
+  }
+
+  // Sanity-check structure against canonical: per-collection lengths.
+  // If anything diverges by even one element we don't trust v2.
+  const canonical = row.state_json || {};
+  const COLLECTIONS = ["trades", "backtests", "accounts", "documents"];
+  const counts = {};
+  for (const k of COLLECTIONS) {
+    const v1Arr = Array.isArray(canonical[k]) ? canonical[k] : null;
+    const v2Arr = Array.isArray(inlined.state?.[k]) ? inlined.state[k] : null;
+    const v1Len = v1Arr ? v1Arr.length : null;
+    const v2Len = v2Arr ? v2Arr.length : null;
+    counts[k] = { v1: v1Len, v2: v2Len };
+    if (v1Len !== v2Len) {
+      logImg("v2_read_count_mismatch", userId, {
+        collection: k,
+        v1Len,
+        v2Len,
+        severity: "HIGH",
+      });
+      return {
+        ok: false,
+        reason: `count_mismatch_${k}`,
+        metrics: { counts },
+      };
+    }
+  }
+
+  return {
+    ok: true,
+    state: inlined.state,
+    updated_at: row.updated_at,
+    version: row.version,
+    metrics: {
+      lagMs,
+      refs: refIdSet.size,
+      counts,
+    },
+  };
 }
