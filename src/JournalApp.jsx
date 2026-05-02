@@ -89,11 +89,13 @@ export default function JournalApp() {
   const navBanner = role === "loh" ? { i18nKey: "roles.lohBanner" } : null;
   const { db, setDb, syncStatus, refetch, retrySync, flushSync, setShareInFlight, lastError, hasUnsavedChanges, syncProgress, isReadOnly } = useSyncedDb(user?.id, SEED, { lastKnownUserId });
   
-  // Delayed sync warning - only shows banner if save takes longer than threshold
-  const { shouldShowWarning: showDelayedSyncWarning, resetWarning: resetSyncWarning } = useSyncWarning({
-    syncStatus,
-    // thresholdMs: 1800, // Default is 1800ms, can be customized here
-  });
+  // Sync-in-progress indicator — shows a friendly card with progress + elapsed time
+  // after a short grace period to avoid flickering on near-instant saves.
+  const {
+    shouldShowWarning: showDelayedSyncWarning,
+    elapsedMs: syncElapsedMs,
+    resetWarning: resetSyncWarning,
+  } = useSyncWarning({ syncStatus });
   
   const [active, setActive] = useState("dashboard");
   const [cmdOpen, setCmdOpen] = useState(false);
@@ -2211,6 +2213,8 @@ export default function JournalApp() {
           hasUnsavedChanges={hasUnsavedChanges}
           userId={user?.id}
           showDelayedSyncWarning={showDelayedSyncWarning}
+          syncElapsedMs={syncElapsedMs}
+          syncProgress={syncProgress}
           onResetSyncWarning={resetSyncWarning}
         />
 
