@@ -13,6 +13,7 @@ import Button from "@/components/ui/Button.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { calcDashboardMetrics } from "@/lib/dashboard/calcDashboardMetrics.js";
 import { useDashboardFilters } from "@/lib/dashboard/useDashboardFilters.js";
+import { exportDashboardPDF } from "@/lib/dashboard/exportDashboardPDF.js";
 import { getGlobalWinRateMode, getGlobalAvgRRMode } from "@/lib/metrics/winRate.js";
 import {
   DashboardFilterBar,
@@ -135,11 +136,32 @@ export default function DashboardPage({
 
   // Loading state (for skeleton)
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
-  // Export handler (placeholder)
-  const handleExport = () => {
-    // TODO: Implement PDF/CSV export
-    alert("Export feature coming soon!");
+  // Export handler — generates a haunted-themed PDF report from current view
+  const handleExport = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      await exportDashboardPDF({
+        metrics,
+        accounts,
+        selectedAccounts,
+        filters: {
+          datePreset,
+          direction,
+          selectedPairs,
+          selectedSessions,
+        },
+        currency,
+      });
+    } catch (err) {
+      console.error("[DashboardPage] PDF export failed", err);
+      const msg = t("pages.dashboard.exportError") || "Failed to export PDF. Please try again.";
+      alert(msg);
+    } finally {
+      setExporting(false);
+    }
   };
 
   // For empty accounts, we show all components with neutral values
