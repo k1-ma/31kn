@@ -426,7 +426,7 @@ router.get("/:shareId", async (req, res) => {
 
     // Fetch the share with current user info (LEFT JOIN to get up-to-date author name)
     const result = await pool.query(
-      `SELECT s.id, s.type, s.payload, s.title, s.author_name, s.created_at, s.expires_at, s.revoked, s.views, s.status,
+      `SELECT s.id, s.type, s.payload, s.title, s.author_name, s.created_at, s.expires_at, s.revoked, s.views, s.status, s.user_id,
               u.display_name AS user_display_name, u.nickname AS user_nickname, u.username AS user_username
        FROM public_shares s
        LEFT JOIN users u ON s.user_id = u.id
@@ -455,13 +455,18 @@ router.get("/:shareId", async (req, res) => {
       return res.status(404).json({ error: "Share has expired" });
     }
 
-    // Increment view count
-    pool.query(
-      "UPDATE public_shares SET views = views + 1 WHERE id = $1",
-      [shareId]
-    ).catch((err) => {
-      console.error("[public-share] view count update error:", err);
-    });
+    // Increment view count — best-effort, fire-and-forget so we don't block the GET response.
+    // Errors are caught/logged so we don't lose them silently (B18).
+    pool
+      .query("UPDATE public_shares SET views = views + 1 WHERE id = $1", [shareId])
+      .catch((err) => console.warn("[public-share] view increment failed:", err));
+
+    // Detect orphaned share (owner deleted, FK ON DELETE SET NULL). Payload is
+    // already public, so we still serve it but flag it for the client (B19).
+    const orphaned = share.user_id === null;
+    if (orphaned) {
+      console.warn(`[public-share] serving orphaned share: shareId=${shareId}`);
+    }
 
     // Resolve author name: prefer current user name, fall back to stored snapshot
     const authorName = share.user_display_name || share.user_nickname || share.user_username || share.author_name;
@@ -476,6 +481,7 @@ router.get("/:shareId", async (req, res) => {
       authorName,
       createdAt: share.created_at,
       payload: share.payload,
+      orphaned,
     });
   } catch (error) {
     console.error("[public-share] get error:", error);
@@ -512,8 +518,22 @@ router.delete("/:shareId", requireAuth, async (req, res) => {
     }
 
     const share = result.rows[0];
-    const isOwner = share.user_id === req.session.userId;
     const isAdmin = req.user?.role === "admin";
+
+    // Orphaned share: original owner has been deleted (FK ON DELETE SET NULL).
+    // Only admins can clean up orphaned shares; everyone else gets 410 Gone.
+    if (share.user_id === null) {
+      if (!isAdmin) {
+        console.warn(`[public-share] orphaned share delete attempt: shareId=${shareId}, userId=${req.session.userId}`);
+        return res.status(410).json({
+          error: "share_orphaned",
+          message: "Share owner no longer exists",
+        });
+      }
+      // Admin path falls through to the soft-delete below.
+    }
+
+    const isOwner = share.user_id !== null && share.user_id === req.session.userId;
 
     // Check authorization
     if (!isOwner && !isAdmin) {

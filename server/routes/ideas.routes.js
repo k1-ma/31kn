@@ -84,33 +84,65 @@ router.get("/", requireAuth, async (req, res) => {
 
   try {
     const { status, result, search, pair } = req.query;
-    
-    let query = "SELECT * FROM trading_ideas WHERE user_id = $1";
+
+    // Pagination params with safe defaults and clamping
+    const DEFAULT_LIMIT = 100;
+    const MAX_LIMIT = 500;
+    const rawLimit = parseInt(req.query.limit, 10);
+    const rawOffset = parseInt(req.query.offset, 10);
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0
+      ? Math.min(rawLimit, MAX_LIMIT)
+      : DEFAULT_LIMIT;
+    const offset = Number.isFinite(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
+
+    // Build shared WHERE clause (used for both COUNT and SELECT)
+    let whereClause = "WHERE user_id = $1 AND deleted_at IS NULL";
     const params = [req.session.userId];
     let paramIdx = 2;
-    
+
     if (status && STATUSES.includes(status)) {
-      query += ` AND status = $${paramIdx++}`;
+      whereClause += ` AND status = $${paramIdx++}`;
       params.push(status);
     }
     if (result && RESULTS.includes(result)) {
-      query += ` AND result = $${paramIdx++}`;
+      whereClause += ` AND result = $${paramIdx++}`;
       params.push(result);
     }
     if (pair) {
-      query += ` AND pair ILIKE $${paramIdx++}`;
+      whereClause += ` AND pair ILIKE $${paramIdx++}`;
       params.push(`%${pair}%`);
     }
     if (search) {
-      query += ` AND (title ILIKE $${paramIdx} OR notes_text ILIKE $${paramIdx} OR pair ILIKE $${paramIdx})`;
+      whereClause += ` AND (title ILIKE $${paramIdx} OR notes_text ILIKE $${paramIdx} OR pair ILIKE $${paramIdx})`;
       params.push(`%${search}%`);
       paramIdx++;
     }
-    
-    query += " ORDER BY created_at DESC";
-    
-    const result2 = await pool.query(query, params);
-    return res.json({ ideas: result2.rows });
+
+    // Total count for the same filter set
+    const countResult = await pool.query(
+      `SELECT COUNT(*)::int AS total FROM trading_ideas ${whereClause}`,
+      params
+    );
+    const total = countResult.rows[0]?.total || 0;
+
+    // Page query with LIMIT/OFFSET appended
+    const pageParams = params.slice();
+    pageParams.push(limit);
+    pageParams.push(offset);
+    const pageQuery =
+      `SELECT * FROM trading_ideas ${whereClause} ORDER BY created_at DESC ` +
+      `LIMIT $${paramIdx++} OFFSET $${paramIdx}`;
+
+    const result2 = await pool.query(pageQuery, pageParams);
+
+    // Backward compat: keep `ideas` field for existing frontend (src/pages/Ideas.jsx reads res.ideas).
+    return res.json({
+      items: result2.rows,
+      total,
+      limit,
+      offset,
+      ideas: result2.rows,
+    });
   } catch (error) {
     console.error("[trading_ideas] list error:", error);
     return res.status(500).json({ error: "Failed to fetch trading ideas" });
@@ -127,60 +159,55 @@ router.get("/stats", requireAuth, async (req, res) => {
 
   try {
     const userId = req.session.userId;
-    
-    // Get basic counts
-    const totalResult = await pool.query(
-      "SELECT COUNT(*) as total FROM trading_ideas WHERE user_id = $1",
+
+    // Single aggregated query: total + active + result counts + status distribution
+    const aggResult = await pool.query(
+      `SELECT
+         COUNT(*)::int AS total,
+         COUNT(*) FILTER (WHERE status = 'Active')::int AS active,
+         COUNT(*) FILTER (WHERE result = 'Worked')::int AS worked,
+         COUNT(*) FILTER (WHERE result = 'Failed')::int AS failed,
+         COUNT(*) FILTER (WHERE result = 'Partial')::int AS partial,
+         COUNT(*) FILTER (WHERE status = 'Planned')::int AS status_planned,
+         COUNT(*) FILTER (WHERE status = 'Active')::int AS status_active,
+         COUNT(*) FILTER (WHERE status = 'Closed')::int AS status_closed,
+         COUNT(*) FILTER (WHERE status = 'Archived')::int AS status_archived
+       FROM trading_ideas
+       WHERE user_id = $1 AND deleted_at IS NULL`,
       [userId]
     );
-    
-    const activeResult = await pool.query(
-      "SELECT COUNT(*) as active FROM trading_ideas WHERE user_id = $1 AND status = 'Active'",
-      [userId]
-    );
-    
-    // Count by result
-    const resultCounts = await pool.query(
-      `SELECT result, COUNT(*) as count FROM trading_ideas 
-       WHERE user_id = $1 AND result != 'Unknown'
-       GROUP BY result`,
-      [userId]
-    );
-    
-    const results = {};
-    for (const row of resultCounts.rows) {
-      results[row.result] = parseInt(row.count, 10);
-    }
-    
-    const worked = results.Worked || 0;
-    const failed = results.Failed || 0;
-    const partial = results.Partial || 0;
+
+    const agg = aggResult.rows[0] || {};
+    const total = agg.total || 0;
+    const active = agg.active || 0;
+    const worked = agg.worked || 0;
+    const failed = agg.failed || 0;
+    const partial = agg.partial || 0;
+
     const totalWithResult = worked + failed + partial;
     const successRate = totalWithResult > 0 ? (worked / totalWithResult) * 100 : 0;
-    
-    // Status distribution
-    const statusResult = await pool.query(
-      `SELECT status, COUNT(*) as count FROM trading_ideas WHERE user_id = $1 GROUP BY status`,
-      [userId]
-    );
-    
+
+    // Build byStatus map preserving prior shape (only include statuses with count > 0,
+    // matching original GROUP BY behaviour).
     const byStatus = {};
-    for (const row of statusResult.rows) {
-      byStatus[row.status] = parseInt(row.count, 10);
-    }
-    
-    // Top pairs
+    if (agg.status_planned) byStatus.Planned = agg.status_planned;
+    if (agg.status_active) byStatus.Active = agg.status_active;
+    if (agg.status_closed) byStatus.Closed = agg.status_closed;
+    if (agg.status_archived) byStatus.Archived = agg.status_archived;
+
+    // Top pairs (kept as separate query because of GROUP BY pair + ORDER BY count + LIMIT)
     const pairResult = await pool.query(
-      `SELECT pair, COUNT(*) as count, 
+      `SELECT pair, COUNT(*) as count,
         SUM(CASE WHEN result = 'Worked' THEN 1 ELSE 0 END) as worked
-       FROM trading_ideas WHERE user_id = $1 AND pair IS NOT NULL AND pair != ''
+       FROM trading_ideas
+       WHERE user_id = $1 AND deleted_at IS NULL AND pair IS NOT NULL AND pair != ''
        GROUP BY pair ORDER BY count DESC LIMIT 5`,
       [userId]
     );
-    
+
     return res.json({
-      total: parseInt(totalResult.rows[0]?.total || 0, 10),
-      active: parseInt(activeResult.rows[0]?.active || 0, 10),
+      total,
+      active,
       worked,
       failed,
       partial,
@@ -253,12 +280,12 @@ router.patch("/:id", requireAuth, idempotency(), async (req, res) => {
       return res.status(400).json({ error: "Invalid idea ID" });
     }
     
-    // Check ownership
+    // Check ownership (and ensure not soft-deleted)
     const existing = await pool.query(
-      "SELECT * FROM trading_ideas WHERE id = $1 AND user_id = $2",
+      "SELECT * FROM trading_ideas WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL",
       [ideaId, req.session.userId]
     );
-    
+
     if (existing.rows.length === 0) {
       return res.status(404).json({ error: "Trading idea not found" });
     }
@@ -295,7 +322,7 @@ router.patch("/:id", requireAuth, idempotency(), async (req, res) => {
     params.push(req.session.userId);
     
     const result = await pool.query(
-      `UPDATE trading_ideas SET ${updates.join(", ")} WHERE id = $${paramIdx++} AND user_id = $${paramIdx} RETURNING *`,
+      `UPDATE trading_ideas SET ${updates.join(", ")} WHERE id = $${paramIdx++} AND user_id = $${paramIdx} AND deleted_at IS NULL RETURNING *`,
       params
     );
     
@@ -320,15 +347,16 @@ router.delete("/:id", requireAuth, idempotency(), async (req, res) => {
       return res.status(400).json({ error: "Invalid idea ID" });
     }
     
+    // Soft delete: mark deleted_at timestamp instead of removing the row
     const result = await pool.query(
-      "DELETE FROM trading_ideas WHERE id = $1 AND user_id = $2 RETURNING id",
+      "UPDATE trading_ideas SET deleted_at = NOW() WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL RETURNING id",
       [ideaId, req.session.userId]
     );
-    
+
     if (result.rows.length === 0) {
       return res.status(404).json({ error: "Trading idea not found" });
     }
-    
+
     return res.json({ ok: true, id: ideaId });
   } catch (error) {
     console.error("[trading_ideas] delete error:", error);

@@ -543,6 +543,17 @@ export async function initDb({ admin }) {
     console.warn("[db] trading_ideas model_id migration:", e?.message || e);
   }
 
+  // Add deleted_at column to trading_ideas for soft delete + partial index for active rows
+  try {
+    await pool.query(`
+      ALTER TABLE trading_ideas ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+      CREATE INDEX IF NOT EXISTS trading_ideas_user_active_idx ON trading_ideas(user_id, created_at DESC) WHERE deleted_at IS NULL;
+    `);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn("[db] trading_ideas deleted_at migration:", e?.message || e);
+  }
+
   // Add ticket status columns to user_feedback table for ticketing system
   try {
     await pool.query(`
@@ -1019,6 +1030,19 @@ export async function initDb({ admin }) {
     `);
   } catch (e) {
     console.warn("[db] tournaments vote_password migration:", e?.message || e);
+  }
+
+  // Tombstone GC last-run timestamp per user. Replaces an in-memory Map that
+  // didn't survive serverless cold starts, causing GC to fire on every request.
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS tombstone_gc_runs (
+        user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        last_run_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+    `);
+  } catch (e) {
+    console.warn("[db] tombstone_gc_runs table migration:", e?.message || e);
   }
 
   // Materialized counters cache to avoid expensive JSONB full-scans on every admin request

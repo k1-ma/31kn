@@ -41,6 +41,61 @@ async function getValidCategories(pool) {
 // Video status enum
 const VIDEO_STATUSES = ["uploading", "processing", "ready", "failed"];
 
+// Lazy reconciliation tuning — bound work per GET so we don't hammer Bunny.
+const RECONCILE_BATCH_LIMIT = 5;
+const RECONCILE_TTL_SECONDS = 30;
+
+/**
+ * Lazy reconciliation for stuck "processing" videos.
+ * Background polling (pollVideoStatus) is best-effort and may be lost on a
+ * server restart, leaving rows stuck in 'processing'. On every list-style GET
+ * we re-check up to RECONCILE_BATCH_LIMIT rows whose updated_at is older than
+ * RECONCILE_TTL_SECONDS, and update the DB if Bunny says they're now
+ * ready/failed. This is best-effort — errors are logged, never thrown.
+ */
+async function reconcileProcessingVideos(pool) {
+  if (!isBunnyStreamConfigured()) return;
+  try {
+    const stale = await pool.query(
+      `SELECT id, bunny_video_id
+         FROM education_videos
+        WHERE status = 'processing'
+          AND updated_at < NOW() - INTERVAL '${RECONCILE_TTL_SECONDS} seconds'
+        ORDER BY updated_at ASC
+        LIMIT $1`,
+      [RECONCILE_BATCH_LIMIT]
+    );
+
+    for (const row of stale.rows) {
+      try {
+        const bunnyData = await getVideo(row.bunny_video_id);
+        let nextStatus = "processing";
+        if (bunnyData.status === 4) nextStatus = "ready";
+        else if (bunnyData.status === 5) nextStatus = "failed";
+
+        if (nextStatus !== "processing") {
+          await pool.query(
+            `UPDATE education_videos
+                SET status = $1, duration_seconds = $2, updated_at = NOW()
+              WHERE id = $3`,
+            [nextStatus, bunnyData.length || 0, row.id]
+          );
+        } else {
+          // Touch updated_at so we honor the TTL and don't re-check immediately.
+          await pool.query(
+            `UPDATE education_videos SET updated_at = NOW() WHERE id = $1`,
+            [row.id]
+          );
+        }
+      } catch (innerErr) {
+        console.warn("[education] reconcile failed for video", row.bunny_video_id, innerErr?.message || innerErr);
+      }
+    }
+  } catch (err) {
+    console.warn("[education] reconcileProcessingVideos error:", err?.message || err);
+  }
+}
+
 // Configure multer for in-memory file upload (up to 2GB)
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -137,9 +192,14 @@ router.get("/", requireAuth, async (req, res) => {
     // Auto-create tables if needed
     await ensureEducationTables(pool);
 
+    // Lazy reconciliation: catch up videos stuck in 'processing' if the
+    // background poll was lost (e.g. server restart). Bounded + TTL'd so it
+    // doesn't hammer Bunny on every request.
+    await reconcileProcessingVideos(pool);
+
     const result = await pool.query(
-      `SELECT 
-        ev.id, ev.title, ev.description, ev.category, 
+      `SELECT
+        ev.id, ev.title, ev.description, ev.category,
         ev.bunny_thumbnail_url, ev.duration_seconds, ev.sort_order,
         ep.watched, ep.progress_seconds, ep.watched_at
        FROM education_videos ev
@@ -171,9 +231,13 @@ router.get("/categories", requireAuth, async (req, res) => {
   try {
     await ensureEducationTables(pool);
 
+    // Lazy reconciliation (see GET / above) — keep category list fresh even
+    // if background polling died on a previous deploy.
+    await reconcileProcessingVideos(pool);
+
     const result = await pool.query(
-      `SELECT DISTINCT category 
-       FROM education_videos 
+      `SELECT DISTINCT category
+       FROM education_videos
        WHERE is_published = true AND status = 'ready'
        ORDER BY category`
     );

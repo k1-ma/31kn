@@ -19,6 +19,26 @@ export { isDeleted, withoutDeletedAt };
 const IS_DEV = process.env.NODE_ENV === "development";
 
 // ─────────────────────────────────────────────────────────────────────────────
+// MONOTONIC TIMESTAMPS
+// Date.now() can return the same millisecond twice in a row (or even go
+// backwards if the system clock is adjusted).  For fields like updatedAt /
+// createdAt / deletedAt, equal timestamps make merge ordering ambiguous.
+// monoNow() guarantees strictly-increasing values within the lifetime of
+// this module while staying close to wall-clock time.
+// ─────────────────────────────────────────────────────────────────────────────
+let _monoLastTs = 0;
+export function monoNow() {
+  const now = Date.now();
+  _monoLastTs = Math.max(_monoLastTs + 1, now);
+  return _monoLastTs;
+}
+
+// Normalize an id value to a stable string key for Map/object lookups.
+// Without this, Map.get("123") !== Map.get(123) and items can be duplicated
+// across local/server arrays when the id types diverge.
+const idKey = (id) => (id == null ? "" : String(id));
+
+// ─────────────────────────────────────────────────────────────────────────────
 // SERVER REACHABILITY HEARTBEAT
 // Periodic ping to actual server endpoint to detect VPN/DPI blocking
 // ─────────────────────────────────────────────────────────────────────────────
@@ -96,10 +116,15 @@ const MAX_PATCH_SIZE_KB = 500;
 
 // Maximum payload size before using chunked sync (in bytes)
 // Vercel allows 4.5MB (Hobby) / 6MB (Pro) per request body.
-// Set to 3.5MB to leave room for HTTP/JSON overhead.
+// Set to 3.0MB to leave headroom for HTTP/JSON overhead, base64 expansion,
+// and unforeseen growth between size measurement and actual upload.
 // This means most users (< 50 trades with images) will use a fast
 // single PUT request instead of slow multi-chunk uploads.
-const MAX_SINGLE_REQUEST_SIZE_BYTES = 3.5 * 1024 * 1024;
+const MAX_SINGLE_REQUEST_SIZE_BYTES = 3 * 1024 * 1024;
+// Vercel hard limit (4.5MB Hobby plan).  Above this size even chunked sync
+// is doomed if individual chunks exceed the limit; we log an error so the
+// user/operator can investigate.
+const VERCEL_HARD_LIMIT_BYTES = 4.5 * 1024 * 1024;
 
 // Data loss protection thresholds (shared with server)
 const MIN_RECORDS_FOR_PROTECTION = 10; // Minimum records count to enable percentage-based protection for any collection
@@ -339,7 +364,7 @@ function getOutbox(userId) {
   try {
     const raw = localStorage.getItem(`${OUTBOX_KEY_PREFIX}${userId}`);
     if (!raw) return null;
-    const outbox = JSON.parse(raw);
+    let outbox = JSON.parse(raw);
     // Migrate if schema version is older than current
     if (outbox && typeof outbox.schemaVersion === "number" && outbox.schemaVersion < CURRENT_SCHEMA_VERSION) {
       outbox.state = migrateState(outbox.state, outbox.schemaVersion);
@@ -347,7 +372,12 @@ function getOutbox(userId) {
       // Re-save the migrated outbox entry
       try {
         localStorage.setItem(`${OUTBOX_KEY_PREFIX}${userId}`, JSON.stringify(outbox));
-      } catch {}
+      } catch (e) {
+        console.warn("[sync] outbox migration save failed", e);
+        // Don't retry migration on next render; flag this outbox as broken
+        try { localStorage.removeItem(`${OUTBOX_KEY_PREFIX}${userId}`); } catch {}
+        outbox = null;
+      }
     }
     return outbox;
   } catch {
@@ -454,12 +484,12 @@ function restoreTradeImages(winner, donor) {
   if (Array.isArray(winner.images) && Array.isArray(donor.images)) {
     const donorById = new Map();
     for (const img of donor.images) {
-      if (img && img.id) donorById.set(img.id, img);
+      if (img && img.id) donorById.set(idKey(img.id), img);
     }
     let anyRestored = false;
     const restored = winner.images.map((img) => {
       if (img && img.dataUrl === IMAGE_STRIPPED && img.id) {
-        const real = donorById.get(img.id);
+        const real = donorById.get(idKey(img.id));
         if (real && real.dataUrl && real.dataUrl !== IMAGE_STRIPPED) {
           anyRestored = true;
           return { ...img, dataUrl: real.dataUrl };
@@ -499,28 +529,28 @@ function mergeTradesArrays(localTrades, serverTrades, isInitialLoad = false, ser
   if (!Array.isArray(localTrades)) return serverTrades || [];
   if (!Array.isArray(serverTrades)) return localTrades || [];
   
-  // Create a map of server trades by ID
+  // Create a map of server trades by ID (normalized to string).
   const serverTradesMap = new Map();
   for (const trade of serverTrades) {
     if (trade && trade.id) {
-      serverTradesMap.set(trade.id, trade);
+      serverTradesMap.set(idKey(trade.id), trade);
     }
   }
-  
-  // Create a map of local trades by ID
+
+  // Create a map of local trades by ID (normalized to string).
   const localTradesMap = new Map();
   for (const trade of localTrades) {
     if (trade && trade.id) {
-      localTradesMap.set(trade.id, trade);
+      localTradesMap.set(idKey(trade.id), trade);
     }
   }
-  
+
   // Merge: prefer newer version based on timestamp
   const mergedMap = new Map();
-  
+
   // Process all unique IDs
   const allIds = new Set([...serverTradesMap.keys(), ...localTradesMap.keys()]);
-  
+
   for (const id of allIds) {
     const serverTrade = serverTradesMap.get(id);
     const localTrade = localTradesMap.get(id);
@@ -636,8 +666,9 @@ function reconcileAccountsEquity(state) {
     const allocs = Array.isArray(t.allocations) ? t.allocations : [];
     for (const a of allocs) {
       if (!a?.accountId) continue;
+      const key = idKey(a.accountId);
       const net = clampNum(a.pnl) - Math.abs(clampNum(a.commission));
-      netByAccount.set(a.accountId, (netByAccount.get(a.accountId) || 0) + net);
+      netByAccount.set(key, (netByAccount.get(key) || 0) + net);
     }
   }
 
@@ -645,7 +676,7 @@ function reconcileAccountsEquity(state) {
   state.accounts = accounts.map((acc) => {
     if (!acc?.id || isDeleted(acc)) return acc;
     const startEq   = clampNum(acc.startingEquity);
-    const tradePnl   = netByAccount.get(acc.id) || 0;
+    const tradePnl   = netByAccount.get(idKey(acc.id)) || 0;
     const calculated = startEq + tradePnl;
     let correction   = clampNum(acc.equityCorrection);
 
@@ -805,21 +836,21 @@ function mergeArraysById(localArr, serverArr, isInitialLoad = false, serverVersi
   const serverMap = new Map();
   for (const item of serverArr) {
     if (item && item.id) {
-      serverMap.set(item.id, item);
+      serverMap.set(idKey(item.id), item);
     }
   }
-  
+
   const localMap = new Map();
   for (const item of localArr) {
     if (item && item.id) {
-      localMap.set(item.id, item);
+      localMap.set(idKey(item.id), item);
     }
   }
-  
+
   // Merge: prefer newer version based on timestamp
   const mergedMap = new Map();
   const allIds = new Set([...serverMap.keys(), ...localMap.keys()]);
-  
+
   for (const id of allIds) {
     const serverItem = serverMap.get(id);
     const localItem = localMap.get(id);
@@ -900,21 +931,21 @@ function mergeBacktestsArray(localArr, serverArr, isInitialLoad = false, serverV
   const serverMap = new Map();
   for (const backtest of serverArr) {
     if (backtest && backtest.id) {
-      serverMap.set(backtest.id, backtest);
+      serverMap.set(idKey(backtest.id), backtest);
     }
   }
-  
+
   const localMap = new Map();
   for (const backtest of localArr) {
     if (backtest && backtest.id) {
-      localMap.set(backtest.id, backtest);
+      localMap.set(idKey(backtest.id), backtest);
     }
   }
-  
+
   // Merge: prefer newer version based on timestamp, but also merge trades arrays
   const mergedMap = new Map();
   const allIds = new Set([...serverMap.keys(), ...localMap.keys()]);
-  
+
   for (const id of allIds) {
     const serverBacktest = serverMap.get(id);
     const localBacktest = localMap.get(id);
@@ -1855,15 +1886,15 @@ export function useSyncedDb(userId, seed, options = {}) {
     }
     
     perfMark("syncDb:apiSave:start");
-    
+
     // Calculate payload size to determine sync strategy
     const payload = { state: stateToSync };
     const payloadSize = getPayloadSize(payload);
-    
+
     if (IS_DEV) {
       const imageCount = countBase64Images(stateToSync);
       const imageSize = getBase64ImageSize(stateToSync);
-      console.log("[syncDb] Payload analysis:", { 
+      console.log("[syncDb] Payload analysis:", {
         totalSizeKb: Math.round(payloadSize / 1024),
         tradesCount: stateToSync?.trades?.length ?? 0,
         imageCount,
@@ -1871,11 +1902,27 @@ export function useSyncedDb(userId, seed, options = {}) {
         willChunk: payloadSize > MAX_SINGLE_REQUEST_SIZE_BYTES
       });
     }
-    
+
+    // B14: Hard ceiling — Vercel rejects bodies > 4.5MB outright.  Even chunked
+    // sync may struggle if individual chunks approach this size after JSON
+    // overhead.  Surface this as an error in all environments so it is visible
+    // in production logs.
+    if (payloadSize > VERCEL_HARD_LIMIT_BYTES) {
+      console.error(
+        "[syncDb] Payload exceeds Vercel hard limit — sync will likely fail",
+        {
+          sizeKb: Math.round(payloadSize / 1024),
+          hardLimitKb: Math.round(VERCEL_HARD_LIMIT_BYTES / 1024),
+        }
+      );
+    }
+
     try {
       let result;
-      
-      // Use chunked sync if payload is too large
+
+      // Use chunked sync if payload is too large.  This branch runs in all
+      // environments (not gated on IS_DEV) — production users with large
+      // payloads must also take the chunked path or sync will fail.
       if (payloadSize > MAX_SINGLE_REQUEST_SIZE_BYTES) {
         if (IS_DEV) {
           console.log("[syncDb] Using chunked sync:", {
@@ -1883,9 +1930,32 @@ export function useSyncedDb(userId, seed, options = {}) {
             limitKb: Math.round(MAX_SINGLE_REQUEST_SIZE_BYTES / 1024)
           });
         }
-        
+
+        // Defensive: if chunked sync helper is unavailable for any reason
+        // (bundler tree-shake, mocked import, etc.), fall back to the outbox
+        // instead of attempting a single PUT that the server will reject.
+        if (typeof sendFullStateChunked !== "function") {
+          console.warn(
+            "[syncDb] Chunked sync unavailable — saving to outbox for later retry",
+            { sizeKb: Math.round(payloadSize / 1024) }
+          );
+          saveToOutbox(
+            userId,
+            stateToSync,
+            { code: "CHUNKED_UNAVAILABLE", message: "Chunked sync helper missing" },
+            effectiveIdempotencyKey
+          );
+          setHasUnsavedChanges(true);
+          setLastError({
+            code: "CHUNKED_UNAVAILABLE",
+            message: "Payload too large and chunked sync unavailable",
+            status: 0,
+          });
+          return { success: false, error: true };
+        }
+
         setSyncProgress({ current: 0, total: 0, percent: 0 });
-        
+
         try {
           // BUG #5 FIX: Pass expected_version for chunked sync too
           const knownVersion = getServerVersion(userId);
@@ -1902,7 +1972,7 @@ export function useSyncedDb(userId, seed, options = {}) {
           // Clear progress after sync completes
           setSyncProgress(null);
         }
-        
+
         // Chunked sync must return "complete" status to be considered successful
         if (result?.status !== "complete") {
           const err = new Error("Chunked sync did not complete");
