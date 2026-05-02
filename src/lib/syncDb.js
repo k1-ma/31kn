@@ -2603,12 +2603,21 @@ export function useSyncedDb(userId, seed, options = {}) {
         if (IS_DEV) {
           console.log("[syncDb] Heartbeat: server reachable, flushing outbox");
         }
-        retryOutbox().then(success => {
-          if (success) {
-            outboxAttempt.current = 0;
-            setSyncStatus("synced");
-          }
-        });
+        retryOutbox()
+          .then(success => {
+            if (success) {
+              outboxAttempt.current = 0;
+              setSyncStatus("synced");
+            }
+          })
+          .catch(err => {
+            // Without an explicit catch a rejection here triggers the global
+            // unhandledrejection handler and (worse) prevents the next
+            // heartbeat tick from observing that the outbox is still pending.
+            if (IS_DEV) {
+              console.warn("[syncDb] Heartbeat outbox flush failed:", err?.message || err);
+            }
+          });
       }
     };
 

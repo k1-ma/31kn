@@ -398,11 +398,22 @@ router.post("/confirm-email-change", loginRateLimit, async (req, res) => {
 
 // POST /api/auth/logout
 router.post("/logout", async (req, res) => {
+  const userId = req.session?.userId;
   try {
     if (req.session?.sid) {
       await revokeSession(req.session.sid);
     }
   } catch {}
+  // Best-effort: drop any in-flight chunked sync sessions so the user's
+  // sync_state_sessions/sync_state_chunks rows don't linger until the
+  // 30-min TTL kicks in. Fire-and-forget to keep logout latency low.
+  if (userId) {
+    const pool = getPool();
+    if (pool) {
+      pool.query("DELETE FROM sync_state_chunks WHERE user_id = $1", [userId]).catch(() => {});
+      pool.query("DELETE FROM sync_state_sessions WHERE user_id = $1", [userId]).catch(() => {});
+    }
+  }
   clearSessionCookie(res, req);
   return res.json({ ok: true });
 });
@@ -415,7 +426,11 @@ router.post("/change-password", requireAuth, async (req, res) => {
   const ip = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || null;
   const ua = req.get("user-agent") || null;
 
-  const result = await changePasswordWithNotification(req.session.userId, oldPassword, newPassword, { ip, ua });
+  const result = await changePasswordWithNotification(req.session.userId, oldPassword, newPassword, {
+    ip,
+    ua,
+    currentSid: req.session?.sid || null,
+  });
   if (result.error) {
     return res.status(result.error === "Current password is wrong" ? 401 : 400).json({ error: result.error });
   }

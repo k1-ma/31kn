@@ -200,6 +200,25 @@ function computeMissingChunks(receivedIndices, totalChunks) {
 }
 
 /**
+ * Atomically claim the right to finalize a session. Returns true if this
+ * caller transitioned the session from 'receiving' → 'finalizing' (i.e. it
+ * holds the right to assemble + apply chunks). Returns false if another
+ * concurrent request already claimed it (so this caller should skip
+ * loadAllChunks/applyOperations to avoid double-apply or empty reads from
+ * a half-cleaned session).
+ */
+async function tryClaimFinalize(pool, sessionId, userId) {
+  const result = await pool.query(
+    `UPDATE sync_state_sessions
+        SET status = 'finalizing', updated_at = now()
+      WHERE session_id = $1 AND user_id = $2 AND status = 'receiving'
+      RETURNING session_id`,
+    [sessionId, userId]
+  );
+  return (result.rowCount || 0) > 0;
+}
+
+/**
  * Load all chunks for a session from DB, ordered by chunk_index.
  */
 async function loadAllChunks(pool, sessionId, userId) {
@@ -376,6 +395,21 @@ router.post("/chunk", requireAuth, idempotency(), async (req, res) => {
     // Idempotency: if duplicate chunk, still check if we can finalize
     // Finalize ONLY when ALL chunks are received
     if (chunksReceived === totalChunks) {
+      // Atomically claim finalize. Concurrent requests for the same session
+      // (e.g. client double-fires the last chunk) lose the race here and
+      // return a benign "already finalizing" response instead of double-
+      // applying operations or reading from a half-cleaned session.
+      const claimed = await tryClaimFinalize(pool, opSessionId, userId);
+      if (!claimed) {
+        logSyncOp("chunk", userId, { sessionId, status: "already_finalizing" });
+        return res.status(202).json({
+          ok: true,
+          status: "finalizing",
+          sessionId,
+          message: "Another worker is finalizing this session",
+        });
+      }
+
       // All chunks received - assemble and apply operations
       const allChunkRows = await loadAllChunks(pool, opSessionId, userId);
 
@@ -554,6 +588,18 @@ router.post("/state-chunk", requireAuth, idempotency(), async (req, res) => {
 
     // Finalize ONLY when ALL chunks are received
     if (chunksReceived === totalChunks) {
+      // Atomically claim finalize. See tryClaimFinalize doc for rationale.
+      const claimed = await tryClaimFinalize(pool, stateSessionId, userId);
+      if (!claimed) {
+        logSyncOp("state-chunk", userId, { sessionId, status: "already_finalizing" });
+        return res.status(202).json({
+          ok: true,
+          status: "finalizing",
+          sessionId,
+          message: "Another worker is finalizing this session",
+        });
+      }
+
       // All chunks received - assemble state from DB
       const allChunkRows = await loadAllChunks(pool, stateSessionId, userId);
 

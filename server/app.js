@@ -47,22 +47,26 @@ function corsOptions(req, callback) {
   if (!IS_PROD) {
     return callback(null, { origin: true, credentials: true });
   }
-  // In production, check whitelist (if configured)
-  if (CORS_WHITELIST.length > 0) {
-    // Precise domain matching to prevent subdomain spoofing
-    // e.g., whitelist "example.com" should not allow "malicious-example.com"
-    const allowed = CORS_WHITELIST.some((w) => {
-      // Exact match
-      if (origin === w) return true;
-      // Match with https:// prefix
-      if (origin === `https://${w}`) return true;
-      // Match subdomain (whitelist entry must start with '.')
-      if (w.startsWith(".") && origin.endsWith(w)) return true;
-      return false;
-    });
-    if (!allowed) {
-      return callback(new Error(`CORS not allowed for origin: ${origin}`), { origin: false });
-    }
+  // In production a whitelist is REQUIRED. Falling through with no
+  // configured origins used to fail open (any cross-origin request
+  // received credentials), which is the exact misconfiguration CSRF
+  // protections assume isn't there.
+  if (CORS_WHITELIST.length === 0) {
+    return callback(new Error("CORS_WHITELIST is empty in production; refusing cross-origin request"), { origin: false });
+  }
+  // Precise domain matching to prevent subdomain spoofing
+  // e.g., whitelist "example.com" should not allow "malicious-example.com"
+  const allowed = CORS_WHITELIST.some((w) => {
+    // Exact match
+    if (origin === w) return true;
+    // Match with https:// prefix
+    if (origin === `https://${w}`) return true;
+    // Match subdomain (whitelist entry must start with '.')
+    if (w.startsWith(".") && origin.endsWith(w)) return true;
+    return false;
+  });
+  if (!allowed) {
+    return callback(new Error(`CORS not allowed for origin: ${origin}`), { origin: false });
   }
   return callback(null, { origin: true, credentials: true });
 }

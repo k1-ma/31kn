@@ -115,6 +115,23 @@ export function isEmailServiceEnabled() {
 }
 
 /**
+ * HTML-escape user-controlled strings before interpolating them into the
+ * static email templates below. Without this, an attacker who can set their
+ * nickname/username/email can inject markup into security notification
+ * emails that arrive in another user's inbox (e.g. an admin viewing a
+ * "new login" alert).
+ */
+function escHtml(value) {
+  if (value == null) return "";
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/**
  * Get frontend URL for email links
  * @returns {string}
  */
@@ -384,7 +401,7 @@ export async function sendVerificationEmail(to, token, username) {
 
   const html = wrapEmailHtml(`
     <h1 style="color: #f4f4f5; font-size: 22px; font-weight: 700; margin: 0 0 20px 0; text-align: center;">Подтвердите ваш email</h1>
-    <p style="color: #a1a1aa; line-height: 1.7; margin: 0 0 16px 0; font-size: 14px;">Привет${username ? `, <span class="highlight" style="color: #60A5FA; font-weight: 600;">${username}</span>` : ""}! 👋</p>
+    <p style="color: #a1a1aa; line-height: 1.7; margin: 0 0 16px 0; font-size: 14px;">Привет${username ? `, <span class="highlight" style="color: #60A5FA; font-weight: 600;">${escHtml(username)}</span>` : ""}! 👋</p>
     <p style="color: #a1a1aa; line-height: 1.7; margin: 0 0 16px 0; font-size: 14px;">Спасибо за регистрацию в <strong style="color: #e4e4e7;">Haunted TradeJ</strong> — вашем персональном торговом журнале.</p>
     <p style="color: #a1a1aa; line-height: 1.7; margin: 0 0 16px 0; font-size: 14px;">Пожалуйста, подтвердите ваш email адрес, чтобы активировать аккаунт:</p>
     <div class="btn-container" style="text-align: center; margin: 32px 0;">
@@ -432,7 +449,7 @@ export async function sendPasswordResetEmail(to, token, username) {
 
   const html = wrapEmailHtml(`
     <h1 style="color: #f4f4f5; font-size: 22px; font-weight: 700; margin: 0 0 20px 0; text-align: center;">Сброс пароля</h1>
-    <p style="color: #a1a1aa; line-height: 1.7; margin: 0 0 16px 0; font-size: 14px;">Привет${username ? `, <span class="highlight" style="color: #60A5FA; font-weight: 600;">${username}</span>` : ""}!</p>
+    <p style="color: #a1a1aa; line-height: 1.7; margin: 0 0 16px 0; font-size: 14px;">Привет${username ? `, <span class="highlight" style="color: #60A5FA; font-weight: 600;">${escHtml(username)}</span>` : ""}!</p>
     <p style="color: #a1a1aa; line-height: 1.7; margin: 0 0 16px 0; font-size: 14px;">Мы получили запрос на сброс пароля вашего аккаунта в <strong style="color: #e4e4e7;">Haunted TradeJ</strong>.</p>
     <p style="color: #a1a1aa; line-height: 1.7; margin: 0 0 16px 0; font-size: 14px;">Нажмите на кнопку ниже, чтобы установить новый пароль:</p>
     <div class="btn-container" style="text-align: center; margin: 32px 0;">
@@ -485,13 +502,13 @@ export async function sendPasswordChangedEmail(to, username, options = {}) {
 
   const html = wrapEmailHtml(`
     <h1 style="color: #f4f4f5; font-size: 22px; font-weight: 700; margin: 0 0 20px 0; text-align: center;">Пароль ${actionText}</h1>
-    <p style="color: #a1a1aa; line-height: 1.7; margin: 0 0 16px 0; font-size: 14px;">Привет${username ? `, <span class="highlight" style="color: #60A5FA; font-weight: 600;">${username}</span>` : ""}!</p>
+    <p style="color: #a1a1aa; line-height: 1.7; margin: 0 0 16px 0; font-size: 14px;">Привет${username ? `, <span class="highlight" style="color: #60A5FA; font-weight: 600;">${escHtml(username)}</span>` : ""}!</p>
     <p style="color: #a1a1aa; line-height: 1.7; margin: 0 0 16px 0; font-size: 14px;">Ваш пароль в <strong style="color: #e4e4e7;">Haunted TradeJ</strong> был успешно ${actionText}.</p>
     <div class="info" style="background-color: #151a1f; border: 1px solid rgba(59, 130, 246, 0.35); border-left: 4px solid #3B82F6; border-radius: 12px; padding: 16px 20px; color: #93c5fd; font-size: 13px; margin: 20px 0;">
       <strong>📋 Детали операции:</strong><br><br>
       📅 <strong>Время:</strong> ${now} UTC<br>
-      ${ip ? `🌐 <strong>IP адрес:</strong> ${ip}<br>` : ""}
-      ${ua ? `💻 <strong>Устройство:</strong> ${ua.slice(0, 80)}${ua.length > 80 ? "..." : ""}<br>` : ""}
+      ${ip ? `🌐 <strong>IP адрес:</strong> ${escHtml(ip)}<br>` : ""}
+      ${ua ? `💻 <strong>Устройство:</strong> ${escHtml(ua.slice(0, 80))}${ua.length > 80 ? "..." : ""}<br>` : ""}
     </div>
     <div class="warning" style="background-color: #1c1517; border: 1px solid rgba(239, 68, 68, 0.35); border-left: 4px solid #ef4444; border-radius: 12px; padding: 16px 20px; color: #fca5a5; font-size: 13px; margin: 20px 0;">
       ⚠️ <strong>Это были не вы?</strong><br>
@@ -534,7 +551,7 @@ export async function sendEmailChangeConfirmation(to, token, username) {
 
   const html = wrapEmailHtml(`
     <h1 style="color: #f4f4f5; font-size: 22px; font-weight: 700; margin: 0 0 20px 0; text-align: center;">Подтвердите новый email</h1>
-    <p style="color: #a1a1aa; line-height: 1.7; margin: 0 0 16px 0; font-size: 14px;">Привет${username ? `, <span class="highlight" style="color: #60A5FA; font-weight: 600;">${username}</span>` : ""}!</p>
+    <p style="color: #a1a1aa; line-height: 1.7; margin: 0 0 16px 0; font-size: 14px;">Привет${username ? `, <span class="highlight" style="color: #60A5FA; font-weight: 600;">${escHtml(username)}</span>` : ""}!</p>
     <p style="color: #a1a1aa; line-height: 1.7; margin: 0 0 16px 0; font-size: 14px;">Вы запросили смену email адреса в <strong style="color: #e4e4e7;">Haunted TradeJ</strong>.</p>
     <p style="color: #a1a1aa; line-height: 1.7; margin: 0 0 16px 0; font-size: 14px;">Новый адрес: <span class="highlight" style="color: #60A5FA; font-weight: 600;">${to}</span></p>
     <p style="color: #a1a1aa; line-height: 1.7; margin: 0 0 16px 0; font-size: 14px;">Подтвердите этот адрес, нажав на кнопку ниже:</p>
@@ -588,7 +605,7 @@ export async function sendEmailChangeNotification(to, newEmail, username) {
 
   const html = wrapEmailHtml(`
     <h1 style="color: #f4f4f5; font-size: 22px; font-weight: 700; margin: 0 0 20px 0; text-align: center;">Запрос на смену email</h1>
-    <p style="color: #a1a1aa; line-height: 1.7; margin: 0 0 16px 0; font-size: 14px;">Привет${username ? `, <span class="highlight" style="color: #60A5FA; font-weight: 600;">${username}</span>` : ""}!</p>
+    <p style="color: #a1a1aa; line-height: 1.7; margin: 0 0 16px 0; font-size: 14px;">Привет${username ? `, <span class="highlight" style="color: #60A5FA; font-weight: 600;">${escHtml(username)}</span>` : ""}!</p>
     <p style="color: #a1a1aa; line-height: 1.7; margin: 0 0 16px 0; font-size: 14px;">Был получен запрос на смену email адреса вашего аккаунта в <strong style="color: #e4e4e7;">Haunted TradeJ</strong>.</p>
     <div class="info" style="background-color: #151a1f; border: 1px solid rgba(59, 130, 246, 0.35); border-left: 4px solid #3B82F6; border-radius: 12px; padding: 16px 20px; color: #93c5fd; font-size: 13px; margin: 20px 0;">
       <strong>📋 Детали запроса:</strong><br><br>
@@ -637,11 +654,11 @@ export async function sendEmailChangedNotification(to, newEmail, username) {
 
   const html = wrapEmailHtml(`
     <h1 style="color: #f4f4f5; font-size: 22px; font-weight: 700; margin: 0 0 20px 0; text-align: center;">Email адрес изменён</h1>
-    <p style="color: #a1a1aa; line-height: 1.7; margin: 0 0 16px 0; font-size: 14px;">Привет${username ? `, <span class="highlight" style="color: #60A5FA; font-weight: 600;">${username}</span>` : ""}!</p>
+    <p style="color: #a1a1aa; line-height: 1.7; margin: 0 0 16px 0; font-size: 14px;">Привет${username ? `, <span class="highlight" style="color: #60A5FA; font-weight: 600;">${escHtml(username)}</span>` : ""}!</p>
     <p style="color: #a1a1aa; line-height: 1.7; margin: 0 0 16px 0; font-size: 14px;">Email адрес вашего аккаунта в <strong style="color: #e4e4e7;">Haunted TradeJ</strong> был успешно изменён.</p>
     <div class="info" style="background-color: #151a1f; border: 1px solid rgba(59, 130, 246, 0.35); border-left: 4px solid #3B82F6; border-radius: 12px; padding: 16px 20px; color: #93c5fd; font-size: 13px; margin: 20px 0;">
       📅 <strong>Время изменения:</strong> ${now} UTC<br>
-      📧 <strong>Новый адрес:</strong> ${newEmail}
+      📧 <strong>Новый адрес:</strong> ${escHtml(newEmail)}
     </div>
     <div class="warning" style="background-color: #1c1517; border: 1px solid rgba(239, 68, 68, 0.35); border-left: 4px solid #ef4444; border-radius: 12px; padding: 16px 20px; color: #fca5a5; font-size: 13px; margin: 20px 0;">
       ⚠️ <strong>Это были не вы?</strong><br>

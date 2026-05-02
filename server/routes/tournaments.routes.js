@@ -18,18 +18,18 @@ publicRouter.use(publicReadRateLimit);
 
 /**
  * Constant-time string comparison to mitigate timing attacks on vote_password.
- * Pads/aligns lengths so that mismatched-length comparisons still take constant time.
+ *
+ * Hashing both inputs through SHA-256 before timingSafeEqual eliminates the
+ * length-based side channel: regardless of the original lengths, the
+ * compared buffers are always 32 bytes. The previous implementation took an
+ * obvious early-exit on length mismatch (and the dummy compare ran on a
+ * different-sized buffer), which leaks the password length over the network.
  */
 function safeEqualString(a, b) {
   if (typeof a !== "string" || typeof b !== "string") return false;
-  const ab = Buffer.from(a, "utf8");
-  const bb = Buffer.from(b, "utf8");
-  if (ab.length !== bb.length) {
-    // Run a dummy compare for constant time
-    crypto.timingSafeEqual(ab, ab);
-    return false;
-  }
-  return crypto.timingSafeEqual(ab, bb);
+  const ah = crypto.createHash("sha256").update(a, "utf8").digest();
+  const bh = crypto.createHash("sha256").update(b, "utf8").digest();
+  return crypto.timingSafeEqual(ah, bh);
 }
 
 // --------------- Admin Routes ---------------
