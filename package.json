@@ -15,7 +15,8 @@
     "start": "node server/index.js",
     "migrate": "node server/scripts/migrate.js",
     "seed:updates": "node server/scripts/seedUpdates.js",
-    "reset:display-name-cooldown": "node server/scripts/resetDisplayNameCooldown.js"
+    "reset:display-name-cooldown": "node server/scripts/resetDisplayNameCooldown.js",
+    "backfill:images-v2": "node server/scripts/backfillImagesV2.js"
   },
   "dependencies": {
     "@fontsource/orbitron": "^5.2.8",

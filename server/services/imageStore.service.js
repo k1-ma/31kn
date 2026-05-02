@@ -176,8 +176,8 @@ function remapRefs(node, idRewrite) {
  * On `ok: false` the caller leaves state_json_v2 alone and the next read
  * stays on the canonical path.
  */
-export async function writeStateV2({ pool, userId, canonicalState, statementTimeout }) {
-  if (!IMAGE_DUAL_WRITE_ENABLED) {
+export async function writeStateV2({ pool, userId, canonicalState, statementTimeout, forceEnabled = false }) {
+  if (!IMAGE_DUAL_WRITE_ENABLED && !forceEnabled) {
     return { ok: false, reason: "disabled", stats: null };
   }
   if (canonicalState == null || typeof canonicalState !== "object") {
