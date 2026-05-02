@@ -696,6 +696,23 @@ a, button, [role="button"], input, select, textarea, label {
   }
 }
 
+/* Indeterminate progress bar — slides a short pill across the track */
+@keyframes syncIndeterminate {
+  0%   { transform: translateX(-110%); }
+  100% { transform: translateX(310%); }
+}
+.sync-indeterminate {
+  animation: syncIndeterminate 1.4s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sync-indeterminate {
+    animation: none;
+    width: 100%;
+    opacity: 0.6;
+  }
+}
+
 /* Rich content styling - shared styles for ProseMirror editor and document preview */
 .ProseMirror,
 .document-preview {

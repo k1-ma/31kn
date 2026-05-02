@@ -1,130 +1,132 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 
 /**
- * Default threshold in milliseconds before showing sync warning
+ * Default threshold in milliseconds before showing sync indicator.
+ * Short — we want to inform the user as soon as a sync is in progress
+ * (not pretend it's "longer than usual"), but skip flicker on instant saves.
  */
-export const DEFAULT_SYNC_WARNING_THRESHOLD_MS = 10000;
+export const DEFAULT_SYNC_WARNING_THRESHOLD_MS = 1500;
 
 /**
- * Hook for managing delayed sync warning display based on sync status.
- * 
- * The warning is shown ONLY if a save operation takes longer than thresholdMs.
- * Tracks sync status changes to determine when saves start/end:
- * - "saving" status indicates a save is in progress
- * - "synced", "error", "offline", "unauthorized" indicate save completed
- * - "pending" means changes exist but no active save (local only)
- * 
- * Handles concurrent/parallel saves properly:
- * - Timer starts when entering "saving" state
- * - Warning is shown only after thresholdMs if still saving
- * - Warning is hidden when save completes (any terminal state)
- * - No flickering during rapid saves
- * 
+ * Hook that exposes a friendly "sync in progress" indicator.
+ *
+ * Behaviour:
+ * - When sync enters the "saving" state, start a small grace timer (thresholdMs)
+ *   to avoid flicker on near-instant saves.
+ * - After the grace period, expose `shouldShowWarning = true` and start
+ *   ticking `elapsedMs` once per second so the UI can show how long the
+ *   sync has been running.
+ * - When sync reaches a terminal state ("synced", "error", "offline",
+ *   "unauthorized"), reset everything.
+ *
  * @param {Object} options
  * @param {string} options.syncStatus - Current sync status from useSyncedDb
- * @param {number} [options.thresholdMs=5000] - Time in ms before showing warning
- * @returns {Object} { shouldShowWarning, resetWarning }
+ * @param {number} [options.thresholdMs=1500] - Grace period before showing
+ * @returns {{ shouldShowWarning: boolean, elapsedMs: number, resetWarning: () => void }}
  */
 export function useSyncWarning(options = {}) {
-  const { 
-    syncStatus, 
-    thresholdMs = DEFAULT_SYNC_WARNING_THRESHOLD_MS 
+  const {
+    syncStatus,
+    thresholdMs = DEFAULT_SYNC_WARNING_THRESHOLD_MS,
   } = options;
-  
-  // Timer for delayed warning
+
   const warningTimerRef = useRef(null);
-  // Whether the warning should be shown
-  const [shouldShowWarning, setShouldShowWarning] = useState(false);
-  // Track if we are currently in a "saving" state
+  const tickTimerRef = useRef(null);
+  const startedAtRef = useRef(null);
   const isSavingRef = useRef(false);
-  // Mounted flag for cleanup safety
   const mountedRef = useRef(true);
 
-  /**
-   * Clear the warning timer
-   */
-  const clearWarningTimer = useCallback(() => {
+  const [shouldShowWarning, setShouldShowWarning] = useState(false);
+  const [elapsedMs, setElapsedMs] = useState(0);
+
+  const clearTimers = useCallback(() => {
     if (warningTimerRef.current) {
       clearTimeout(warningTimerRef.current);
       warningTimerRef.current = null;
     }
+    if (tickTimerRef.current) {
+      clearInterval(tickTimerRef.current);
+      tickTimerRef.current = null;
+    }
   }, []);
 
-  /**
-   * Determine if the current status indicates active saving
-   */
-  const isActivelySaving = (status) => {
-    return status === "saving";
-  };
+  const startTicking = useCallback(() => {
+    if (tickTimerRef.current) return;
+    tickTimerRef.current = setInterval(() => {
+      if (!mountedRef.current || !startedAtRef.current) return;
+      setElapsedMs(Date.now() - startedAtRef.current);
+    }, 500);
+  }, []);
 
-  /**
-   * Determine if the current status indicates save completed (success or failure)
-   */
-  const isSaveComplete = (status) => {
-    return ["synced", "error", "offline", "unauthorized"].includes(status);
-  };
+  const isActivelySaving = (status) => status === "saving";
+  const isSaveComplete = (status) =>
+    ["synced", "error", "offline", "unauthorized"].includes(status);
 
-  // Track sync status changes
   useEffect(() => {
     const wasSaving = isSavingRef.current;
     const nowSaving = isActivelySaving(syncStatus);
 
-    // Transition: not saving -> saving (start of save)
     if (!wasSaving && nowSaving) {
       isSavingRef.current = true;
-      clearWarningTimer();
-      
-      // Start timer - show warning only if save takes longer than threshold
+      startedAtRef.current = Date.now();
+      clearTimers();
+
       warningTimerRef.current = setTimeout(() => {
-        if (mountedRef.current && isSavingRef.current) {
-          setShouldShowWarning(true);
+        if (!mountedRef.current || !isSavingRef.current) return;
+        setShouldShowWarning(true);
+        if (startedAtRef.current) {
+          setElapsedMs(Date.now() - startedAtRef.current);
         }
+        startTicking();
       }, thresholdMs);
     }
-    
-    // Transition: saving -> any terminal state (end of save)
-    // Terminal states: synced, error, offline, unauthorized
+
     if (wasSaving && isSaveComplete(syncStatus)) {
       isSavingRef.current = false;
-      clearWarningTimer();
-      
+      startedAtRef.current = null;
+      clearTimers();
       if (mountedRef.current) {
         setShouldShowWarning(false);
+        setElapsedMs(0);
       }
     }
-  }, [syncStatus, thresholdMs, clearWarningTimer]);
+  }, [syncStatus, thresholdMs, clearTimers, startTicking]);
 
   /**
-   * Manually reset the warning state (e.g., after user clicks "retry sync").
-   * Clears the warning but keeps tracking state.
-   * Warning will reappear after thresholdMs if still saving.
+   * Reset the indicator (e.g. user clicked "retry").
+   * If a save is still in progress, restart the grace timer so the
+   * indicator briefly disappears and then reappears.
    */
   const resetWarning = useCallback(() => {
-    clearWarningTimer();
+    clearTimers();
     if (mountedRef.current) {
       setShouldShowWarning(false);
+      setElapsedMs(0);
     }
-    // If still saving, restart the timer
     if (isSavingRef.current) {
+      startedAtRef.current = Date.now();
       warningTimerRef.current = setTimeout(() => {
-        if (mountedRef.current && isSavingRef.current) {
-          setShouldShowWarning(true);
+        if (!mountedRef.current || !isSavingRef.current) return;
+        setShouldShowWarning(true);
+        if (startedAtRef.current) {
+          setElapsedMs(Date.now() - startedAtRef.current);
         }
+        startTicking();
       }, thresholdMs);
     }
-  }, [thresholdMs, clearWarningTimer]);
+  }, [thresholdMs, clearTimers, startTicking]);
 
-  // Cleanup on unmount
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      clearWarningTimer();
+      clearTimers();
     };
-  }, [clearWarningTimer]);
+  }, [clearTimers]);
 
   return {
     shouldShowWarning,
+    elapsedMs,
     resetWarning,
   };
 }
