@@ -95,7 +95,7 @@ export default function JournalApp() {
     shouldShowWarning: showDelayedSyncWarning,
     elapsedMs: syncElapsedMs,
     resetWarning: resetSyncWarning,
-  } = useSyncWarning({ syncStatus });
+  } = useSyncWarning({ syncStatus, onStall: retrySync });
   
   const [active, setActive] = useState("dashboard");
   const [cmdOpen, setCmdOpen] = useState(false);
