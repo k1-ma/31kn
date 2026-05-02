@@ -38,6 +38,15 @@ export function monoNow() {
 // across local/server arrays when the id types diverge.
 const idKey = (id) => (id == null ? "" : String(id));
 
+// True when the page is in a hidden tab. Browsers (Chrome/Edge in particular)
+// throttle timers and may pause/abort background fetches in hidden tabs,
+// which produces spurious AbortError/NETWORK_ERROR results from /api/ping
+// and /api/state that are not actually connectivity problems. We use this
+// to skip periodic pings and debounced syncs while hidden — the sync layer
+// catches up immediately when the tab becomes visible again.
+const isTabHidden = () =>
+  typeof document !== "undefined" && document.visibilityState === "hidden";
+
 // ─────────────────────────────────────────────────────────────────────────────
 // SERVER REACHABILITY HEARTBEAT
 // Periodic ping to actual server endpoint to detect VPN/DPI blocking
@@ -2264,8 +2273,30 @@ export function useSyncedDb(userId, seed, options = {}) {
     // If unauthorized, keep that status but still save locally (done above)
 
     saveTimer.current = setTimeout(async () => {
+      // Defer the server sync if the tab went hidden while the debounce
+      // was pending. A fetch fired now would race with browser background
+      // throttling and frequently fail with NETWORK_ERROR/TIMEOUT, which
+      // would in turn flip the badge to red and surface the "Нет
+      // подключения" banner even though the connection is fine.
+      // The state is already in localStorage (above); the visibility
+      // handler will pick it up via the heartbeat outbox flush as soon
+      // as the tab is in the foreground again.
+      if (isTabHidden()) {
+        if (syncStatusRef.current === "saving") setSyncStatus("pending");
+        // Persist to outbox so the heartbeat / online listener can pick
+        // it up the moment the tab is visible again.
+        saveToOutbox(
+          userId,
+          db,
+          { code: "DEFERRED_HIDDEN", message: "Sync deferred: tab hidden" },
+          newIdempotencyKey()
+        );
+        setHasUnsavedChanges(true);
+        return;
+      }
+
       const result = await syncToServer(db);
-      
+
       if (result.success) {
         setSyncStatus("synced");
         changeCount.current = 0;
@@ -2529,6 +2560,14 @@ export function useSyncedDb(userId, seed, options = {}) {
     let lastReachable = true;
     
     const checkServerReachability = async () => {
+      // Skip while the tab is hidden — background-tab throttling can cause
+      // pingServer's AbortController timer to fire before the throttled
+      // fetch resolves, producing spurious "timeout"/"network" results
+      // that wrongly mark the server as unreachable. The next heartbeat
+      // tick (and the visibilitychange handler below) will catch up as
+      // soon as the tab is in the foreground again.
+      if (isTabHidden()) return;
+
       // Fast pre-check: if definitely offline (browser API), skip ping
       if (!navigator.onLine) {
         if (lastReachable) {
@@ -2540,20 +2579,20 @@ export function useSyncedDb(userId, seed, options = {}) {
         }
         return;
       }
-      
+
       // Ping the actual server
       const ping = await pingServer();
       const reachable = ping.ok;
-      
+
       if (reachable !== lastReachable) {
         setIsServerReachable(reachable);
         lastReachable = reachable;
-        
+
         if (IS_DEV) {
           console.log("[syncDb] Heartbeat: server reachability changed:", reachable);
         }
       }
-      
+
       // Flush outbox whenever server is reachable and outbox exists.
       // Previously this only ran on unreachable→reachable transitions,
       // which missed cases where syncToServer's inline ping failed
@@ -2571,14 +2610,46 @@ export function useSyncedDb(userId, seed, options = {}) {
         });
       }
     };
-    
+
+    // When the tab becomes visible again, immediately re-check reachability
+    // and clear any transient network errors that accumulated while the tab
+    // was throttled in the background. Without this the user can return to
+    // a stale red "NETWORK_ERROR" banner that only clears on the next
+    // successful sync — the actual connection is fine, the failures were
+    // just artifacts of background-tab throttling.
+    const handleHeartbeatVisibility = () => {
+      if (isTabHidden()) return;
+      // Reset the soft failure counter so a couple of throttled-background
+      // failures don't immediately escalate to "error" once we're back.
+      consecutiveFailures.current = 0;
+      setLastError(prev => {
+        if (!prev) return prev;
+        if (prev.code === "NETWORK_ERROR" || prev.code === "TIMEOUT" || prev.code === "PING_FAILED") {
+          return null;
+        }
+        return prev;
+      });
+      // Demote a stale "error" status to "pending" if there are unsynced
+      // changes, otherwise back to "synced". The reachability check below
+      // will refine this once the ping returns.
+      if (syncStatusRef.current === "error") {
+        setSyncStatus(hasOutbox(userId) ? "pending" : "synced");
+      }
+      // Force a fresh ping so the badge updates without waiting up to 30s.
+      lastReachable = false; // ensure the result is treated as a transition
+      checkServerReachability();
+    };
+
+    document.addEventListener("visibilitychange", handleHeartbeatVisibility);
+
     // Initial check
     checkServerReachability();
-    
+
     // Periodic heartbeat
     heartbeatTimer.current = setInterval(checkServerReachability, HEARTBEAT_INTERVAL_MS);
-    
+
     return () => {
+      document.removeEventListener("visibilitychange", handleHeartbeatVisibility);
       if (heartbeatTimer.current) clearInterval(heartbeatTimer.current);
     };
   }, [userId, retryOutbox]);
@@ -2615,7 +2686,12 @@ export function useSyncedDb(userId, seed, options = {}) {
       const delay = Math.max(OUTBOX_BASE_DELAY, Math.round(base + jitter));
 
       outboxRetryTimer.current = setTimeout(async () => {
-        if (navigator.onLine && hasOutbox(userId) && syncStatusRef.current !== "unauthorized") {
+        // Skip the retry while the tab is hidden — background fetches are
+        // throttled and tend to fail spuriously, which both inflates the
+        // backoff exponent and accumulates consecutiveFailures. The
+        // heartbeat's visibilitychange handler triggers a fresh attempt
+        // the moment the tab is visible again, so deferring here is safe.
+        if (!isTabHidden() && navigator.onLine && hasOutbox(userId) && syncStatusRef.current !== "unauthorized") {
           const success = await retryOutbox();
           if (success) {
             setSyncStatus("synced");
