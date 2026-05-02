@@ -176,7 +176,7 @@ function Navbar() {
           {/* Logo */}
           <a href="#" onClick={(e) => { e.preventDefault(); window.scrollTo({ top: 0, behavior: "smooth" }); }}
             className="flex items-center gap-2">
-            <img src={hauntedLogo} alt="Haunted" className="h-8 w-8" />
+            <img src={hauntedLogo} alt="Haunted" width={32} height={32} className="h-8 w-8" />
             <span className={`text-sm font-display font-bold tracking-[0.2em] uppercase ${gradientText}`}>HAUNTED</span>
           </a>
 
@@ -292,7 +292,7 @@ function Hero() {
         <motion.div initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
           transition={{ duration: 0.7, ease: "easeOut" }} className="relative mb-2">
           <div className="absolute -inset-6 bg-[#3B82F6]/20 blur-[60px] rounded-full" />
-          <img src={hauntedLogo} alt="Haunted" className="relative h-20 w-20 drop-shadow-[0_0_30px_rgba(59,130,246,0.3)]" />
+          <img src={hauntedLogo} alt="Haunted" width={80} height={80} className="relative h-20 w-20 drop-shadow-[0_0_30px_rgba(59,130,246,0.3)]" />
         </motion.div>
 
         {/* Title — white + blue gradient keywords */}
@@ -893,7 +893,7 @@ function Footer() {
           {/* Left: Logo + brand */}
           <div className="flex flex-col items-center md:items-start gap-2.5">
             <div className="flex items-center gap-2.5">
-              <img src={hauntedLogo} alt="Haunted" className="h-7 w-7" />
+              <img src={hauntedLogo} alt="Haunted" width={28} height={28} className="h-7 w-7" />
               <span className={`text-sm font-display font-bold tracking-[0.2em] uppercase ${gradientText}`}>HAUNTED</span>
             </div>
             <span className="text-[11px] text-[#9FB3D9]/40 tracking-wide">{t("landing.footer.powered")}</span>

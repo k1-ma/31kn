@@ -1,4 +1,4 @@
-import React from "react";
+import React, { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/auth/AuthProvider.jsx";
 import I18nProvider, { useI18n } from "@/i18n/I18nProvider.jsx";
@@ -18,24 +18,28 @@ import ForgotPassword from "@/pages/ForgotPassword.jsx";
 import ResetPassword from "@/pages/ResetPassword.jsx";
 import ConfirmEmailChange from "@/pages/ConfirmEmailChange.jsx";
 import AdminLogin from "@/pages/AdminLogin.jsx";
-import AdminUsers from "@/pages/admin/AdminUsers.jsx";
-import AdminLogs from "@/pages/admin/AdminLogs.jsx";
-import AdminDashboard from "@/pages/admin/AdminDashboard.jsx";
-import AdminBans from "@/pages/admin/AdminBans.jsx";
-import AdminUsage from "@/pages/admin/AdminUsage.jsx";
-import AdminSettings from "@/pages/admin/AdminSettings.jsx";
-import AdminUpdates from "@/pages/admin/AdminUpdates.jsx";
-import AdminFeedback from "@/pages/admin/AdminFeedback.jsx";
-import AdminEducation from "@/pages/admin/AdminEducation.jsx";
-import AdminTournaments from "@/pages/admin/AdminTournaments.jsx";
-import AdminTournamentDetail from "@/pages/admin/AdminTournamentDetail.jsx";
-import PublicShare from "@/pages/PublicShare.jsx";
-import PublicDocShare from "@/pages/PublicDocShare.jsx";
-import PublicIdeaShare from "@/pages/PublicIdeaShare.jsx";
-import PublicBacktestShare from "@/pages/PublicBacktestShare.jsx";
-import PublicTournament from "@/pages/PublicTournament.jsx";
-import PublicTournamentVote from "@/pages/PublicTournamentVote.jsx";
-import PublicTournamentLeaderboard from "@/pages/PublicTournamentLeaderboard.jsx";
+// Admin pages — lazy-loaded so the ~200KB admin bundle doesn't ship to
+// regular users on initial load.
+const AdminUsers = lazy(() => import("@/pages/admin/AdminUsers.jsx"));
+const AdminLogs = lazy(() => import("@/pages/admin/AdminLogs.jsx"));
+const AdminDashboard = lazy(() => import("@/pages/admin/AdminDashboard.jsx"));
+const AdminBans = lazy(() => import("@/pages/admin/AdminBans.jsx"));
+const AdminUsage = lazy(() => import("@/pages/admin/AdminUsage.jsx"));
+const AdminSettings = lazy(() => import("@/pages/admin/AdminSettings.jsx"));
+const AdminUpdates = lazy(() => import("@/pages/admin/AdminUpdates.jsx"));
+const AdminFeedback = lazy(() => import("@/pages/admin/AdminFeedback.jsx"));
+const AdminEducation = lazy(() => import("@/pages/admin/AdminEducation.jsx"));
+const AdminTournaments = lazy(() => import("@/pages/admin/AdminTournaments.jsx"));
+const AdminTournamentDetail = lazy(() => import("@/pages/admin/AdminTournamentDetail.jsx"));
+// Public share pages — also lazy. Authenticated users almost never see these,
+// and unauthenticated viewers only need one of them per visit.
+const PublicShare = lazy(() => import("@/pages/PublicShare.jsx"));
+const PublicDocShare = lazy(() => import("@/pages/PublicDocShare.jsx"));
+const PublicIdeaShare = lazy(() => import("@/pages/PublicIdeaShare.jsx"));
+const PublicBacktestShare = lazy(() => import("@/pages/PublicBacktestShare.jsx"));
+const PublicTournament = lazy(() => import("@/pages/PublicTournament.jsx"));
+const PublicTournamentVote = lazy(() => import("@/pages/PublicTournamentVote.jsx"));
+const PublicTournamentLeaderboard = lazy(() => import("@/pages/PublicTournamentLeaderboard.jsx"));
 
 function FullscreenLoading() {
   const { t } = useI18n();
@@ -86,53 +90,55 @@ export default function App() {
         <ScrollToTop />
         <ReloadPrompt />
         <InstallPrompt />
-        <Routes>
-          <Route path="/" element={<Landing />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/verify-email" element={<VerifyEmail />} />
-          <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/reset-password" element={<ResetPassword />} />
-          <Route path="/confirm-email-change" element={<ConfirmEmailChange />} />
+        <Suspense fallback={<FullscreenLoading />}>
+          <Routes>
+            <Route path="/" element={<Landing />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/verify-email" element={<VerifyEmail />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/confirm-email-change" element={<ConfirmEmailChange />} />
 
-          <Route path="/admincrm-panel" element={<AdminLogin />} />
-          <Route element={<RequireAdmin />}>
-            <Route path="/admincrm-panel/dashboard" element={<AdminDashboard />} />
-            <Route path="/admincrm-panel/users" element={<AdminUsers />} />
-            <Route path="/admincrm-panel/bans" element={<AdminBans />} />
-            <Route path="/admincrm-panel/usage" element={<AdminUsage />} />
-            <Route path="/admincrm-panel/logs" element={<AdminLogs />} />
-            <Route path="/admincrm-panel/updates" element={<AdminUpdates />} />
-            <Route path="/admincrm-panel/feedback" element={<AdminFeedback />} />
-            <Route path="/admincrm-panel/education" element={<AdminEducation />} />
-            <Route path="/admincrm-panel/tournaments" element={<AdminTournaments />} />
-            <Route path="/admincrm-panel/tournaments/:id" element={<AdminTournamentDetail />} />
-            <Route path="/admincrm-panel/settings" element={<AdminSettings />} />
-          </Route>
+            <Route path="/admincrm-panel" element={<AdminLogin />} />
+            <Route element={<RequireAdmin />}>
+              <Route path="/admincrm-panel/dashboard" element={<AdminDashboard />} />
+              <Route path="/admincrm-panel/users" element={<AdminUsers />} />
+              <Route path="/admincrm-panel/bans" element={<AdminBans />} />
+              <Route path="/admincrm-panel/usage" element={<AdminUsage />} />
+              <Route path="/admincrm-panel/logs" element={<AdminLogs />} />
+              <Route path="/admincrm-panel/updates" element={<AdminUpdates />} />
+              <Route path="/admincrm-panel/feedback" element={<AdminFeedback />} />
+              <Route path="/admincrm-panel/education" element={<AdminEducation />} />
+              <Route path="/admincrm-panel/tournaments" element={<AdminTournaments />} />
+              <Route path="/admincrm-panel/tournaments/:id" element={<AdminTournamentDetail />} />
+              <Route path="/admincrm-panel/settings" element={<AdminSettings />} />
+            </Route>
 
-          {/* Public share route - accessible without authentication */}
-          <Route path="/share/:shareId" element={<PublicShare />} />
-          <Route path="/share-doc/:shareId" element={<PublicDocShare />} />
-          <Route path="/share-idea/:shareId" element={<PublicIdeaShare />} />
-          <Route path="/share-backtest/:shareId" element={<PublicBacktestShare />} />
-          <Route path="/tournament/:slug" element={<PublicTournament />} />
-          <Route path="/tournament/:slug/leaderboard" element={<PublicTournamentLeaderboard />} />
-          <Route path="/tournament/:slug/vote" element={<PublicTournamentVote />} />
-          <Route path="/tournament/:slug/vote/:dayToken" element={<PublicTournamentVote />} />
+            {/* Public share route - accessible without authentication */}
+            <Route path="/share/:shareId" element={<PublicShare />} />
+            <Route path="/share-doc/:shareId" element={<PublicDocShare />} />
+            <Route path="/share-idea/:shareId" element={<PublicIdeaShare />} />
+            <Route path="/share-backtest/:shareId" element={<PublicBacktestShare />} />
+            <Route path="/tournament/:slug" element={<PublicTournament />} />
+            <Route path="/tournament/:slug/leaderboard" element={<PublicTournamentLeaderboard />} />
+            <Route path="/tournament/:slug/vote" element={<PublicTournamentVote />} />
+            <Route path="/tournament/:slug/vote/:dayToken" element={<PublicTournamentVote />} />
 
-          <Route element={<RequireAuth />}>
-            <Route
-              path="/app/*"
-              element={
-                <ErrorBoundary>
-                  <JournalApp />
-                </ErrorBoundary>
-              }
-            />
-          </Route>
+            <Route element={<RequireAuth />}>
+              <Route
+                path="/app/*"
+                element={
+                  <ErrorBoundary>
+                    <JournalApp />
+                  </ErrorBoundary>
+                }
+              />
+            </Route>
 
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
       </BrowserRouter>
       </I18nProvider>
       </AnimationsProvider>
