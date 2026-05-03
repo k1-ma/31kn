@@ -576,6 +576,15 @@ export async function performChunkedSync(operations, { onProgress, maxRestarts =
       } catch (err) {
         lastError = err;
 
+        // Auth errors (401/403) are not transient — the server has rejected
+        // the session cookie. Retrying replays the same multi-MB body against
+        // the same invalid session, producing a flood of 401s and chewing up
+        // bandwidth on slow connections. Surface immediately so the caller
+        // can route the user to re-auth.
+        if (err.status === 401 || err.status === 403) {
+          throw err;
+        }
+
         // Session errors (409) should not be retried at chunk level
         // These require full session restart
         if (err.status === 409) {
@@ -904,6 +913,11 @@ export async function sendFullStateChunked(state, { onProgress, maxRestarts = 2,
         expected_version,
       });
     } catch (firstErr) {
+      // Bail immediately on auth failures — retrying replays the same
+      // multi-MB body against an invalid session and floods the server
+      // with 401s. The caller surfaces this to the re-auth flow.
+      if (firstErr.status === 401 || firstErr.status === 403) throw firstErr;
+
       if (firstErr.status === 409) throw firstErr;
 
       if (firstErr.status === 413) {
@@ -937,6 +951,12 @@ export async function sendFullStateChunked(state, { onProgress, maxRestarts = 2,
 
         return result;
       } catch (err) {
+        // Auth errors (401/403) are not transient — see comment in the
+        // first attempt above. Surface immediately.
+        if (err.status === 401 || err.status === 403) {
+          throw err;
+        }
+
         // Session errors (409) should not be retried at chunk level —
         // these require a full session restart handled by the outer loop
         if (err.status === 409) {
