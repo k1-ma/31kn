@@ -25,7 +25,7 @@ import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { createPublicShare, createShareWithToast, sanitizeDocForPublic, getDocShareUrl } from "@/lib/share.js";
 import { marked } from "marked";
 import { sanitizeRichText } from "@/lib/sanitize.js";
-import { isDeleted } from "@/lib/syncDb.js";
+import { isDeleted, monoNow } from "@/lib/syncDb.js";
 
 // Document type configuration
 const DOC_TYPES = {
