@@ -28,6 +28,40 @@ async function loadFonts() {
   }
 }
 
+// Best-effort per-IP rate limit (in-memory, per warm container).
+// Caches across cold starts via globalThis. Not bulletproof in serverless,
+// but combined with CDN s-maxage caching it greatly reduces DB load from bots.
+const OG_RATE_LIMIT_PER_MIN = parseInt(process.env.OG_RATE_LIMIT_PER_MIN || "60", 10);
+function checkOgRateLimit(ip) {
+  if (!ip) return true;
+  const buckets = (globalThis.__og_rate_buckets ||= new Map());
+  const now = Date.now();
+  const windowStart = now - 60_000;
+  let bucket = buckets.get(ip);
+  if (!bucket) {
+    bucket = [];
+    buckets.set(ip, bucket);
+  }
+  // Drop expired entries
+  while (bucket.length && bucket[0] < windowStart) bucket.shift();
+  if (bucket.length >= OG_RATE_LIMIT_PER_MIN) return false;
+  bucket.push(now);
+  // Trim cache to keep memory bounded
+  if (buckets.size > 5000) {
+    for (const k of buckets.keys()) {
+      const b = buckets.get(k);
+      if (!b || (b.length && b[b.length - 1] < windowStart)) buckets.delete(k);
+      if (buckets.size <= 2500) break;
+    }
+  }
+  return true;
+}
+function getClientIp(req) {
+  const fwd = req.headers["x-forwarded-for"];
+  if (fwd) return String(fwd).split(",")[0].trim();
+  return req.headers["cf-connecting-ip"] || req.socket?.remoteAddress || "";
+}
+
 // Reuse pool across invocations
 function getPool() {
   if (globalThis.__og_pool) return globalThis.__og_pool;
@@ -1248,6 +1282,12 @@ async function sendImageResponse(res, element, cacheControl, fonts) {
 
 export default async function handler(req, res) {
   try {
+    if (!checkOgRateLimit(getClientIp(req))) {
+      res.setHeader("Retry-After", "60");
+      res.setHeader("Cache-Control", "no-store");
+      return res.status(429).end("Too Many Requests");
+    }
+
     const url = new URL(req.url, `https://${req.headers.host || "localhost"}`);
     const type = url.searchParams.get("type");
     const id = url.searchParams.get("id");

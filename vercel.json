@@ -8,7 +8,8 @@
     {
       "source": "/api/og-image",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=3600, s-maxage=86400" }
+        { "key": "Cache-Control", "value": "public, max-age=3600, s-maxage=86400" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" }
       ]
     },
     {
@@ -17,7 +18,15 @@
         { "key": "Cache-Control", "value": "private, no-store, no-cache, must-revalidate, proxy-revalidate" },
         { "key": "CDN-Cache-Control", "value": "no-store" },
         { "key": "Surrogate-Control", "value": "no-store" },
-        { "key": "Vary", "value": "Cookie, Authorization" }
+        { "key": "Vary", "value": "Cookie, Authorization" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
       ]
     }
   ],

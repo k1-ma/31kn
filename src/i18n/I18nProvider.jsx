@@ -1,7 +1,43 @@
 import React, { createContext, useContext, useMemo } from "react";
 import { TRANSLATIONS } from "./translations";
 
-const I18nCtx = createContext({ lang: "ru", setLang: () => {}, t: (k) => k });
+const I18nCtx = createContext({
+  lang: "ru",
+  setLang: () => {},
+  t: (k) => k,
+  plural: (count) => String(count),
+});
+
+// Map a count to a CLDR plural category for the supported languages.
+// Russian/Ukrainian use the Slavic 1/few/many rules; English (and others)
+// fall back to the binary one/other rule.
+function pluralCategory(lang, count) {
+  const n = Math.abs(Number(count) || 0);
+  if (lang === "ru" || lang === "uk") {
+    const mod10 = n % 10;
+    const mod100 = n % 100;
+    if (mod10 === 1 && mod100 !== 11) return "one";
+    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "few";
+    return "many";
+  }
+  return n === 1 ? "one" : "other";
+}
+
+// plural(count, forms): pick the right form for the active language.
+// `forms` accepts CLDR keys, plus convenience aliases:
+//   - { one, few, many, other }  (Slavic)
+//   - { one, other }             (binary)
+//   - [singular, plural]         (English-style positional fallback)
+function pickPluralForm(lang, count, forms) {
+  if (Array.isArray(forms)) {
+    return forms[Math.abs(count) === 1 ? 0 : 1] ?? forms[forms.length - 1] ?? "";
+  }
+  if (!forms || typeof forms !== "object") return "";
+  const cat = pluralCategory(lang, count);
+  if (forms[cat] != null) return forms[cat];
+  // Fallbacks: many → other → one
+  return forms.other ?? forms.many ?? forms.one ?? "";
+}
 
 function get(obj, path) {
   const parts = String(path || "").split(".").filter(Boolean);
@@ -34,7 +70,28 @@ export default function I18nProvider({ lang, setLang, children }) {
       if (!vars) return val;
       return String(val).replace(/\{(\w+)\}/g, (_, k) => (vars[k] ?? `{${k}}`));
     };
-    return { lang: effectiveLang, setLang, t };
+
+    // tPlural(key, count, vars?) — read a translation entry that is itself
+    // an object of CLDR plural forms ({ one, few, many, other } or
+    // { one, other }) and pick the right form for the active language.
+    // Falls back through dict → fallback dict; passes {count} into vars
+    // automatically so callers don't have to.
+    const tPlural = (key, count, vars = null) => {
+      const entry = get(dict, key) ?? get(fallback, key);
+      const merged = { ...(vars || {}), count };
+      if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+        const form = pickPluralForm(effectiveLang, Number(count) || 0, entry);
+        return String(form).replace(/\{(\w+)\}/g, (_, k) => (merged[k] ?? `{${k}}`));
+      }
+      // Entry is a plain string with {count} placeholder — fall back to t().
+      return t(key, merged);
+    };
+
+    const plural = (count, forms) =>
+      String(pickPluralForm(effectiveLang, Number(count) || 0, forms))
+        .replace(/\{count\}/g, String(count))
+        .replace(/\{n\}/g, String(count));
+    return { lang: effectiveLang, setLang, t, tPlural, plural };
   }, [lang, setLang]);
 
   return <I18nCtx.Provider value={value}>{children}</I18nCtx.Provider>;

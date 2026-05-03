@@ -270,20 +270,53 @@ async function sessionBelongsToOtherUser(pool, sessionId, userId) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// EXPIRED SESSION CLEANUP (best-effort, runs on each request)
+// EXPIRED SESSION CLEANUP (best-effort, runs on each request + periodic timer)
 // ─────────────────────────────────────────────────────────────────────────────
 async function cleanupExpiredSessions(pool) {
   try {
     // Delete chunks for expired sessions first
-    await pool.query(
+    const chunksDel = await pool.query(
       `DELETE FROM sync_state_chunks WHERE (session_id, user_id) IN (
          SELECT session_id, user_id FROM sync_state_sessions WHERE expires_at < now()
        )`
     );
-    await pool.query("DELETE FROM sync_state_sessions WHERE expires_at < now()");
-  } catch {
-    // Best-effort cleanup, don't fail the request
+    const sessionsDel = await pool.query(
+      "DELETE FROM sync_state_sessions WHERE expires_at < now()"
+    );
+    // Defensive: also drop chunks whose parent session row is missing entirely
+    // (can happen if a session row was deleted without its chunks, e.g.
+    // legacy data created before the cleanup logic existed).
+    const orphanDel = await pool.query(
+      `DELETE FROM sync_state_chunks c
+        WHERE NOT EXISTS (
+          SELECT 1 FROM sync_state_sessions s
+           WHERE s.session_id = c.session_id AND s.user_id = c.user_id
+        )`
+    );
+    const total =
+      (chunksDel.rowCount || 0) +
+      (sessionsDel.rowCount || 0) +
+      (orphanDel.rowCount || 0);
+    if (total > 0) {
+      // eslint-disable-next-line no-console
+      console.log(
+        `[sync-cleanup] reclaimed: chunks=${chunksDel.rowCount} sessions=${sessionsDel.rowCount} orphan_chunks=${orphanDel.rowCount}`
+      );
+    }
+  } catch (e) {
+    // Surface so cleanup regressions don't silently rot. Previous behaviour
+    // swallowed everything which is how 91 orphan rows accumulated in prod.
+    // eslint-disable-next-line no-console
+    console.warn("[sync-cleanup] failed:", e?.message || e);
   }
+}
+
+// Exported so the long-lived server can run it on a periodic timer in
+// addition to per-request best-effort cleanup. Serverless invocations rely
+// on the per-request path.
+export async function runOrphanedSyncChunkCleanup(pool) {
+  if (!pool) return;
+  await cleanupExpiredSessions(pool);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -333,8 +366,11 @@ router.post("/chunk", requireAuth, idempotency(), async (req, res) => {
     return res.status(400).json({ error: "Operations must be an array", code: "INVALID_OPERATIONS" });
   }
 
-  // Best-effort cleanup of expired sessions (only on first chunk to reduce DB pool contention)
-  if (chunkIndex === 0) {
+  // Best-effort cleanup of expired sessions. Runs on every chunk 0 and
+  // probabilistically on subsequent chunks (5%) so serverless deployments —
+  // where the in-process setInterval timer cannot fire — still reclaim
+  // orphaned rows. Fire-and-forget; never blocks the response.
+  if (chunkIndex === 0 || Math.random() < 0.05) {
     cleanupExpiredSessions(pool);
   }
 
@@ -534,8 +570,11 @@ router.post("/state-chunk", requireAuth, idempotency(), async (req, res) => {
     return res.status(400).json({ error: "Chunk must be an object", code: "INVALID_CHUNK" });
   }
 
-  // Best-effort cleanup of expired sessions (only on first chunk to reduce DB pool contention)
-  if (chunkIndex === 0) {
+  // Best-effort cleanup of expired sessions. Runs on every chunk 0 and
+  // probabilistically on subsequent chunks (5%) so serverless deployments —
+  // where the in-process setInterval timer cannot fire — still reclaim
+  // orphaned rows. Fire-and-forget; never blocks the response.
+  if (chunkIndex === 0 || Math.random() < 0.05) {
     cleanupExpiredSessions(pool);
   }
 
@@ -768,6 +807,31 @@ router.post("/state-chunk", requireAuth, idempotency(), async (req, res) => {
               error: restoreErr?.message
             });
           }
+        } else {
+          // First-ever sync for this user but the payload contains [IMAGE_STRIPPED]
+          // markers — there is nothing on the server to restore from, so persisting
+          // the assembled state would permanently corrupt those images.
+          // Reject so the client retries with a payload that includes the images
+          // (e.g. via per-image upload to imageStore before the chunked state sync).
+          logSyncOp("state-chunk", userId, {
+            sessionId,
+            warning: "stripped_images_no_current_state",
+            severity: "HIGH",
+          });
+          await pool.query(
+            "DELETE FROM sync_state_chunks WHERE session_id = $1 AND user_id = $2",
+            [sessionId, userId]
+          );
+          await pool.query(
+            "DELETE FROM sync_state_sessions WHERE session_id = $1 AND user_id = $2",
+            [sessionId, userId]
+          );
+          return res.status(422).json({
+            error: "stripped_images_without_baseline",
+            code: "STRIPPED_IMAGES_NO_BASELINE",
+            message:
+              "Initial sync contains stripped image markers but no server state exists to restore from. Upload images individually before retrying chunked state sync.",
+          });
         }
       }
 

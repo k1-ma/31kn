@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useState, useRef, lazy, Suspense } from "react";
 import Shell from "@/components/layout/Shell.jsx";
 import UserMenu from "@/components/common/UserMenu.jsx";
 import CommandPalette from "@/components/common/CommandPalette.jsx";
@@ -37,28 +37,30 @@ const hasPurplePalette = (pal) =>
 
 // Dashboard and Analytics pages
 import DashboardPage from "@/pages/DashboardPage.jsx";
-import Analytics from "@/pages/Analytics.jsx";
 import Trades from "@/pages/Trades.jsx";
 import Accounts from "@/pages/Accounts.jsx";
-import PropPrograms from "@/pages/PropPrograms.jsx";
-import TrashPage from "@/pages/Trash.jsx";
-import Pairs from "@/pages/Pairs.jsx";
-import Sessions from "@/pages/Sessions.jsx";
-import Models from "@/pages/Models.jsx";
-import Tags from "@/pages/Tags.jsx";
-import Settings from "@/pages/Settings.jsx";
-import Ideas from "@/pages/Ideas.jsx";
-import Changelog from "@/pages/Changelog.jsx";
-import Documents from "@/pages/Documents.jsx";
-import Inbox from "@/pages/Inbox.jsx";
-import UpdatesAndFeedback from "@/pages/UpdatesAndFeedback.jsx";
-import Backtests from "@/pages/Backtests.jsx";
+// Less-frequently visited pages — lazy so the initial bundle doesn't
+// include their (often heavy: charts, tiptap, recharts) deps.
+const Analytics = lazy(() => import("@/pages/Analytics.jsx"));
+const PropPrograms = lazy(() => import("@/pages/PropPrograms.jsx"));
+const TrashPage = lazy(() => import("@/pages/Trash.jsx"));
+const Pairs = lazy(() => import("@/pages/Pairs.jsx"));
+const Sessions = lazy(() => import("@/pages/Sessions.jsx"));
+const Models = lazy(() => import("@/pages/Models.jsx"));
+const Tags = lazy(() => import("@/pages/Tags.jsx"));
+const Settings = lazy(() => import("@/pages/Settings.jsx"));
+const Ideas = lazy(() => import("@/pages/Ideas.jsx"));
+const Changelog = lazy(() => import("@/pages/Changelog.jsx"));
+const Documents = lazy(() => import("@/pages/Documents.jsx"));
+const Inbox = lazy(() => import("@/pages/Inbox.jsx"));
+const UpdatesAndFeedback = lazy(() => import("@/pages/UpdatesAndFeedback.jsx"));
+const Backtests = lazy(() => import("@/pages/Backtests.jsx"));
+const BacktestDashboard = lazy(() => import("@/pages/BacktestDashboard.jsx"));
+const Education = lazy(() => import("@/pages/Education.jsx"));
+const TournamentLeaderboard = lazy(() => import("@/pages/TournamentLeaderboard.jsx"));
 import BacktestModeBar from "@/components/backtest/BacktestModeBar.jsx";
 import BacktestCreateModal from "@/components/backtest/BacktestCreateModal.jsx";
-import BacktestDashboard from "@/pages/BacktestDashboard.jsx";
 import NotificationBell from "@/components/common/NotificationBell.jsx";
-import Education from "@/pages/Education.jsx";
-import TournamentLeaderboard from "@/pages/TournamentLeaderboard.jsx";
 
 import {
   BarChart3,
@@ -1757,26 +1759,44 @@ export default function JournalApp() {
     });
   };
 
+  // Archiving a parent doc cascades to its sub-documents. Without this,
+  // children stay un-archived but are filtered out of the main grid (they
+  // have parentId), so the user perceives them as silently lost.
   const deleteDocument = (id) =>
-    setDb((prev) => ({
-      ...prev,
-      documents: (prev.documents ?? []).map((d) =>
-        d.id === id ? { ...d, archivedAt: Date.now(), updatedAt: Date.now() } : d
-      ),
-    }));
+    setDb((prev) => {
+      const now = Date.now();
+      return {
+        ...prev,
+        documents: (prev.documents ?? []).map((d) =>
+          d.id === id || d.parentId === id
+            ? { ...d, archivedAt: now, updatedAt: now }
+            : d
+        ),
+      };
+    });
 
+  // Restore mirrors the cascade so unarchiving a parent brings its
+  // children back too.
   const restoreDocument = (id) =>
-    setDb((prev) => ({
-      ...prev,
-      documents: (prev.documents ?? []).map((d) =>
-        d.id === id ? { ...d, archivedAt: null, updatedAt: Date.now() } : d
-      ),
-    }));
+    setDb((prev) => {
+      const now = Date.now();
+      return {
+        ...prev,
+        documents: (prev.documents ?? []).map((d) =>
+          d.id === id || d.parentId === id
+            ? { ...d, archivedAt: null, updatedAt: now }
+            : d
+        ),
+      };
+    });
 
+  // Hard-delete also cascades so orphaned children don't linger in state.
   const deleteDocumentForever = (id) =>
     setDb((prev) => ({
       ...prev,
-      documents: (prev.documents ?? []).filter((d) => d.id !== id),
+      documents: (prev.documents ?? []).filter(
+        (d) => d.id !== id && d.parentId !== id
+      ),
     }));
 
 
@@ -2218,6 +2238,10 @@ export default function JournalApp() {
           onResetSyncWarning={resetSyncWarning}
         />
 
+        {/* All routed pages below are lazy-loaded; keep one Suspense
+            boundary so chunk-fetch shows a fallback instead of blanking
+            the whole shell. */}
+        <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading…</div>}>
         {/* ── Backtest workspace mode ── */}
         {activeBacktest ? (
           <>
@@ -2516,6 +2540,7 @@ export default function JournalApp() {
             setUiPatch={setUiPatch}
           />
         )}
+        </Suspense>
       </Shell>
 
       <CommandPalette open={cmdOpen} setOpen={setCmdOpen} actions={actions} reduceMotion={reduceMotion} />

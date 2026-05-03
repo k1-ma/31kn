@@ -1115,9 +1115,9 @@ publicRouter.post("/:publicSlug/vote", voteRateLimit, async (req, res) => {
       return res.status(400).json({ error: "No active voting day" });
     }
 
-    // Check vote password if set (constant-time comparison)
+    // Check vote password if set (supports legacy plaintext + bcrypt-hashed)
     if (config.tournament.vote_password) {
-      if (!safeEqualString(submittedPassword || "", config.tournament.vote_password)) {
+      if (!svc.verifyVotePassword(config.tournament.vote_password, submittedPassword || "")) {
         return res.status(403).json({ error: "invalid_vote_password" });
       }
     }
@@ -1171,9 +1171,9 @@ publicRouter.post("/:publicSlug/vote/:voteToken", voteRateLimit, async (req, res
       return res.status(400).json({ error: "voting_window_closed" });
     }
 
-    // Check vote password if set (constant-time comparison)
+    // Check vote password if set (supports legacy plaintext + bcrypt-hashed)
     if (config.tournament.vote_password) {
-      if (!safeEqualString(submittedPassword || "", config.tournament.vote_password)) {
+      if (!svc.verifyVotePassword(config.tournament.vote_password, submittedPassword || "")) {
         return res.status(403).json({ error: "invalid_vote_password" });
       }
     }

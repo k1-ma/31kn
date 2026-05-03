@@ -1,20 +1,8 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useParams, Link } from "react-router-dom";
-import DOMPurify from "dompurify";
+import { sanitizeRichText } from "@/lib/sanitize.js";
 
-// Same allow-list used by PublicDocShare/PublicIdeaShare. Strips script,
-// inline event handlers, and javascript: URLs while preserving Tiptap markup.
-const SAFE_HTML_CONFIG = {
-  ALLOWED_TAGS: [
-    "p", "br", "strong", "em", "u", "s", "code", "pre",
-    "blockquote", "ol", "ul", "li", "a", "img", "h1", "h2", "h3",
-    "h4", "h5", "h6", "hr", "table", "thead", "tbody", "tr", "th",
-    "td", "mark", "span", "div",
-  ],
-  ALLOWED_ATTR: ["href", "src", "alt", "title", "target", "rel", "class", "data-*"],
-  ALLOW_DATA_ATTR: true,
-};
-const sanitizeHtml = (html) => DOMPurify.sanitize(String(html || ""), SAFE_HTML_CONFIG);
+const sanitizeHtml = (html) => sanitizeRichText(html, "full");
 import { motion, AnimatePresence } from "framer-motion";
 import { fetchPublicShare } from "@/lib/share.js";
 import { fmtMoney, fmtRR, sessionTone, clampNum } from "@/lib/utils";

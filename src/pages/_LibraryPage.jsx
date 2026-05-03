@@ -41,7 +41,7 @@ const DEFAULT_COLORS = [
   "#dcc218", // gold
 ];
 
-function ItemForm({ initial, onSave, onDelete, reduceMotion, defaults, kind, toast }) {
+function ItemForm({ initial, onSave, onDelete, reduceMotion, defaults, kind, toast, existingItems = [] }) {
   const { t } = useI18n();
   const fileInputRef = useRef(null);
   
@@ -83,6 +83,26 @@ function ItemForm({ initial, onSave, onDelete, reduceMotion, defaults, kind, toa
     const name = String(form.name || "").trim();
     if (!name) {
       toast?.push?.({ title: t("common.error"), description: t("pages.library.nameRequired"), tone: "danger" });
+      return;
+    }
+    // Reject duplicate names within the same library kind. Compare case-
+    // insensitively and skip the entry being edited (form.id matches).
+    const lc = name.toLocaleLowerCase();
+    const dup = existingItems.find(
+      (it) =>
+        it &&
+        it.id !== form.id &&
+        !it.deletedAt &&
+        String(it.name || "").trim().toLocaleLowerCase() === lc
+    );
+    if (dup) {
+      toast?.push?.({
+        title: t("common.error"),
+        description:
+          t("pages.library.duplicateName", { name }) ||
+          `An item named "${name}" already exists`,
+        tone: "danger",
+      });
       return;
     }
     
@@ -508,6 +528,7 @@ function LibraryPageInner({
           kind={kind}
           reduceMotion={reduceMotion}
           toast={toast}
+          existingItems={items}
           onSave={(v) => {
             onUpsert(v);
             setOpenCreate(false);
@@ -532,6 +553,7 @@ function LibraryPageInner({
             kind={kind}
             reduceMotion={reduceMotion}
             toast={toast}
+            existingItems={items}
             onSave={(v) => {
               onUpsert(v);
               setOpenEdit(false);

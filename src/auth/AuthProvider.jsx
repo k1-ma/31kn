@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState, useRef } from "react";
 import { apiJson } from "@/lib/api.js";
+import { clearUserSyncArtefacts } from "@/lib/syncDb.js";
 
 const AuthCtx = createContext(null);
 
@@ -139,7 +140,13 @@ export function AuthProvider({ children }) {
   };
 
   const logout = async () => {
+    // Snapshot the userId BEFORE the network call so we can clean per-user
+    // artefacts even if the request fails.
+    const userIdToClean = user?.id ?? getLastKnownUserId();
     try { await apiJson("/api/auth/logout", { method: "POST" }); } catch {}
+    // Drop per-user outbox / lastSynced / cached state so the next user
+    // on this device can't see or replay the previous user's data.
+    clearUserSyncArtefacts(userIdToClean);
     clearLastKnownUserId();
     setUser(null);
   };

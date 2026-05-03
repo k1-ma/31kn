@@ -90,6 +90,10 @@ export default function App() {
         <ScrollToTop />
         <ReloadPrompt />
         <InstallPrompt />
+        {/* Top-level boundary catches chunk-load failures from any lazy route
+            (admin, public share, tournament). Without this, a failed chunk
+            request leaves the user with a blank page. */}
+        <ErrorBoundary>
         <Suspense fallback={<FullscreenLoading />}>
           <Routes>
             <Route path="/" element={<Landing />} />
@@ -139,6 +143,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
+        </ErrorBoundary>
       </BrowserRouter>
       </I18nProvider>
       </AnimationsProvider>

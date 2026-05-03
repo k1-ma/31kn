@@ -7,6 +7,7 @@ import Button from "@/components/ui/Button.jsx";
 import Badge from "@/components/ui/Badge.jsx";
 import Switch from "@/components/ui/Switch.jsx";
 import Modal from "@/components/common/Modal.jsx";
+import ConfirmDialog from "@/components/common/ConfirmDialog.jsx";
 import ImageLightbox from "@/components/common/ImageLightbox.jsx";
 import ImageRemoveButton from "@/components/common/ImageRemoveButton.jsx";
 import SessionBadge from "@/components/common/SessionBadge.jsx";
@@ -2409,7 +2410,7 @@ function TradeEditor({ initial, accounts, documents, ideas = [], libraries, onSa
 }
 
 export default function Trades({ trades, accounts, documents, ideas = [], libraries, onUpsert, onUpsertAccount, onUpsertSymbol, propTemplates, onRemove, onRemoveBulk, onNavigateToDocument, onNavigateToIdea, reduceMotion, toast, user, quickTradeAccountId, onClearQuickTrade, openNewTrade, onClearOpenNewTrade, selectedTradeId, onClearSelectedTrade, isBacktestMode, modelsEnabled, flushSync, setShareInFlight, ui }) {
-  const { t } = useI18n();
+  const { t, tPlural } = useI18n();
   const [searchParams, setSearchParams] = useSearchParams();
   
   // View state: list or gallery (persisted in URL and localStorage)
@@ -2504,6 +2505,7 @@ export default function Trades({ trades, accounts, documents, ideas = [], librar
   const [saveSignalCreate, setSaveSignalCreate] = useState(0);
   const [saveSignalEdit, setSaveSignalEdit] = useState(0);
   const [confirmUnsaved, setConfirmUnsaved] = useState({ open: false, target: null }); // target: 'create' | 'edit'
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   // Warn the user before navigating away (closing tab, refresh) when a trade
   // editor has unsaved changes. The in-app modal-close path already shows a
@@ -3022,10 +3024,13 @@ export default function Trades({ trades, accounts, documents, ideas = [], librar
     
     const count = selectedTradeIds.length;
     onRemoveBulk(selectedTradeIds);
-    
-    // Show success toast
+
+    // Show success toast (uses CLDR plural rules so "1 trade" / "1 сделка"
+    // are grammatical instead of "1 trades").
     toast?.push({
-      title: t("common.deleteSelectedSuccess")?.replace("{count}", count) || `Deleted trades: ${count}`,
+      title: tPlural("common.deleteSelectedSuccessPlural", count) ||
+        t("common.deleteSelectedSuccess")?.replace("{count}", count) ||
+        `Deleted trades: ${count}`,
       description: "",
       tone: "success"
     });
@@ -3549,13 +3554,7 @@ export default function Trades({ trades, accounts, documents, ideas = [], librar
               setEditDirty(false);
               toast.push({ title: t("pages.trades.editor.unsaved.toasts.updated"), description: trade.date || "", tone: "success" });
             }}
-            onDelete={() => {
-              onRemove(active.id);
-              setOpenEdit(false);
-              setActive(null);
-              setEditDirty(false);
-              toast.push({ title: t("pages.trades.editor.unsaved.toasts.deleted"), description: "" });
-            }}
+            onDelete={() => setConfirmDeleteOpen(true)}
             onShare={(trade) => {
               // Share single trade from editor - open options modal
               setPendingShareTrades([trade]);
@@ -3564,6 +3563,24 @@ export default function Trades({ trades, accounts, documents, ideas = [], librar
           />
         ) : null}
       </Modal>
+
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        onOpenChange={setConfirmDeleteOpen}
+        title={t("common.delete") + "?"}
+        description={t("pages.trades.editor.confirmDeleteDescription") || "The trade will be moved to trash. You can restore it from there later."}
+        confirmText={t("common.delete")}
+        cancelText={t("common.cancel")}
+        tone="danger"
+        reduceMotion={reduceMotion}
+        onConfirm={() => {
+          if (active?.id) onRemove(active.id);
+          setOpenEdit(false);
+          setActive(null);
+          setEditDirty(false);
+          toast.push({ title: t("pages.trades.editor.unsaved.toasts.deleted"), description: "" });
+        }}
+      />
 
       <Modal
         open={confirmUnsaved.open}
@@ -3918,8 +3935,9 @@ export default function Trades({ trades, accounts, documents, ideas = [], librar
       >
         <div className="space-y-4">
           <p className="text-muted-foreground">
-            {(t("common.deleteSelectedConfirmMessage") || "You are about to delete {count} trades. This action cannot be undone.")
-              .replace("{count}", selectedTradeIds.length)}
+            {tPlural("common.deleteSelectedConfirmMessagePlural", selectedTradeIds.length) ||
+              (t("common.deleteSelectedConfirmMessage") || "You are about to delete {count} trades. This action cannot be undone.")
+                .replace("{count}", selectedTradeIds.length)}
           </p>
           <div className="flex justify-end gap-3">
             <Button

@@ -1,6 +1,24 @@
 import React from "react";
 
 export default function Button({ variant = "primary", size = "md", className = "", ...props }) {
+  // Accessibility: icon-only buttons need an accessible name. If the caller
+  // supplied a `title` (visible tooltip) but no `aria-label`, mirror it so
+  // screen readers can announce the button. In development, warn when an
+  // icon-sized button has neither label nor textual children.
+  if (size === "icon") {
+    const hasAriaLabel = "aria-label" in props || "aria-labelledby" in props;
+    if (!hasAriaLabel && typeof props.title === "string" && props.title) {
+      props = { ...props, "aria-label": props.title };
+    } else if (
+      !hasAriaLabel &&
+      process.env.NODE_ENV !== "production" &&
+      typeof props.children !== "string"
+    ) {
+      // eslint-disable-next-line no-console
+      console.warn("[a11y] icon Button without aria-label or title");
+    }
+  }
+
   const base =
     "inline-flex items-center justify-center gap-2 font-semibold transition-all duration-200 " +
     "focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-offset-1 focus-visible:ring-offset-background " +

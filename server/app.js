@@ -13,7 +13,7 @@ import { runSeedUpdates } from "./scripts/seedUpdates.js";
 // Routes
 import authRoutes from "./routes/auth.routes.js";
 import stateRoutes from "./routes/state.routes.js";
-import syncRoutes from "./routes/sync.routes.js";
+import syncRoutes, { runOrphanedSyncChunkCleanup } from "./routes/sync.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import healthRoutes from "./routes/health.routes.js";
 import ideasRoutes from "./routes/ideas.routes.js";
@@ -146,9 +146,15 @@ export async function createApp() {
   // CORS configuration
   app.use(cors(corsOptions));
 
-  // Body parser with increased size limit (50MB) to support larger state/share payloads
-  // PATCH endpoint is preferred for incremental updates to reduce payload size
-  app.use(express.json({ limit: "50mb" }));
+  // Body parser. Limit raised from 50MB to 100MB after a real user hit the
+  // Express 50MB ceiling on a single-blob save (their full state_json was
+  // 53.85MB). The long-term answer is per-entity tables, but until then
+  // raising the cap here gives heavy users headroom while the chunked sync
+  // path picks up everything ≥ ~45MB anyway.
+  // Configurable via STATE_BODY_LIMIT env var (e.g. "150mb") for ops
+  // tuning without a redeploy.
+  const STATE_BODY_LIMIT = process.env.STATE_BODY_LIMIT || "100mb";
+  app.use(express.json({ limit: STATE_BODY_LIMIT }));
 
   // Session middleware - attach minimal session-like object
   // Handles duplicate cookies: when the browser sends several tradecrm.sid
@@ -342,7 +348,9 @@ export async function createApp() {
       return res.status(413).json({
         error: "Payload too large. Try reducing data size or removing images.",
         code: "PAYLOAD_TOO_LARGE",
-        limit: "50mb",
+        limit: STATE_BODY_LIMIT,
+        // Hint to the client: switch to chunked sync if available.
+        useChunkedSync: true,
       });
     }
     
@@ -373,6 +381,18 @@ export async function createApp() {
       console.warn("[voting-timer] background process error:", err?.message || err);
     });
   }, 30_000);
+
+  // Background job: GC orphaned chunked-sync rows every 5 minutes.
+  // Per-request cleanup runs only on chunk 0, so a client that drops
+  // mid-upload leaves chunks until another client starts a new session.
+  // This timer ensures expired chunks/sessions are reclaimed on long-lived
+  // (non-serverless) deployments.
+  setInterval(() => {
+    runOrphanedSyncChunkCleanup(getPool()).catch((err) => {
+      // eslint-disable-next-line no-console
+      console.warn("[sync-cleanup] background error:", err?.message || err);
+    });
+  }, 5 * 60_000);
 
   return app;
 }
