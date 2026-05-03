@@ -70,11 +70,28 @@ export default function I18nProvider({ lang, setLang, children }) {
       if (!vars) return val;
       return String(val).replace(/\{(\w+)\}/g, (_, k) => (vars[k] ?? `{${k}}`));
     };
+
+    // tPlural(key, count, vars?) — read a translation entry that is itself
+    // an object of CLDR plural forms ({ one, few, many, other } or
+    // { one, other }) and pick the right form for the active language.
+    // Falls back through dict → fallback dict; passes {count} into vars
+    // automatically so callers don't have to.
+    const tPlural = (key, count, vars = null) => {
+      const entry = get(dict, key) ?? get(fallback, key);
+      const merged = { ...(vars || {}), count };
+      if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+        const form = pickPluralForm(effectiveLang, Number(count) || 0, entry);
+        return String(form).replace(/\{(\w+)\}/g, (_, k) => (merged[k] ?? `{${k}}`));
+      }
+      // Entry is a plain string with {count} placeholder — fall back to t().
+      return t(key, merged);
+    };
+
     const plural = (count, forms) =>
       String(pickPluralForm(effectiveLang, Number(count) || 0, forms))
         .replace(/\{count\}/g, String(count))
         .replace(/\{n\}/g, String(count));
-    return { lang: effectiveLang, setLang, t, plural };
+    return { lang: effectiveLang, setLang, t, tPlural, plural };
   }, [lang, setLang]);
 
   return <I18nCtx.Provider value={value}>{children}</I18nCtx.Provider>;

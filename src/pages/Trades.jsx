@@ -2410,7 +2410,7 @@ function TradeEditor({ initial, accounts, documents, ideas = [], libraries, onSa
 }
 
 export default function Trades({ trades, accounts, documents, ideas = [], libraries, onUpsert, onUpsertAccount, onUpsertSymbol, propTemplates, onRemove, onRemoveBulk, onNavigateToDocument, onNavigateToIdea, reduceMotion, toast, user, quickTradeAccountId, onClearQuickTrade, openNewTrade, onClearOpenNewTrade, selectedTradeId, onClearSelectedTrade, isBacktestMode, modelsEnabled, flushSync, setShareInFlight, ui }) {
-  const { t } = useI18n();
+  const { t, tPlural } = useI18n();
   const [searchParams, setSearchParams] = useSearchParams();
   
   // View state: list or gallery (persisted in URL and localStorage)
@@ -3024,10 +3024,13 @@ export default function Trades({ trades, accounts, documents, ideas = [], librar
     
     const count = selectedTradeIds.length;
     onRemoveBulk(selectedTradeIds);
-    
-    // Show success toast
+
+    // Show success toast (uses CLDR plural rules so "1 trade" / "1 сделка"
+    // are grammatical instead of "1 trades").
     toast?.push({
-      title: t("common.deleteSelectedSuccess")?.replace("{count}", count) || `Deleted trades: ${count}`,
+      title: tPlural("common.deleteSelectedSuccessPlural", count) ||
+        t("common.deleteSelectedSuccess")?.replace("{count}", count) ||
+        `Deleted trades: ${count}`,
       description: "",
       tone: "success"
     });
@@ -3932,8 +3935,9 @@ export default function Trades({ trades, accounts, documents, ideas = [], librar
       >
         <div className="space-y-4">
           <p className="text-muted-foreground">
-            {(t("common.deleteSelectedConfirmMessage") || "You are about to delete {count} trades. This action cannot be undone.")
-              .replace("{count}", selectedTradeIds.length)}
+            {tPlural("common.deleteSelectedConfirmMessagePlural", selectedTradeIds.length) ||
+              (t("common.deleteSelectedConfirmMessage") || "You are about to delete {count} trades. This action cannot be undone.")
+                .replace("{count}", selectedTradeIds.length)}
           </p>
           <div className="flex justify-end gap-3">
             <Button

@@ -16,6 +16,28 @@ import {
   DatabaseBackup,
 } from "lucide-react";
 
+// Hover/focus prefetch: calling import() warms the module cache so
+// the lazy() loader in App.jsx resolves synchronously when the user
+// actually clicks the tab. Browsers de-dup repeated import() calls,
+// so multiple hovers are free.
+const PREFETCH = {
+  "/admincrm-panel/dashboard": () => import("@/pages/admin/AdminDashboard.jsx"),
+  "/admincrm-panel/users": () => import("@/pages/admin/AdminUsers.jsx"),
+  "/admincrm-panel/bans": () => import("@/pages/admin/AdminBans.jsx"),
+  "/admincrm-panel/usage": () => import("@/pages/admin/AdminUsage.jsx"),
+  "/admincrm-panel/logs": () => import("@/pages/admin/AdminLogs.jsx"),
+  "/admincrm-panel/updates": () => import("@/pages/admin/AdminUpdates.jsx"),
+  "/admincrm-panel/feedback": () => import("@/pages/admin/AdminFeedback.jsx"),
+  "/admincrm-panel/education": () => import("@/pages/admin/AdminEducation.jsx"),
+  "/admincrm-panel/tournaments": () => import("@/pages/admin/AdminTournaments.jsx"),
+  "/admincrm-panel/settings": () => import("@/pages/admin/AdminSettings.jsx"),
+  "/admincrm-panel/backups": () => import("@/pages/admin/AdminBackups.jsx"),
+};
+const prefetchRoute = (to) => {
+  const fn = PREFETCH[to];
+  if (fn) fn().catch(() => { /* prefetch is best-effort */ });
+};
+
 function Tab({ to, label, icon: Icon, badge }) {
   const loc = useLocation();
   const active = loc.pathname === to || (to !== "/admincrm-panel/dashboard" && loc.pathname.startsWith(to));
@@ -23,6 +45,9 @@ function Tab({ to, label, icon: Icon, badge }) {
   return (
     <Link
       to={to}
+      onMouseEnter={() => prefetchRoute(to)}
+      onFocus={() => prefetchRoute(to)}
+      onTouchStart={() => prefetchRoute(to)}
       className={
         "relative inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold transition " +
         "border border-border/70 " +
