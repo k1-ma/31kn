@@ -7,6 +7,7 @@ import Button from "@/components/ui/Button.jsx";
 import Badge from "@/components/ui/Badge.jsx";
 import Switch from "@/components/ui/Switch.jsx";
 import Modal from "@/components/common/Modal.jsx";
+import ConfirmDialog from "@/components/common/ConfirmDialog.jsx";
 import ImageLightbox from "@/components/common/ImageLightbox.jsx";
 import ImageRemoveButton from "@/components/common/ImageRemoveButton.jsx";
 import SessionBadge from "@/components/common/SessionBadge.jsx";
@@ -2504,6 +2505,7 @@ export default function Trades({ trades, accounts, documents, ideas = [], librar
   const [saveSignalCreate, setSaveSignalCreate] = useState(0);
   const [saveSignalEdit, setSaveSignalEdit] = useState(0);
   const [confirmUnsaved, setConfirmUnsaved] = useState({ open: false, target: null }); // target: 'create' | 'edit'
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   // Warn the user before navigating away (closing tab, refresh) when a trade
   // editor has unsaved changes. The in-app modal-close path already shows a
@@ -3549,13 +3551,7 @@ export default function Trades({ trades, accounts, documents, ideas = [], librar
               setEditDirty(false);
               toast.push({ title: t("pages.trades.editor.unsaved.toasts.updated"), description: trade.date || "", tone: "success" });
             }}
-            onDelete={() => {
-              onRemove(active.id);
-              setOpenEdit(false);
-              setActive(null);
-              setEditDirty(false);
-              toast.push({ title: t("pages.trades.editor.unsaved.toasts.deleted"), description: "" });
-            }}
+            onDelete={() => setConfirmDeleteOpen(true)}
             onShare={(trade) => {
               // Share single trade from editor - open options modal
               setPendingShareTrades([trade]);
@@ -3564,6 +3560,24 @@ export default function Trades({ trades, accounts, documents, ideas = [], librar
           />
         ) : null}
       </Modal>
+
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        onOpenChange={setConfirmDeleteOpen}
+        title={t("common.delete") + "?"}
+        description={t("pages.trades.editor.confirmDeleteDescription") || "The trade will be moved to trash. You can restore it from there later."}
+        confirmText={t("common.delete")}
+        cancelText={t("common.cancel")}
+        tone="danger"
+        reduceMotion={reduceMotion}
+        onConfirm={() => {
+          if (active?.id) onRemove(active.id);
+          setOpenEdit(false);
+          setActive(null);
+          setEditDirty(false);
+          toast.push({ title: t("pages.trades.editor.unsaved.toasts.deleted"), description: "" });
+        }}
+      />
 
       <Modal
         open={confirmUnsaved.open}
