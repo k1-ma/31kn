@@ -14,7 +14,7 @@ import Modal from "@/components/common/Modal.jsx";
 import ImageLightbox from "@/components/common/ImageLightbox.jsx";
 import SocialLinks from "@/components/common/SocialLinks.jsx";
 import ShareThemeToggle from "@/components/common/ShareThemeToggle.jsx";
-import DOMPurify from "dompurify";
+import { sanitizeRichText } from "@/lib/sanitize.js";
 import { fetchPublicShare } from "@/lib/share.js";
 import { safeFormatDate, clampNum, fmtMoney, fmtRR } from "@/lib/utils.js";
 
@@ -56,12 +56,7 @@ const LINK_ICONS = {
 function HtmlContent({ html }) {
   const sanitizedHtml = useMemo(() => {
     if (!html) return "";
-    return DOMPurify.sanitize(html, {
-      ALLOWED_TAGS: ["h1", "h2", "h3", "p", "br", "strong", "em", "ul", "ol", "li", "a", "code", "pre", "blockquote", "hr", "img"],
-      ALLOWED_ATTR: ["href", "target", "rel", "src", "alt"],
-      ALLOWED_URI_REGEXP: /^data:image\/(png|jpeg|jpg|gif|webp);base64,.*$/,
-      ADD_URI_SAFE_ATTR: ["src"],
-    });
+    return sanitizeRichText(html, "default");
   }, [html]);
 
   if (!sanitizedHtml) return null;

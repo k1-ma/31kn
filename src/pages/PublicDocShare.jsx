@@ -14,7 +14,7 @@ import Modal from "@/components/common/Modal.jsx";
 import ImageLightbox from "@/components/common/ImageLightbox.jsx";
 import SocialLinks from "@/components/common/SocialLinks.jsx";
 import ShareThemeToggle from "@/components/common/ShareThemeToggle.jsx";
-import DOMPurify from "dompurify";
+import { sanitizeRichText } from "@/lib/sanitize.js";
 import { marked } from "marked";
 import { safeFormatDate, clampNum, fmtMoney, fmtRR } from "@/lib/utils.js";
 import { fetchPublicShare } from "@/lib/share.js";
@@ -55,23 +55,12 @@ function HtmlContent({ doc }) {
     
     // Prefer HTML content from rich text editor
     if (doc.contentHtml) {
-      return DOMPurify.sanitize(doc.contentHtml, {
-        ALLOWED_TAGS: ["h1", "h2", "h3", "p", "br", "strong", "em", "ul", "ol", "li", "a", "code", "pre", "blockquote", "hr", "img"],
-        ALLOWED_ATTR: ["href", "target", "rel", "src", "alt"],
-        ALLOWED_URI_REGEXP: /^data:image\/(png|jpeg|jpg|gif|webp);base64,.*$/,
-        ADD_URI_SAFE_ATTR: ["src"],
-      });
+      return sanitizeRichText(doc.contentHtml, "default");
     }
     // Fallback: convert legacy markdown to HTML
     if (doc.content) {
       try {
-        const rawHtml = marked(doc.content);
-        return DOMPurify.sanitize(rawHtml, {
-          ALLOWED_TAGS: ["h1", "h2", "h3", "p", "br", "strong", "em", "ul", "ol", "li", "a", "code", "pre", "blockquote", "hr", "img"],
-          ALLOWED_ATTR: ["href", "target", "rel", "src", "alt"],
-          ALLOWED_URI_REGEXP: /^data:image\/(png|jpeg|jpg|gif|webp);base64,.*$/,
-          ADD_URI_SAFE_ATTR: ["src"],
-        });
+        return sanitizeRichText(marked(doc.content), "default");
       } catch {
         return "";
       }
