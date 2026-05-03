@@ -275,23 +275,39 @@ async function sessionBelongsToOtherUser(pool, sessionId, userId) {
 async function cleanupExpiredSessions(pool) {
   try {
     // Delete chunks for expired sessions first
-    await pool.query(
+    const chunksDel = await pool.query(
       `DELETE FROM sync_state_chunks WHERE (session_id, user_id) IN (
          SELECT session_id, user_id FROM sync_state_sessions WHERE expires_at < now()
        )`
     );
-    await pool.query("DELETE FROM sync_state_sessions WHERE expires_at < now()");
+    const sessionsDel = await pool.query(
+      "DELETE FROM sync_state_sessions WHERE expires_at < now()"
+    );
     // Defensive: also drop chunks whose parent session row is missing entirely
-    // (can happen if a session row was deleted without its chunks).
-    await pool.query(
+    // (can happen if a session row was deleted without its chunks, e.g.
+    // legacy data created before the cleanup logic existed).
+    const orphanDel = await pool.query(
       `DELETE FROM sync_state_chunks c
         WHERE NOT EXISTS (
           SELECT 1 FROM sync_state_sessions s
            WHERE s.session_id = c.session_id AND s.user_id = c.user_id
         )`
     );
-  } catch {
-    // Best-effort cleanup, don't fail the request
+    const total =
+      (chunksDel.rowCount || 0) +
+      (sessionsDel.rowCount || 0) +
+      (orphanDel.rowCount || 0);
+    if (total > 0) {
+      // eslint-disable-next-line no-console
+      console.log(
+        `[sync-cleanup] reclaimed: chunks=${chunksDel.rowCount} sessions=${sessionsDel.rowCount} orphan_chunks=${orphanDel.rowCount}`
+      );
+    }
+  } catch (e) {
+    // Surface so cleanup regressions don't silently rot. Previous behaviour
+    // swallowed everything which is how 91 orphan rows accumulated in prod.
+    // eslint-disable-next-line no-console
+    console.warn("[sync-cleanup] failed:", e?.message || e);
   }
 }
 
@@ -350,8 +366,11 @@ router.post("/chunk", requireAuth, idempotency(), async (req, res) => {
     return res.status(400).json({ error: "Operations must be an array", code: "INVALID_OPERATIONS" });
   }
 
-  // Best-effort cleanup of expired sessions (only on first chunk to reduce DB pool contention)
-  if (chunkIndex === 0) {
+  // Best-effort cleanup of expired sessions. Runs on every chunk 0 and
+  // probabilistically on subsequent chunks (5%) so serverless deployments —
+  // where the in-process setInterval timer cannot fire — still reclaim
+  // orphaned rows. Fire-and-forget; never blocks the response.
+  if (chunkIndex === 0 || Math.random() < 0.05) {
     cleanupExpiredSessions(pool);
   }
 
@@ -551,8 +570,11 @@ router.post("/state-chunk", requireAuth, idempotency(), async (req, res) => {
     return res.status(400).json({ error: "Chunk must be an object", code: "INVALID_CHUNK" });
   }
 
-  // Best-effort cleanup of expired sessions (only on first chunk to reduce DB pool contention)
-  if (chunkIndex === 0) {
+  // Best-effort cleanup of expired sessions. Runs on every chunk 0 and
+  // probabilistically on subsequent chunks (5%) so serverless deployments —
+  // where the in-process setInterval timer cannot fire — still reclaim
+  // orphaned rows. Fire-and-forget; never blocks the response.
+  if (chunkIndex === 0 || Math.random() < 0.05) {
     cleanupExpiredSessions(pool);
   }
 

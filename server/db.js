@@ -1124,8 +1124,27 @@ export async function initDb({ admin }) {
       ALTER TABLE states ADD COLUMN IF NOT EXISTS state_v2_updated_at TIMESTAMPTZ;
       ALTER TABLE states ADD COLUMN IF NOT EXISTS state_v2_verify_failed_at TIMESTAMPTZ;
     `);
+
+    // Verify the table actually exists post-migration. A silent CREATE
+    // failure (e.g. missing privilege, locked table) used to be swallowed
+    // by the catch below; if image dual-write is enabled at runtime the
+    // INSERTs would then fail per-request without anyone noticing.
+    const verify = await pool.query(
+      `SELECT to_regclass('public.user_images') AS t,
+              to_regclass('public.user_images_user_sha_idx') AS i_sha,
+              to_regclass('public.user_images_last_used_idx') AS i_used`
+    );
+    const row = verify.rows?.[0] || {};
+    if (!row.t) {
+      console.error("[db] FATAL: user_images table missing after migration");
+    } else if (!row.i_sha || !row.i_used) {
+      console.error("[db] WARN: user_images indexes missing — sha/last_used queries will full-scan");
+    }
   } catch (e) {
-    console.warn("[db] user_images / state_json_v2 migration:", e?.message || e);
+    // Use console.error (not warn) so this surfaces in error-only log
+    // pipelines. Production drift on this migration silently breaks
+    // image dual-write and v2 reads.
+    console.error("[db] user_images / state_json_v2 migration FAILED:", e?.message || e);
   }
 
   // Ensure initial admin exists (idempotent)

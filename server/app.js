@@ -133,9 +133,15 @@ export async function createApp() {
   // CORS configuration
   app.use(cors(corsOptions));
 
-  // Body parser with increased size limit (50MB) to support larger state/share payloads
-  // PATCH endpoint is preferred for incremental updates to reduce payload size
-  app.use(express.json({ limit: "50mb" }));
+  // Body parser. Limit raised from 50MB to 100MB after a real user hit the
+  // Express 50MB ceiling on a single-blob save (their full state_json was
+  // 53.85MB). The long-term answer is per-entity tables, but until then
+  // raising the cap here gives heavy users headroom while the chunked sync
+  // path picks up everything ≥ ~45MB anyway.
+  // Configurable via STATE_BODY_LIMIT env var (e.g. "150mb") for ops
+  // tuning without a redeploy.
+  const STATE_BODY_LIMIT = process.env.STATE_BODY_LIMIT || "100mb";
+  app.use(express.json({ limit: STATE_BODY_LIMIT }));
 
   // Session middleware - attach minimal session-like object
   // Handles duplicate cookies: when the browser sends several tradecrm.sid
@@ -329,7 +335,9 @@ export async function createApp() {
       return res.status(413).json({
         error: "Payload too large. Try reducing data size or removing images.",
         code: "PAYLOAD_TOO_LARGE",
-        limit: "50mb",
+        limit: STATE_BODY_LIMIT,
+        // Hint to the client: switch to chunked sync if available.
+        useChunkedSync: true,
       });
     }
     

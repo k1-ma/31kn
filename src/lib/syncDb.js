@@ -409,6 +409,28 @@ function clearOutbox(userId) {
 }
 
 /**
+ * Drop every per-user sync artefact for the given user. Used on explicit
+ * logout so the next user on the same device cannot inherit the previous
+ * user's outbox, lastSynced snapshot, or cached IDB state.
+ *
+ * Safe to call without a userId — no-op in that case.
+ */
+export function clearUserSyncArtefacts(userId) {
+  if (!userId) return;
+  try {
+    localStorage.removeItem(`${OUTBOX_KEY_PREFIX}${userId}`);
+    localStorage.removeItem(`${LAST_SYNCED_KEY_PREFIX}${userId}`);
+    localStorage.removeItem(`tradecrm:user:${userId}`);
+    localStorage.removeItem(`tradecrm:lastVersion:${userId}`);
+  } catch {}
+  // Fire-and-forget: IDB delete is async and non-critical; if it fails the
+  // next login will just re-fetch from the server.
+  try {
+    idbStorage.del(`tradecrm:user:${userId}`).catch(() => {});
+  } catch {}
+}
+
+/**
  * Check if there are pending changes in outbox
  */
 function hasOutbox(userId) {

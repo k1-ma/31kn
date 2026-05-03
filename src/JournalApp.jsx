@@ -1759,26 +1759,44 @@ export default function JournalApp() {
     });
   };
 
+  // Archiving a parent doc cascades to its sub-documents. Without this,
+  // children stay un-archived but are filtered out of the main grid (they
+  // have parentId), so the user perceives them as silently lost.
   const deleteDocument = (id) =>
-    setDb((prev) => ({
-      ...prev,
-      documents: (prev.documents ?? []).map((d) =>
-        d.id === id ? { ...d, archivedAt: Date.now(), updatedAt: Date.now() } : d
-      ),
-    }));
+    setDb((prev) => {
+      const now = Date.now();
+      return {
+        ...prev,
+        documents: (prev.documents ?? []).map((d) =>
+          d.id === id || d.parentId === id
+            ? { ...d, archivedAt: now, updatedAt: now }
+            : d
+        ),
+      };
+    });
 
+  // Restore mirrors the cascade so unarchiving a parent brings its
+  // children back too.
   const restoreDocument = (id) =>
-    setDb((prev) => ({
-      ...prev,
-      documents: (prev.documents ?? []).map((d) =>
-        d.id === id ? { ...d, archivedAt: null, updatedAt: Date.now() } : d
-      ),
-    }));
+    setDb((prev) => {
+      const now = Date.now();
+      return {
+        ...prev,
+        documents: (prev.documents ?? []).map((d) =>
+          d.id === id || d.parentId === id
+            ? { ...d, archivedAt: null, updatedAt: now }
+            : d
+        ),
+      };
+    });
 
+  // Hard-delete also cascades so orphaned children don't linger in state.
   const deleteDocumentForever = (id) =>
     setDb((prev) => ({
       ...prev,
-      documents: (prev.documents ?? []).filter((d) => d.id !== id),
+      documents: (prev.documents ?? []).filter(
+        (d) => d.id !== id && d.parentId !== id
+      ),
     }));
 
 
