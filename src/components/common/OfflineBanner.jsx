@@ -160,9 +160,17 @@ export default function OfflineBanner({
   // Domain warning disabled - redirect doesn't work and causes confusion
   const showDomainWarning = false;
   const showReadOnlyBanner = isReadOnly;
-  // CHANGED: Only show pending banner after the delayed sync warning threshold has passed
-  // This prevents flickering on quick saves - the warning only appears if save takes > thresholdMs
-  const showPendingBanner = showDelayedSyncWarning && !showOfflineBanner && !showReadOnlyBanner;
+  // Show the pending/progress banner when EITHER (a) the delayed-sync grace
+  // threshold has passed, OR (b) we already have chunked-sync progress data
+  // to display.  The progress branch is critical: between iterations of a
+  // coalesced multi-mutation sync, useSyncWarning may briefly toggle off
+  // when syncStatus passes through a non-"saving" value, which would make
+  // the indicator vanish for a tick.  Honoring `syncProgress != null` keeps
+  // it visible whenever there's actually progress to show.
+  const showPendingBanner =
+    (showDelayedSyncWarning || syncProgress != null) &&
+    !showOfflineBanner &&
+    !showReadOnlyBanner;
 
   // Compute display values - memoize to avoid recalculating on every render
   const currentHost = useMemo(() => getCurrentHost(), []);

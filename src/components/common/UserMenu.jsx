@@ -7,9 +7,21 @@ import { LogOut, Shield, Cloud, CloudOff, User, AlertTriangle, RefreshCw, Save, 
 function statusBadge(syncStatus, hasUnsavedChanges) {
   // Chunk-progress is rendered in OfflineBanner, not here — keeping it out of
   // the topbar avoids width changes ("1/5" → "10/50") that shift adjacent items.
-  if (syncStatus === "saving") return { label: "Saving…", icon: <Save className="h-3.5 w-3.5 animate-pulse" />, variant: "default", tooltip: "Syncing to server…", glowClass: "session-badge-glow-blue" };
-  if (syncStatus === "synced" && !hasUnsavedChanges) return { label: "Synced", icon: <Check className="h-3.5 w-3.5" />, variant: "success", tooltip: "All changes saved", glowClass: "session-badge-glow-green" };
-  if (syncStatus === "pending" || (syncStatus === "synced" && hasUnsavedChanges)) return { label: "Pending", icon: <Cloud className="h-3.5 w-3.5" />, variant: "warning", tooltip: "Changes saved locally, pending server sync", glowClass: "session-badge-glow-orange" };
+  //
+  // "saving", "pending while we still have unsaved data", and "synced but with
+  // unsaved data" all collapse to the same blue "Saving…" pill.  This prevents
+  // the badge from blinking Save → Cloud → Save when the sync pipeline
+  // transitions between iterations of a coalesced multi-mutation sync (delete
+  // + delete + delete during one chunked upload).  A real "Pending" badge only
+  // shows when there's nothing actively in flight to back it up.
+  const inProgress =
+    syncStatus === "saving" ||
+    ((syncStatus === "pending" || syncStatus === "synced") && hasUnsavedChanges);
+  if (inProgress) {
+    return { label: "Saving…", icon: <Save className="h-3.5 w-3.5 animate-pulse" />, variant: "default", tooltip: "Syncing to server…", glowClass: "session-badge-glow-blue" };
+  }
+  if (syncStatus === "synced") return { label: "Synced", icon: <Check className="h-3.5 w-3.5" />, variant: "success", tooltip: "All changes saved", glowClass: "session-badge-glow-green" };
+  if (syncStatus === "pending") return { label: "Pending", icon: <Cloud className="h-3.5 w-3.5" />, variant: "warning", tooltip: "Pending server confirmation", glowClass: "session-badge-glow-orange" };
   if (syncStatus === "offline") return { label: "Offline", icon: <CloudOff className="h-3.5 w-3.5" />, variant: "warning", tooltip: "Offline - changes saved locally", glowClass: "session-badge-glow-orange" };
   if (syncStatus === "error") return { label: "Sync error", icon: <CloudOff className="h-3.5 w-3.5" />, variant: "error", tooltip: "Sync failed - changes saved locally", glowClass: "session-badge-glow-red" };
   if (syncStatus === "unauthorized") return { label: "Auth error", icon: <AlertTriangle className="h-3.5 w-3.5" />, variant: "error", tooltip: "Auth error - changes saved locally", glowClass: "session-badge-glow-red" };

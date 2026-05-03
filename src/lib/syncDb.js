@@ -1233,6 +1233,12 @@ export function useSyncedDb(userId, seed, options = {}) {
   const lastSuccessfulSync = useRef(null); // Timestamp of last successful sync
   const consecutiveFailures = useRef(0); // Count of consecutive sync failures
   const syncInFlight = useRef(false); // Guard against concurrent syncs
+  // Coalesce mutations that arrive while a sync is already running.  When set,
+  // the running sync — once it finishes — re-fires with dbRef.current so the
+  // user-perceived experience is one continuous sync instead of "sync → pause
+  // → second sync (only after heartbeat)".  Cleared at the start of each sync
+  // attempt and inspected by the save effect's result handler.
+  const pendingResyncRef = useRef(false);
   const shareInFlightRef = useRef(false); // Guard: block visibility-change fetchState during share operations
   const justLoadedFromServerRef = useRef(false); // Skip sync-back after fetchState
   const isResettingRef = useRef(false); // Guard: skip save effect during userId-change reset
@@ -1773,9 +1779,13 @@ export function useSyncedDb(userId, seed, options = {}) {
   const syncToServer = useCallback(async (stateToSync) => {
     if (!userId) return { success: false };
 
-    // Prevent concurrent sync requests
+    // Prevent concurrent sync requests.  Mark a pending resync so the in-flight
+    // sync's result handler (in the save effect) will immediately re-fire with
+    // the latest dbRef.current — this prevents mutations that arrive during a
+    // chunked sync from being lost until the next heartbeat tick.
     if (syncInFlight.current) {
-      if (IS_DEV) console.log("[syncDb] Sync already in flight, skipping");
+      pendingResyncRef.current = true;
+      if (IS_DEV) console.log("[syncDb] Sync already in flight, marking pending resync");
       return { success: false, skipped: true };
     }
 
@@ -2002,8 +2012,13 @@ export function useSyncedDb(userId, seed, options = {}) {
             expected_version: knownVersion,
           });
         } finally {
-          // Clear progress after sync completes
-          setSyncProgress(null);
+          // Clear progress after sync completes — but if a follow-up resync
+          // is already queued, leave the value in place so the indicator
+          // doesn't blink to null for a tick before the next iteration
+          // starts.  The next chunked sync will overwrite it via onProgress.
+          if (!pendingResyncRef.current) {
+            setSyncProgress(null);
+          }
         }
 
         // Chunked sync must return "complete" status to be considered successful
@@ -2288,7 +2303,7 @@ export function useSyncedDb(userId, seed, options = {}) {
     // Server sync (debounced, conditional on auth/network)
     // ─────────────────────────────────────────────────────────────────────────
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    
+
     // Update status based on current conditions
     const currentStatus = syncStatusRef.current;
     if (!navigator.onLine) {
@@ -2297,6 +2312,62 @@ export function useSyncedDb(userId, seed, options = {}) {
       setSyncStatus("saving");
     }
     // If unauthorized, keep that status but still save locally (done above)
+
+    // Coalesce: a sync is already running (e.g. chunked upload mid-flight).
+    // Don't queue a parallel debounce — it would race the in-flight sync and
+    // either get skipped (losing the mutation until the heartbeat) or fight
+    // it for syncInFlight.  Just mark a pending resync; the in-flight sync's
+    // result handler will re-fire syncToServer with dbRef.current.
+    if (syncInFlight.current && navigator.onLine && currentStatus !== "unauthorized") {
+      pendingResyncRef.current = true;
+      return () => {
+        if (saveTimer.current) clearTimeout(saveTimer.current);
+      };
+    }
+
+    // Result handler is named so it can chain onto a follow-up sync after a
+    // coalesced mutation finishes — without flashing "synced" in between.
+    const handleResult = (result) => {
+      if (result.success) {
+        if (pendingResyncRef.current) {
+          // A mutation arrived while this sync was running.  Don't flip the
+          // status to "synced" — that would briefly show ✓ before we go back
+          // to saving on the next iteration.  Instead immediately schedule a
+          // chained sync with the latest dbRef.current; the badge stays
+          // "Saving…" continuously and the progress indicator (if chunked)
+          // stays visible.
+          pendingResyncRef.current = false;
+          setSyncStatus("saving");
+          saveTimer.current = setTimeout(() => {
+            syncToServer(dbRef.current).then(handleResult);
+          }, 0);
+          return;
+        }
+        setSyncStatus("synced");
+        changeCount.current = 0;
+      } else if (result.skipped) {
+        // Coalesced into the in-flight sync — its handleResult will resolve
+        // the final status when it completes.  Status remains "saving".
+      } else if (result.unauthorized) {
+        setSyncStatus("unauthorized");
+      } else if (result.offline) {
+        setSyncStatus("offline");
+      } else if (result.pingFailed) {
+        // Ping failed but browser reports online — treat as transient.
+        // Keep "pending" so the error banner doesn't flash; the heartbeat
+        // and outbox retry will auto-recover within seconds.
+        setSyncStatus("pending");
+      } else {
+        // First failure: use "pending" so the badge doesn't flash red.
+        // The outbox retry and heartbeat will auto-recover within seconds.
+        // Persistent failures (2+ in a row) still surface the "error" state.
+        if (consecutiveFailures.current <= 1) {
+          setSyncStatus("pending");
+        } else {
+          setSyncStatus(navigator.onLine ? "error" : "offline");
+        }
+      }
+    };
 
     saveTimer.current = setTimeout(async () => {
       // Defer the server sync if the tab went hidden while the debounce
@@ -2321,34 +2392,13 @@ export function useSyncedDb(userId, seed, options = {}) {
         return;
       }
 
+      // Reset the coalesce flag at the start of each fresh sync attempt so
+      // it tracks "a mutation happened during THIS sync".  Mutations that
+      // arrive during the await will set it back to true via either
+      // syncToServer's concurrent guard or the save effect's early return.
+      pendingResyncRef.current = false;
       const result = await syncToServer(db);
-
-      if (result.success) {
-        setSyncStatus("synced");
-        changeCount.current = 0;
-      } else if (result.skipped) {
-        // Another sync is already in flight (e.g. chunked upload) — keep current
-        // status ("saving") so the UI doesn't flash an error banner while chunks
-        // are still being uploaded.
-      } else if (result.unauthorized) {
-        setSyncStatus("unauthorized");
-      } else if (result.offline) {
-        setSyncStatus("offline");
-      } else if (result.pingFailed) {
-        // Ping failed but browser reports online — treat as transient.
-        // Keep "pending" so the error banner doesn't flash; the heartbeat
-        // and outbox retry will auto-recover within seconds.
-        setSyncStatus("pending");
-      } else {
-        // First failure: use "pending" so the badge doesn't flash red.
-        // The outbox retry and heartbeat will auto-recover within seconds.
-        // Persistent failures (2+ in a row) still surface the "error" state.
-        if (consecutiveFailures.current <= 1) {
-          setSyncStatus("pending");
-        } else {
-          setSyncStatus(navigator.onLine ? "error" : "offline");
-        }
-      }
+      handleResult(result);
     }, debounceMs);
 
     return () => {
