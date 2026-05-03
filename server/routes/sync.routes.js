@@ -270,7 +270,7 @@ async function sessionBelongsToOtherUser(pool, sessionId, userId) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// EXPIRED SESSION CLEANUP (best-effort, runs on each request)
+// EXPIRED SESSION CLEANUP (best-effort, runs on each request + periodic timer)
 // ─────────────────────────────────────────────────────────────────────────────
 async function cleanupExpiredSessions(pool) {
   try {
@@ -281,9 +281,26 @@ async function cleanupExpiredSessions(pool) {
        )`
     );
     await pool.query("DELETE FROM sync_state_sessions WHERE expires_at < now()");
+    // Defensive: also drop chunks whose parent session row is missing entirely
+    // (can happen if a session row was deleted without its chunks).
+    await pool.query(
+      `DELETE FROM sync_state_chunks c
+        WHERE NOT EXISTS (
+          SELECT 1 FROM sync_state_sessions s
+           WHERE s.session_id = c.session_id AND s.user_id = c.user_id
+        )`
+    );
   } catch {
     // Best-effort cleanup, don't fail the request
   }
+}
+
+// Exported so the long-lived server can run it on a periodic timer in
+// addition to per-request best-effort cleanup. Serverless invocations rely
+// on the per-request path.
+export async function runOrphanedSyncChunkCleanup(pool) {
+  if (!pool) return;
+  await cleanupExpiredSessions(pool);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

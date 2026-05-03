@@ -13,7 +13,7 @@ import { runSeedUpdates } from "./scripts/seedUpdates.js";
 // Routes
 import authRoutes from "./routes/auth.routes.js";
 import stateRoutes from "./routes/state.routes.js";
-import syncRoutes from "./routes/sync.routes.js";
+import syncRoutes, { runOrphanedSyncChunkCleanup } from "./routes/sync.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import healthRoutes from "./routes/health.routes.js";
 import ideasRoutes from "./routes/ideas.routes.js";
@@ -360,6 +360,18 @@ export async function createApp() {
       console.warn("[voting-timer] background process error:", err?.message || err);
     });
   }, 30_000);
+
+  // Background job: GC orphaned chunked-sync rows every 5 minutes.
+  // Per-request cleanup runs only on chunk 0, so a client that drops
+  // mid-upload leaves chunks until another client starts a new session.
+  // This timer ensures expired chunks/sessions are reclaimed on long-lived
+  // (non-serverless) deployments.
+  setInterval(() => {
+    runOrphanedSyncChunkCleanup(getPool()).catch((err) => {
+      // eslint-disable-next-line no-console
+      console.warn("[sync-cleanup] background error:", err?.message || err);
+    });
+  }, 5 * 60_000);
 
   return app;
 }
