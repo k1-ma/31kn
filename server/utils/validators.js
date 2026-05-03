@@ -42,13 +42,49 @@ export function validateUsername(username) {
   return { valid: true, normalized };
 }
 
+// Common weak passwords blocklist (subset). Block at minimum the most-tried
+// values from public credential dumps so users can't pick "password",
+// "12345678", etc.
+const COMMON_WEAK_PASSWORDS = new Set([
+  "password", "password1", "password123", "passw0rd",
+  "12345678", "123456789", "1234567890", "qwerty123", "qwertyui",
+  "11111111", "abcdefgh", "iloveyou", "letmein1", "welcome1",
+  "admin123", "trustno1", "monkey123", "dragon123", "sunshine",
+  "princess1", "football", "baseball", "superman", "batman123",
+]);
+
 export function validatePassword(password) {
-  if (!password || String(password).length < 8) {
+  const s = String(password || "");
+  if (!s || s.length < 8) {
     return { valid: false, error: "Password must be at least 8 characters" };
   }
-  if (String(password).length > 128) {
+  if (s.length > 128) {
     return { valid: false, error: "Password is too long" };
   }
+
+  // Complexity: require at least three of {lowercase, uppercase, digit, symbol}.
+  const hasLower = /[a-z]/.test(s);
+  const hasUpper = /[A-Z]/.test(s);
+  const hasDigit = /[0-9]/.test(s);
+  const hasSymbol = /[^A-Za-z0-9]/.test(s);
+  const classes = [hasLower, hasUpper, hasDigit, hasSymbol].filter(Boolean).length;
+  if (classes < 3) {
+    return {
+      valid: false,
+      error:
+        "Password must include at least three of: lowercase, uppercase, digit, symbol",
+    };
+  }
+
+  // Reject single-class repetitions (e.g. "aaaaaaaa", "12345678").
+  if (/^(.)\1+$/.test(s)) {
+    return { valid: false, error: "Password is too simple" };
+  }
+
+  if (COMMON_WEAK_PASSWORDS.has(s.toLowerCase())) {
+    return { valid: false, error: "This password is too common, choose another" };
+  }
+
   return { valid: true };
 }
 

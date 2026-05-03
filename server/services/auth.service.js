@@ -17,6 +17,15 @@ import {
 const EMAIL_VERIFY_TOKEN_EXPIRY_HOURS = 24;
 const PASSWORD_RESET_TOKEN_EXPIRY_HOURS = 1;
 
+// Dummy bcrypt hash used to equalize login timing for non-existent users.
+// Generated once at module load with the same cost factor (12) used by the
+// real password hashing path, so the verification work is indistinguishable
+// from a real (but wrong-password) attempt.
+const DUMMY_BCRYPT_HASH = bcrypt.hashSync(
+  "dummy-password-for-timing-equalization",
+  12
+);
+
 // Registration is ENABLED by default (set to "0" to disable)
 const PUBLIC_REGISTRATION_ENV = process.env.PUBLIC_REGISTRATION !== "0";
 
@@ -127,6 +136,10 @@ export async function loginUser({ username, password }) {
   }
   
   if (!u) {
+    // Equalize timing: still run a bcrypt comparison so that a non-existent
+    // user takes roughly the same time as a wrong-password attempt against a
+    // real account. Mitigates user enumeration via response timing.
+    await bcrypt.compare(String(password), DUMMY_BCRYPT_HASH);
     return { error: "Invalid credentials", status: 401 };
   }
 
@@ -509,13 +522,11 @@ export async function resetPasswordWithToken(token, newPassword, ip, ua) {
   const pool = getPool();
   if (!pool) return { error: "Database unavailable" };
 
-  // Validate token
-  const tokenCheck = await validatePasswordResetToken(token);
-  if (!tokenCheck.valid) {
-    return { error: tokenCheck.error, errorCode: tokenCheck.errorCode };
+  if (!token || typeof token !== "string" || token.length < 16) {
+    return { error: "Invalid token", errorCode: "TOKEN_INVALID" };
   }
 
-  // Validate new password
+  // Validate new password before consuming token
   const passwordCheck = validatePassword(newPassword);
   if (!passwordCheck.valid) {
     return { error: passwordCheck.error };
@@ -524,29 +535,48 @@ export async function resetPasswordWithToken(token, newPassword, ip, ua) {
   // Hash new password
   const hash = await bcrypt.hash(String(newPassword), 12);
 
+  // Atomically claim the token: only consume if unused and not expired.
+  // Prevents race where a stolen token is reused between validate + update.
+  const claim = await pool.query(
+    `UPDATE password_resets
+       SET used_at = now()
+     WHERE token = $1
+       AND used_at IS NULL
+       AND expires_at > now()
+     RETURNING id, user_id, expires_at`,
+    [token]
+  );
+  const reset = claim.rows?.[0];
+  if (!reset) {
+    // Distinguish error reason for UX
+    const probe = await pool.query(
+      `SELECT used_at, expires_at FROM password_resets WHERE token = $1`,
+      [token]
+    );
+    const row = probe.rows?.[0];
+    if (!row) return { error: "Invalid token", errorCode: "TOKEN_INVALID" };
+    if (row.used_at) return { error: "Token already used", errorCode: "TOKEN_USED" };
+    return { error: "Token expired", errorCode: "TOKEN_EXPIRED" };
+  }
+  const userId = reset.user_id;
+
   // Get user info for email
   const userQ = await pool.query(
     "SELECT id, email, username, nickname FROM users WHERE id = $1",
-    [tokenCheck.userId]
+    [userId]
   );
   const user = userQ.rows?.[0];
 
   // Update password
   await pool.query(
     `UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2`,
-    [hash, tokenCheck.userId]
-  );
-
-  // Mark token as used
-  await pool.query(
-    `UPDATE password_resets SET used_at = now() WHERE token = $1`,
-    [token]
+    [hash, userId]
   );
 
   // Invalidate ALL sessions for this user (security measure)
   await pool.query(
     `UPDATE sessions SET revoked = true WHERE user_id = $1`,
-    [tokenCheck.userId]
+    [userId]
   );
 
   // Send security notification
@@ -561,7 +591,7 @@ export async function resetPasswordWithToken(token, newPassword, ip, ua) {
 
   // Log password reset
   try {
-    await logAdmin(null, "auth.password_reset_completed", tokenCheck.userId, { ip });
+    await logAdmin(null, "auth.password_reset_completed", userId, { ip });
   } catch {}
 
   return { ok: true };

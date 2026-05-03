@@ -197,10 +197,16 @@ export async function deleteOldNotifications(daysOld = 90) {
     throw new Error("Database pool not available");
   }
 
+  const days = parseInt(daysOld, 10);
+  if (!Number.isFinite(days) || days <= 0) {
+    throw new Error("daysOld must be a positive integer");
+  }
+
   const result = await pool.query(
-    `DELETE FROM notifications 
-     WHERE created_at < NOW() - INTERVAL '${parseInt(daysOld, 10)} days'
-     RETURNING id`
+    `DELETE FROM notifications
+     WHERE created_at < NOW() - ($1::int * INTERVAL '1 day')
+     RETURNING id`,
+    [days]
   );
 
   return result.rowCount;
@@ -228,50 +234,71 @@ export async function ensureDailyUpdatesDigest(userId) {
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayStr = yesterday.toISOString().substring(0, 10); // YYYY-MM-DD (more robust)
 
-    // Check if digest already exists for today (checking data.date = yesterday)
-    const existingCheck = await pool.query(
-      `SELECT id, data FROM notifications 
-       WHERE user_id = $1 
-         AND type = $2 
-         AND created_at >= $3
-         AND data->>'date' = $4
-       LIMIT 1`,
-      [userId, NOTIFICATION_TYPES.UPDATES_DAILY_DIGEST, today, yesterdayStr]
-    );
+    // Single-flight per (user, day) via advisory transaction lock.
+    // Prevents two concurrent requests both passing the existence check and
+    // inserting duplicate digest notifications.
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      // Lock key: hash of userId + yesterdayStr fits a 64-bit advisory lock.
+      await client.query(
+        `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
+        [`digest:${userId}:${yesterdayStr}`]
+      );
 
-    if (existingCheck.rows.length > 0) {
-      // Digest already exists, no need to create
-      return null;
+      const existingCheck = await client.query(
+        `SELECT id FROM notifications
+         WHERE user_id = $1
+           AND type = $2
+           AND created_at >= $3
+           AND data->>'date' = $4
+         LIMIT 1`,
+        [userId, NOTIFICATION_TYPES.UPDATES_DAILY_DIGEST, today, yesterdayStr]
+      );
+
+      if (existingCheck.rows.length > 0) {
+        await client.query("COMMIT");
+        return null;
+      }
+
+      const countResult = await client.query(
+        `SELECT COUNT(*) as count, MAX(id) as latest_id
+         FROM project_updates
+         WHERE is_published = true
+           AND published_at >= $1
+           AND published_at < $2`,
+        [yesterday, today]
+      );
+
+      const count = parseInt(countResult.rows[0]?.count || 0, 10);
+      const latestUpdateId = countResult.rows[0]?.latest_id || null;
+
+      if (count === 0) {
+        await client.query("COMMIT");
+        return null;
+      }
+
+      const ins = await client.query(
+        `INSERT INTO notifications (user_id, type, data)
+         VALUES ($1, $2, $3::jsonb)
+         RETURNING *`,
+        [
+          userId,
+          NOTIFICATION_TYPES.UPDATES_DAILY_DIGEST,
+          JSON.stringify({ count, date: yesterdayStr, latestUpdateId }),
+        ]
+      );
+      await client.query("COMMIT");
+      return ins.rows?.[0] || null;
+    } catch (e) {
+      try { await client.query("ROLLBACK"); } catch {}
+      throw e;
+    } finally {
+      client.release();
     }
-
-    // Count updates published yesterday
-    const countResult = await pool.query(
-      `SELECT COUNT(*) as count, MAX(id) as latest_id
-       FROM project_updates
-       WHERE is_published = true
-         AND published_at >= $1
-         AND published_at < $2`,
-      [yesterday, today]
-    );
-
-    const count = parseInt(countResult.rows[0]?.count || 0, 10);
-    const latestUpdateId = countResult.rows[0]?.latest_id || null;
-
-    if (count === 0) {
-      // No updates yesterday, no notification needed
-      return null;
-    }
-
-    // Create the digest notification
-    const notification = await createNotification(userId, NOTIFICATION_TYPES.UPDATES_DAILY_DIGEST, {
-      count,
-      date: yesterdayStr,
-      latestUpdateId,
-    });
-
-    return notification;
   } catch (err) {
     console.error("[notification] ensureDailyUpdatesDigest error:", err);
     return null;
   }
 }
+

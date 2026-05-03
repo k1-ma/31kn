@@ -768,6 +768,31 @@ router.post("/state-chunk", requireAuth, idempotency(), async (req, res) => {
               error: restoreErr?.message
             });
           }
+        } else {
+          // First-ever sync for this user but the payload contains [IMAGE_STRIPPED]
+          // markers — there is nothing on the server to restore from, so persisting
+          // the assembled state would permanently corrupt those images.
+          // Reject so the client retries with a payload that includes the images
+          // (e.g. via per-image upload to imageStore before the chunked state sync).
+          logSyncOp("state-chunk", userId, {
+            sessionId,
+            warning: "stripped_images_no_current_state",
+            severity: "HIGH",
+          });
+          await pool.query(
+            "DELETE FROM sync_state_chunks WHERE session_id = $1 AND user_id = $2",
+            [sessionId, userId]
+          );
+          await pool.query(
+            "DELETE FROM sync_state_sessions WHERE session_id = $1 AND user_id = $2",
+            [sessionId, userId]
+          );
+          return res.status(422).json({
+            error: "stripped_images_without_baseline",
+            code: "STRIPPED_IMAGES_NO_BASELINE",
+            message:
+              "Initial sync contains stripped image markers but no server state exists to restore from. Upload images individually before retrying chunked state sync.",
+          });
         }
       }
 

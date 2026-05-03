@@ -116,6 +116,24 @@ export default function Register() {
       return;
     }
 
+    // Mirror server-side complexity rules: at least three of
+    // {lowercase, uppercase, digit, symbol}.
+    {
+      const classes = [
+        /[a-z]/.test(password),
+        /[A-Z]/.test(password),
+        /[0-9]/.test(password),
+        /[^A-Za-z0-9]/.test(password),
+      ].filter(Boolean).length;
+      if (classes < 3) {
+        setErr(
+          t("auth.register.errors.passwordWeak") ||
+            "Password must include at least three of: lowercase, uppercase, digit, symbol"
+        );
+        return;
+      }
+    }
+
     setBusy(true);
     try {
       const result = await apiJson("/api/auth/register", {
