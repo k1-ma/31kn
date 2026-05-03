@@ -3339,7 +3339,7 @@ export default function Trades({ trades, accounts, documents, ideas = [], librar
                     </td>
                   </tr>
                 ) : (
-                  <AnimatePresence mode="popLayout">
+                  <AnimatePresence initial={false}>
                     {filtered.map((trade, idx) => {
                         const sym = symById.get(trade.symbolId);
                         const ses = sesById.get(trade.sessionId);
@@ -3359,7 +3359,6 @@ export default function Trades({ trades, accounts, documents, ideas = [], librar
                         return (
                           <motion.tr
                             key={trade.id}
-                            layout
                             initial={reduceMotion ? false : { opacity: 0, y: 6 }}
                             animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
                             exit={reduceMotion ? { opacity: 1 } : { opacity: 0, y: 6 }}
