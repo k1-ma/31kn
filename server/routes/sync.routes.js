@@ -200,6 +200,25 @@ function computeMissingChunks(receivedIndices, totalChunks) {
 }
 
 /**
+ * Atomically claim the right to finalize a session. Returns true if this
+ * caller transitioned the session from 'receiving' → 'finalizing' (i.e. it
+ * holds the right to assemble + apply chunks). Returns false if another
+ * concurrent request already claimed it (so this caller should skip
+ * loadAllChunks/applyOperations to avoid double-apply or empty reads from
+ * a half-cleaned session).
+ */
+async function tryClaimFinalize(pool, sessionId, userId) {
+  const result = await pool.query(
+    `UPDATE sync_state_sessions
+        SET status = 'finalizing', updated_at = now()
+      WHERE session_id = $1 AND user_id = $2 AND status = 'receiving'
+      RETURNING session_id`,
+    [sessionId, userId]
+  );
+  return (result.rowCount || 0) > 0;
+}
+
+/**
  * Load all chunks for a session from DB, ordered by chunk_index.
  */
 async function loadAllChunks(pool, sessionId, userId) {
@@ -376,6 +395,21 @@ router.post("/chunk", requireAuth, idempotency(), async (req, res) => {
     // Idempotency: if duplicate chunk, still check if we can finalize
     // Finalize ONLY when ALL chunks are received
     if (chunksReceived === totalChunks) {
+      // Atomically claim finalize. Concurrent requests for the same session
+      // (e.g. client double-fires the last chunk) lose the race here and
+      // return a benign "already finalizing" response instead of double-
+      // applying operations or reading from a half-cleaned session.
+      const claimed = await tryClaimFinalize(pool, opSessionId, userId);
+      if (!claimed) {
+        logSyncOp("chunk", userId, { sessionId, status: "already_finalizing" });
+        return res.status(202).json({
+          ok: true,
+          status: "finalizing",
+          sessionId,
+          message: "Another worker is finalizing this session",
+        });
+      }
+
       // All chunks received - assemble and apply operations
       const allChunkRows = await loadAllChunks(pool, opSessionId, userId);
 
@@ -554,6 +588,18 @@ router.post("/state-chunk", requireAuth, idempotency(), async (req, res) => {
 
     // Finalize ONLY when ALL chunks are received
     if (chunksReceived === totalChunks) {
+      // Atomically claim finalize. See tryClaimFinalize doc for rationale.
+      const claimed = await tryClaimFinalize(pool, stateSessionId, userId);
+      if (!claimed) {
+        logSyncOp("state-chunk", userId, { sessionId, status: "already_finalizing" });
+        return res.status(202).json({
+          ok: true,
+          status: "finalizing",
+          sessionId,
+          message: "Another worker is finalizing this session",
+        });
+      }
+
       // All chunks received - assemble state from DB
       const allChunkRows = await loadAllChunks(pool, stateSessionId, userId);
 
@@ -591,12 +637,20 @@ router.post("/state-chunk", requireAuth, idempotency(), async (req, res) => {
         // Verify completeness: all slots should be filled
         const filledCount = combined.filter(item => item !== undefined).length;
         if (filledCount < totalLength) {
+          // Build the precise missingIndices list so the client can re-send
+          // just the gaps instead of restarting the whole upload (which used
+          // to risk dupes / wasted bandwidth on every retry).
+          const missingIndices = [];
+          for (let i = 0; i < totalLength; i++) {
+            if (combined[i] === undefined) missingIndices.push(i);
+          }
           logSyncOp("state-chunk", userId, {
             sessionId,
             error: "incomplete_array_batch_abort",
             key,
             expectedLength: totalLength,
             filledCount,
+            missingCount: missingIndices.length,
             severity: "CRITICAL"
           });
           // CRITICAL FIX: Abort save to prevent permanent data loss.
@@ -609,7 +663,12 @@ router.post("/state-chunk", requireAuth, idempotency(), async (req, res) => {
             message: `Array '${key}' is incomplete: ${filledCount}/${totalLength} items. Retry required.`,
             key,
             expectedLength: totalLength,
-            filledCount
+            filledCount,
+            // Cap at 100 indices to keep the response payload bounded —
+            // anything above that is almost certainly a systemic upload
+            // failure where the client should restart the session anyway.
+            missingIndices: missingIndices.slice(0, 100),
+            missingTruncated: missingIndices.length > 100,
           });
         }
         // Only include defined items (no undefined holes)

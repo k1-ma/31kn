@@ -378,14 +378,15 @@ function getOutbox(userId) {
     if (outbox && typeof outbox.schemaVersion === "number" && outbox.schemaVersion < CURRENT_SCHEMA_VERSION) {
       outbox.state = migrateState(outbox.state, outbox.schemaVersion);
       outbox.schemaVersion = CURRENT_SCHEMA_VERSION;
-      // Re-save the migrated outbox entry
+      // Re-save the migrated outbox entry. If persisting fails (e.g. quota
+      // exceeded), keep the in-memory migrated copy so the caller can still
+      // sync pending changes this session. The original raw entry stays in
+      // localStorage as a fallback for the next load — migrations are
+      // idempotent (loop over fromVersion+1..CURRENT) so re-running is safe.
       try {
         localStorage.setItem(`${OUTBOX_KEY_PREFIX}${userId}`, JSON.stringify(outbox));
       } catch (e) {
-        console.warn("[sync] outbox migration save failed", e);
-        // Don't retry migration on next render; flag this outbox as broken
-        try { localStorage.removeItem(`${OUTBOX_KEY_PREFIX}${userId}`); } catch {}
-        outbox = null;
+        console.warn("[sync] outbox migration persist failed; keeping in-memory copy", e);
       }
     }
     return outbox;
@@ -2602,12 +2603,21 @@ export function useSyncedDb(userId, seed, options = {}) {
         if (IS_DEV) {
           console.log("[syncDb] Heartbeat: server reachable, flushing outbox");
         }
-        retryOutbox().then(success => {
-          if (success) {
-            outboxAttempt.current = 0;
-            setSyncStatus("synced");
-          }
-        });
+        retryOutbox()
+          .then(success => {
+            if (success) {
+              outboxAttempt.current = 0;
+              setSyncStatus("synced");
+            }
+          })
+          .catch(err => {
+            // Without an explicit catch a rejection here triggers the global
+            // unhandledrejection handler and (worse) prevents the next
+            // heartbeat tick from observing that the outbox is still pending.
+            if (IS_DEV) {
+              console.warn("[syncDb] Heartbeat outbox flush failed:", err?.message || err);
+            }
+          });
       }
     };
 

@@ -355,10 +355,11 @@ function generateInsights(metrics, trades, accounts, accountId = "all") {
 
   // Profit Factor insight
   if (metrics.profitFactor > 2) {
+    const pfDisplay = metrics.profitFactor >= INFINITY_PLACEHOLDER ? "∞" : metrics.profitFactor.toFixed(2);
     insights.push({
       type: "profit_factor",
       title: "Excellent Profit Factor",
-      description: `Your PF of ${metrics.profitFactor.toFixed(2)} indicates strong edge`,
+      description: `Your PF of ${pfDisplay} indicates strong edge`,
       severity: "success",
     });
   } else if (metrics.profitFactor < 1 && metrics.totalTrades > 5) {

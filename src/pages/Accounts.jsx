@@ -591,7 +591,7 @@ function AccountCard({ account, templates, trades, onEdit, onPayout, onArchive, 
               <div className="flex flex-wrap gap-1 mt-1">
                 {account.tags.slice(0, 3).map((tag, idx) => (
                   <span
-                    key={idx}
+                    key={`${tag}-${idx}`}
                     className="px-1.5 py-0.5 rounded text-[9px] bg-muted/60 text-muted-foreground"
                   >
                     #{tag}
@@ -607,11 +607,14 @@ function AccountCard({ account, templates, trades, onEdit, onPayout, onArchive, 
 
         {/* Actions menu */}
         <div className="relative">
-          <Button 
-            variant="ghost" 
-            size="icon" 
+          <Button
+            variant="ghost"
+            size="icon"
             className="h-8 w-8 rounded-xl"
             onClick={() => setMenuOpen(!menuOpen)}
+            aria-label={t("common.menu") || "Menu"}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
           >
             <MoreVertical className="h-4 w-4" />
           </Button>
@@ -1963,7 +1966,7 @@ function AccountModal({ open, onClose, account, accounts = [], templates, onSave
               <div className="flex flex-wrap gap-2 mb-2">
                 {(form.tags || []).map((tag, idx) => (
                   <span
-                    key={idx}
+                    key={`${tag}-${idx}`}
                     className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-accent/15 text-accent-foreground text-xs font-medium border border-accent/20"
                   >
                     {tag}

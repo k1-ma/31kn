@@ -115,6 +115,11 @@ function linearInterpolate(value, points) {
   if (points.length === 0) return 50;
   if (points.length === 1) return points[0][1];
 
+  // Guard against NaN/non-finite input. Without this a stray undefined or
+  // NaN propagates through every comparison (NaN <= x is always false) and
+  // we end up returning the last segment's NaN, which renders as "NaN%".
+  if (!Number.isFinite(value)) return points[0][1];
+
   // Clamp to first/last points
   if (value <= points[0][0]) return points[0][1];
   if (value >= points[points.length - 1][0]) return points[points.length - 1][1];

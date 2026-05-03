@@ -267,7 +267,7 @@ export default function DashboardConsistency({ metrics, loading = false, currenc
           <StatRow
             icon={Gauge}
             label="Profit Factor"
-            value={isEmpty ? "—" : displayMetrics.profitFactor?.toFixed(2) || "—"}
+            value={isEmpty ? "—" : (displayMetrics.profitFactor >= 999 ? "∞" : (displayMetrics.profitFactor?.toFixed(2) || "—"))}
             variant={isEmpty ? "default" : (displayMetrics.profitFactor >= 1.5 ? "success" : displayMetrics.profitFactor >= 1 ? "warning" : "danger")}
           />
           <StatRow

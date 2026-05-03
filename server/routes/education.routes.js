@@ -66,9 +66,23 @@ async function reconcileProcessingVideos(pool) {
       [RECONCILE_BATCH_LIMIT]
     );
 
-    for (const row of stale.rows) {
-      try {
+    // Parallelize the Bunny lookups — they're independent network calls.
+    // RECONCILE_BATCH_LIMIT is small (5) so unlimited parallelism is fine
+    // and keeps total wallclock close to the slowest single request.
+    const bunnyResults = await Promise.allSettled(
+      stale.rows.map(async (row) => {
         const bunnyData = await getVideo(row.bunny_video_id);
+        return { row, bunnyData };
+      })
+    );
+
+    for (const settled of bunnyResults) {
+      if (settled.status === "rejected") {
+        console.warn("[education] reconcile failed:", settled.reason?.message || settled.reason);
+        continue;
+      }
+      const { row, bunnyData } = settled.value;
+      try {
         let nextStatus = "processing";
         if (bunnyData.status === 4) nextStatus = "ready";
         else if (bunnyData.status === 5) nextStatus = "failed";

@@ -332,15 +332,22 @@ export async function verifyEmail(token) {
  * @param {number} userId - User ID
  * @returns {Promise<{ ok: boolean, error?: string }>}
  */
+// Minimum interval between resend-verification emails for the same userId.
+// Without this, /resend-verification accepts a sequential userId in the body
+// and can be used to spam any user's inbox at the per-IP login rate limit.
+const RESEND_VERIFICATION_COOLDOWN_MS = 60 * 1000;
+
 export async function resendVerificationEmail(userId) {
   const pool = getPool();
   if (!pool) return { error: "Database unavailable" };
 
   const q = await pool.query(
-    `SELECT id, email, email_verified, username, nickname FROM users WHERE id = $1`,
+    `SELECT id, email, email_verified, username, nickname,
+            email_verify_token_expires_at
+     FROM users WHERE id = $1`,
     [userId]
   );
-  
+
   const user = q.rows?.[0];
   if (!user) {
     return { error: "User not found" };
@@ -354,12 +361,28 @@ export async function resendVerificationEmail(userId) {
     return { error: "No email address", errorCode: "NO_EMAIL" };
   }
 
+  // Per-user cooldown. The token expiry is EMAIL_VERIFY_TOKEN_EXPIRY_HOURS
+  // hours; if the existing token was issued less than the cooldown ago, we
+  // refuse to re-issue/re-send.
+  if (user.email_verify_token_expires_at) {
+    const issuedAtMs =
+      new Date(user.email_verify_token_expires_at).getTime() -
+      EMAIL_VERIFY_TOKEN_EXPIRY_HOURS * 60 * 60 * 1000;
+    const sinceLastMs = Date.now() - issuedAtMs;
+    if (sinceLastMs >= 0 && sinceLastMs < RESEND_VERIFICATION_COOLDOWN_MS) {
+      return {
+        error: "Please wait a moment before requesting another email.",
+        errorCode: "RESEND_COOLDOWN",
+      };
+    }
+  }
+
   // Generate new token
   const verifyToken = crypto.randomBytes(32).toString("hex");
   const verifyTokenExpiresAt = new Date(Date.now() + EMAIL_VERIFY_TOKEN_EXPIRY_HOURS * 60 * 60 * 1000);
 
   await pool.query(
-    `UPDATE users SET 
+    `UPDATE users SET
        email_verify_token = $1,
        email_verify_token_expires_at = $2,
        updated_at = now()
@@ -555,10 +578,32 @@ export async function resetPasswordWithToken(token, newPassword, ip, ua) {
  */
 export async function changePasswordWithNotification(userId, oldPassword, newPassword, options = {}) {
   const result = await changePassword(userId, oldPassword, newPassword);
-  
+
   if (result.ok) {
     const pool = getPool();
     if (pool) {
+      // Invalidate all OTHER active sessions for this user. The current
+      // session (options.currentSid) is preserved so the caller stays
+      // logged in. Without this, an attacker who briefly captured a
+      // session would keep access after the legitimate user changes
+      // their password.
+      try {
+        if (options.currentSid) {
+          await pool.query(
+            "UPDATE sessions SET revoked = true WHERE user_id = $1 AND sid <> $2 AND revoked = false",
+            [userId, options.currentSid]
+          );
+        } else {
+          await pool.query(
+            "UPDATE sessions SET revoked = true WHERE user_id = $1 AND revoked = false",
+            [userId]
+          );
+        }
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error("[auth] Failed to revoke other sessions after password change:", e?.message || e);
+      }
+
       // Get user info for email
       const userQ = await pool.query(
         "SELECT email, username, nickname FROM users WHERE id = $1",
@@ -569,10 +614,10 @@ export async function changePasswordWithNotification(userId, oldPassword, newPas
       // Send security notification
       if (user?.email) {
         try {
-          await sendPasswordChangedEmail(user.email, user.nickname || user.username, { 
-            ip: options.ip, 
-            ua: options.ua, 
-            isReset: false 
+          await sendPasswordChangedEmail(user.email, user.nickname || user.username, {
+            ip: options.ip,
+            ua: options.ua,
+            isReset: false
           });
         } catch (e) {
           // eslint-disable-next-line no-console

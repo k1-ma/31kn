@@ -350,8 +350,11 @@ router.get("/backups/:name", requireAdmin, async (req, res) => {
   }
 
   const { name } = req.params;
-  if (!name) {
-    return res.status(400).json({ error: "Backup name required" });
+  // Reject anything outside the canonical backup name format produced by
+  // generateBackupName(). This blocks header injection (CR/LF, quotes) into
+  // Content-Disposition and rejects bogus DB lookups in one check.
+  if (!name || !/^tradecrm_backup_[\w\-]+\.json\.gz$/.test(name) || name.length > 128) {
+    return res.status(400).json({ error: "Invalid backup name" });
   }
 
   try {

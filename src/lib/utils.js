@@ -122,32 +122,43 @@ export const sanitizeNumericInput = (str, opts = {}) => {
   return result;
 };
 
+// Safe magnitude ceiling for trading-domain numeric inputs. JS Number can
+// represent up to ~1.8e308, but any value above MAX_SAFE_INTEGER stops being
+// representable as a precise integer and breaks chart axes / sums / sorts.
+// Cap at ±9e15 (Number.MAX_SAFE_INTEGER) so a stray "1e308" pasted into a
+// PnL field returns null instead of poisoning every downstream calculation.
+const NUMERIC_INPUT_LIMIT = Number.MAX_SAFE_INTEGER;
+
 /**
  * Parse a string to a number, returning null for empty/invalid/sign-only strings.
- * Treats comma as decimal separator.
+ * Treats comma as decimal separator. Rejects magnitudes above ~9e15.
  * @param {string|number} str - Input value
  * @returns {number|null} - Parsed number or null
  */
 export const parseNullableNumber = (str) => {
   if (str === null || str === undefined) return null;
-  
-  // If already a number, return it directly (unless NaN)
+
+  // If already a number, return it directly (unless NaN/Infinity/out-of-range)
   if (typeof str === "number") {
-    return Number.isFinite(str) ? str : null;
+    if (!Number.isFinite(str)) return null;
+    if (Math.abs(str) > NUMERIC_INPUT_LIMIT) return null;
+    return str;
   }
-  
+
   let s = String(str).trim();
   if (s === "") return null;
-  
+
   // Replace comma with dot
   s = s.replace(/,/g, ".");
-  
+
   // Check for sign-only strings like "+", "-", "+.", "-."
   const signOnly = /^[+-]\.?$/.test(s);
   if (signOnly) return null;
-  
+
   const n = parseFloat(s);
-  return Number.isFinite(n) ? n : null;
+  if (!Number.isFinite(n)) return null;
+  if (Math.abs(n) > NUMERIC_INPUT_LIMIT) return null;
+  return n;
 };
 
 /**

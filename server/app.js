@@ -47,22 +47,26 @@ function corsOptions(req, callback) {
   if (!IS_PROD) {
     return callback(null, { origin: true, credentials: true });
   }
-  // In production, check whitelist (if configured)
-  if (CORS_WHITELIST.length > 0) {
-    // Precise domain matching to prevent subdomain spoofing
-    // e.g., whitelist "example.com" should not allow "malicious-example.com"
-    const allowed = CORS_WHITELIST.some((w) => {
-      // Exact match
-      if (origin === w) return true;
-      // Match with https:// prefix
-      if (origin === `https://${w}`) return true;
-      // Match subdomain (whitelist entry must start with '.')
-      if (w.startsWith(".") && origin.endsWith(w)) return true;
-      return false;
-    });
-    if (!allowed) {
-      return callback(new Error(`CORS not allowed for origin: ${origin}`), { origin: false });
-    }
+  // In production a whitelist is REQUIRED. Falling through with no
+  // configured origins used to fail open (any cross-origin request
+  // received credentials), which is the exact misconfiguration CSRF
+  // protections assume isn't there.
+  if (CORS_WHITELIST.length === 0) {
+    return callback(new Error("CORS_WHITELIST is empty in production; refusing cross-origin request"), { origin: false });
+  }
+  // Precise domain matching to prevent subdomain spoofing
+  // e.g., whitelist "example.com" should not allow "malicious-example.com"
+  const allowed = CORS_WHITELIST.some((w) => {
+    // Exact match
+    if (origin === w) return true;
+    // Match with https:// prefix
+    if (origin === `https://${w}`) return true;
+    // Match subdomain (whitelist entry must start with '.')
+    if (w.startsWith(".") && origin.endsWith(w)) return true;
+    return false;
+  });
+  if (!allowed) {
+    return callback(new Error(`CORS not allowed for origin: ${origin}`), { origin: false });
   }
   return callback(null, { origin: true, credentials: true });
 }
@@ -76,8 +80,8 @@ export async function createApp() {
     console.warn("[db] init skipped:", err?.message || err);
   }
 
-  // Auto-seed updates if RUN_SEED_UPDATES environment variable is set
-  // This allows seeding on Vercel deploy by setting the env variable
+  // Auto-seed updates if RUN_SEED_UPDATES environment variable is set.
+  // Useful for one-shot seeding on either Railway or a Vercel deploy.
   if (["1", "true"].includes(process.env.RUN_SEED_UPDATES)) {
     try {
       const pool = getPool();
@@ -113,6 +117,9 @@ export async function createApp() {
           connectSrc: ["'self'", "https://accounts.google.com", "https://oauth2.googleapis.com", "https://www.googleapis.com", "https://hauntedxcdn.b-cdn.net"],
           mediaSrc: ["'self'", "https://hauntedxcdn.b-cdn.net", "https://*.b-cdn.net"],
           frameSrc: ["'self'", "https://accounts.google.com", "https://hauntedxcdn.b-cdn.net", "https://iframe.mediadelivery.net"],
+          // frame-ancestors blocks clickjacking by refusing to be framed by
+          // any other site. This is the modern replacement for X-Frame-Options.
+          frameAncestors: ["'self'"],
           formAction: ["'self'"],
           baseUri: ["'self'"],
           objectSrc: ["'none'"],
