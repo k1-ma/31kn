@@ -177,7 +177,22 @@ export async function createApp() {
       : null;
 
     try {
-      const pool = getPool();
+      // On Vercel cold starts the boot-time ensurePool() in createApp() may
+      // still be in flight (or have failed its first attempt) when the very
+      // first request arrives. If we silently skip session resolution here,
+      // requireAuth downstream sees req.session === undefined and returns
+      // 401 even though the user has a valid cookie and the pool is about
+      // to come up via ensureDb's retry loop. So before giving up, try to
+      // bring the pool online ourselves; if it still fails, fall through —
+      // ensureDb (with backoff) will return 503 for routes that need the DB.
+      let pool = getPool();
+      if (!pool) {
+        try {
+          pool = await ensurePool();
+        } catch {
+          // Pool truly unavailable — let downstream middleware decide.
+        }
+      }
       if (!pool) {
         if (AUTH_DEBUG) console.log("[auth-debug] session skip: no_db_pool", debugCtx);
         return next();
