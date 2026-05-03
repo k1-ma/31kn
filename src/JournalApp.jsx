@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useState, useRef, lazy, Suspense } from "react";
 import Shell from "@/components/layout/Shell.jsx";
 import UserMenu from "@/components/common/UserMenu.jsx";
 import CommandPalette from "@/components/common/CommandPalette.jsx";
@@ -14,6 +14,7 @@ import { uid,
   isoDate,
   clampNum } from "@/lib/utils";
 import { ideasApi } from "@/lib/api.js";
+import { isAnyDirty, clearDirty } from "@/lib/navGuard.js";
 import {
   mergePropTemplates,
   mapLegacyPropToTemplateId,
@@ -36,28 +37,30 @@ const hasPurplePalette = (pal) =>
 
 // Dashboard and Analytics pages
 import DashboardPage from "@/pages/DashboardPage.jsx";
-import Analytics from "@/pages/Analytics.jsx";
 import Trades from "@/pages/Trades.jsx";
 import Accounts from "@/pages/Accounts.jsx";
-import PropPrograms from "@/pages/PropPrograms.jsx";
-import TrashPage from "@/pages/Trash.jsx";
-import Pairs from "@/pages/Pairs.jsx";
-import Sessions from "@/pages/Sessions.jsx";
-import Models from "@/pages/Models.jsx";
-import Tags from "@/pages/Tags.jsx";
-import Settings from "@/pages/Settings.jsx";
-import Ideas from "@/pages/Ideas.jsx";
-import Changelog from "@/pages/Changelog.jsx";
-import Documents from "@/pages/Documents.jsx";
-import Inbox from "@/pages/Inbox.jsx";
-import UpdatesAndFeedback from "@/pages/UpdatesAndFeedback.jsx";
-import Backtests from "@/pages/Backtests.jsx";
+// Less-frequently visited pages — lazy so the initial bundle doesn't
+// include their (often heavy: charts, tiptap, recharts) deps.
+const Analytics = lazy(() => import("@/pages/Analytics.jsx"));
+const PropPrograms = lazy(() => import("@/pages/PropPrograms.jsx"));
+const TrashPage = lazy(() => import("@/pages/Trash.jsx"));
+const Pairs = lazy(() => import("@/pages/Pairs.jsx"));
+const Sessions = lazy(() => import("@/pages/Sessions.jsx"));
+const Models = lazy(() => import("@/pages/Models.jsx"));
+const Tags = lazy(() => import("@/pages/Tags.jsx"));
+const Settings = lazy(() => import("@/pages/Settings.jsx"));
+const Ideas = lazy(() => import("@/pages/Ideas.jsx"));
+const Changelog = lazy(() => import("@/pages/Changelog.jsx"));
+const Documents = lazy(() => import("@/pages/Documents.jsx"));
+const Inbox = lazy(() => import("@/pages/Inbox.jsx"));
+const UpdatesAndFeedback = lazy(() => import("@/pages/UpdatesAndFeedback.jsx"));
+const Backtests = lazy(() => import("@/pages/Backtests.jsx"));
+const BacktestDashboard = lazy(() => import("@/pages/BacktestDashboard.jsx"));
+const Education = lazy(() => import("@/pages/Education.jsx"));
+const TournamentLeaderboard = lazy(() => import("@/pages/TournamentLeaderboard.jsx"));
 import BacktestModeBar from "@/components/backtest/BacktestModeBar.jsx";
 import BacktestCreateModal from "@/components/backtest/BacktestCreateModal.jsx";
-import BacktestDashboard from "@/pages/BacktestDashboard.jsx";
 import NotificationBell from "@/components/common/NotificationBell.jsx";
-import Education from "@/pages/Education.jsx";
-import TournamentLeaderboard from "@/pages/TournamentLeaderboard.jsx";
 
 import {
   BarChart3,
@@ -88,11 +91,13 @@ export default function JournalApp() {
   const navBanner = role === "loh" ? { i18nKey: "roles.lohBanner" } : null;
   const { db, setDb, syncStatus, refetch, retrySync, flushSync, setShareInFlight, lastError, hasUnsavedChanges, syncProgress, isReadOnly } = useSyncedDb(user?.id, SEED, { lastKnownUserId });
   
-  // Delayed sync warning - only shows banner if save takes longer than threshold
-  const { shouldShowWarning: showDelayedSyncWarning, resetWarning: resetSyncWarning } = useSyncWarning({
-    syncStatus,
-    // thresholdMs: 1800, // Default is 1800ms, can be customized here
-  });
+  // Sync-in-progress indicator — shows a friendly card with progress + elapsed time
+  // after a short grace period to avoid flickering on near-instant saves.
+  const {
+    shouldShowWarning: showDelayedSyncWarning,
+    elapsedMs: syncElapsedMs,
+    resetWarning: resetSyncWarning,
+  } = useSyncWarning({ syncStatus, onStall: retrySync });
   
   const [active, setActive] = useState("dashboard");
   const [cmdOpen, setCmdOpen] = useState(false);
@@ -1754,26 +1759,44 @@ export default function JournalApp() {
     });
   };
 
+  // Archiving a parent doc cascades to its sub-documents. Without this,
+  // children stay un-archived but are filtered out of the main grid (they
+  // have parentId), so the user perceives them as silently lost.
   const deleteDocument = (id) =>
-    setDb((prev) => ({
-      ...prev,
-      documents: (prev.documents ?? []).map((d) =>
-        d.id === id ? { ...d, archivedAt: monoNow(), updatedAt: monoNow() } : d
-      ),
-    }));
+    setDb((prev) => {
+      const now = Date.now();
+      return {
+        ...prev,
+        documents: (prev.documents ?? []).map((d) =>
+          d.id === id || d.parentId === id
+            ? { ...d, archivedAt: now, updatedAt: now }
+            : d
+        ),
+      };
+    });
 
+  // Restore mirrors the cascade so unarchiving a parent brings its
+  // children back too.
   const restoreDocument = (id) =>
-    setDb((prev) => ({
-      ...prev,
-      documents: (prev.documents ?? []).map((d) =>
-        d.id === id ? { ...d, archivedAt: null, updatedAt: monoNow() } : d
-      ),
-    }));
+    setDb((prev) => {
+      const now = Date.now();
+      return {
+        ...prev,
+        documents: (prev.documents ?? []).map((d) =>
+          d.id === id || d.parentId === id
+            ? { ...d, archivedAt: null, updatedAt: now }
+            : d
+        ),
+      };
+    });
 
+  // Hard-delete also cascades so orphaned children don't linger in state.
   const deleteDocumentForever = (id) =>
     setDb((prev) => ({
       ...prev,
-      documents: (prev.documents ?? []).filter((d) => d.id !== id),
+      documents: (prev.documents ?? []).filter(
+        (d) => d.id !== id && d.parentId !== id
+      ),
     }));
 
 
@@ -2144,6 +2167,16 @@ export default function JournalApp() {
   const BACKTEST_TAB_MAP = { dashboard: "dashboard", analytics: "analytics", trades: "trades" };
 
   const handleSetActive = useCallback((key) => {
+    // Block in-app navigation when a registered editor has unsaved changes.
+    // Pages opt-in via lib/navGuard.js setDirty(). The browser-level beforeunload
+    // guard covers tab close/refresh; this covers sidebar/command-palette nav.
+    if (isAnyDirty()) {
+      const ok = window.confirm(
+        "You have unsaved changes. Leave this page anyway?"
+      );
+      if (!ok) return;
+      clearDirty();
+    }
     if (activeBacktestId) {
       // In backtest mode: map core nav items to backtest tabs
       const mapped = BACKTEST_TAB_MAP[key];
@@ -2200,9 +2233,15 @@ export default function JournalApp() {
           hasUnsavedChanges={hasUnsavedChanges}
           userId={user?.id}
           showDelayedSyncWarning={showDelayedSyncWarning}
+          syncElapsedMs={syncElapsedMs}
+          syncProgress={syncProgress}
           onResetSyncWarning={resetSyncWarning}
         />
 
+        {/* All routed pages below are lazy-loaded; keep one Suspense
+            boundary so chunk-fetch shows a fallback instead of blanking
+            the whole shell. */}
+        <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading…</div>}>
         {/* ── Backtest workspace mode ── */}
         {activeBacktest ? (
           <>
@@ -2501,6 +2540,7 @@ export default function JournalApp() {
             setUiPatch={setUiPatch}
           />
         )}
+        </Suspense>
       </Shell>
 
       <CommandPalette open={cmdOpen} setOpen={setCmdOpen} actions={actions} reduceMotion={reduceMotion} />

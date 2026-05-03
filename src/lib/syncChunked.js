@@ -575,13 +575,20 @@ export async function performChunkedSync(operations, { onProgress, maxRestarts =
         return result;
       } catch (err) {
         lastError = err;
-        
+
         // Session errors (409) should not be retried at chunk level
         // These require full session restart
         if (err.status === 409) {
           throw err;
         }
-        
+
+        // Payload too large (413) is structural, not transient — retrying with
+        // the same body just burns time. Surface immediately so the caller can
+        // fall back to FULL-state chunked sync (which strips images on 413).
+        if (err.status === 413) {
+          throw err;
+        }
+
         // If this is the last retry, throw the error
         if (retry === maxChunkRetries) {
           if (process.env.NODE_ENV === "development") {
@@ -643,7 +650,7 @@ export async function performChunkedSync(operations, { onProgress, maxRestarts =
             sessionId,
             operationsInChunk: chunks[i].length,
             progress: `${progress}%`,
-            sizeKb: formatBytes(getPayloadSize(chunk)),
+            sizeKb: formatBytes(getPayloadSize(chunks[i])),
           });
         }
       } catch (err) {

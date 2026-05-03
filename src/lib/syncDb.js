@@ -38,11 +38,20 @@ export function monoNow() {
 // across local/server arrays when the id types diverge.
 const idKey = (id) => (id == null ? "" : String(id));
 
+// True when the page is in a hidden tab. Browsers (Chrome/Edge in particular)
+// throttle timers and may pause/abort background fetches in hidden tabs,
+// which produces spurious AbortError/NETWORK_ERROR results from /api/ping
+// and /api/state that are not actually connectivity problems. We use this
+// to skip periodic pings and debounced syncs while hidden — the sync layer
+// catches up immediately when the tab becomes visible again.
+const isTabHidden = () =>
+  typeof document !== "undefined" && document.visibilityState === "hidden";
+
 // ─────────────────────────────────────────────────────────────────────────────
 // SERVER REACHABILITY HEARTBEAT
 // Periodic ping to actual server endpoint to detect VPN/DPI blocking
 // ─────────────────────────────────────────────────────────────────────────────
-const HEARTBEAT_INTERVAL_MS = 20000; // 20 seconds
+const HEARTBEAT_INTERVAL_MS = 30000; // 30 seconds
 const PING_TIMEOUT_MS = 5000;
 const PING_RETRY_ATTEMPTS = 1; // Number of additional retry attempts after first failure
 const PING_RETRY_DELAY_MS = 1500; // Wait 1.5s between retries
@@ -369,14 +378,15 @@ function getOutbox(userId) {
     if (outbox && typeof outbox.schemaVersion === "number" && outbox.schemaVersion < CURRENT_SCHEMA_VERSION) {
       outbox.state = migrateState(outbox.state, outbox.schemaVersion);
       outbox.schemaVersion = CURRENT_SCHEMA_VERSION;
-      // Re-save the migrated outbox entry
+      // Re-save the migrated outbox entry. If persisting fails (e.g. quota
+      // exceeded), keep the in-memory migrated copy so the caller can still
+      // sync pending changes this session. The original raw entry stays in
+      // localStorage as a fallback for the next load — migrations are
+      // idempotent (loop over fromVersion+1..CURRENT) so re-running is safe.
       try {
         localStorage.setItem(`${OUTBOX_KEY_PREFIX}${userId}`, JSON.stringify(outbox));
       } catch (e) {
-        console.warn("[sync] outbox migration save failed", e);
-        // Don't retry migration on next render; flag this outbox as broken
-        try { localStorage.removeItem(`${OUTBOX_KEY_PREFIX}${userId}`); } catch {}
-        outbox = null;
+        console.warn("[sync] outbox migration persist failed; keeping in-memory copy", e);
       }
     }
     return outbox;
@@ -395,6 +405,28 @@ function clearOutbox(userId) {
     if (IS_DEV) {
       console.log("[syncDb] Outbox cleared");
     }
+  } catch {}
+}
+
+/**
+ * Drop every per-user sync artefact for the given user. Used on explicit
+ * logout so the next user on the same device cannot inherit the previous
+ * user's outbox, lastSynced snapshot, or cached IDB state.
+ *
+ * Safe to call without a userId — no-op in that case.
+ */
+export function clearUserSyncArtefacts(userId) {
+  if (!userId) return;
+  try {
+    localStorage.removeItem(`${OUTBOX_KEY_PREFIX}${userId}`);
+    localStorage.removeItem(`${LAST_SYNCED_KEY_PREFIX}${userId}`);
+    localStorage.removeItem(`tradecrm:user:${userId}`);
+    localStorage.removeItem(`tradecrm:lastVersion:${userId}`);
+  } catch {}
+  // Fire-and-forget: IDB delete is async and non-critical; if it fails the
+  // next login will just re-fetch from the server.
+  try {
+    idbStorage.del(`tradecrm:user:${userId}`).catch(() => {});
   } catch {}
 }
 
@@ -1211,8 +1243,8 @@ export function useSyncedDb(userId, seed, options = {}) {
   syncStatusRef.current = syncStatus;
   const MAX_RETRIES = 3;
   const RETRY_DELAY = 2000; // 2 seconds
-  const DEBOUNCE_FAST_MS = 1500; // When user stops typing for 1.5s after a single change
-  const DEBOUNCE_SLOW_MS = 3000; // When user is actively making changes
+  const DEBOUNCE_FAST_MS = 800; // When user stops typing after a single change
+  const DEBOUNCE_SLOW_MS = 1500; // When user is actively making changes
   // Debounce for userId change effect — VPN reconnections can cause rapid
   // userId oscillation (null→id→null→id) within ~100-200ms.  300ms safely
   // absorbs this while staying imperceptible to the user on normal login.
@@ -2123,22 +2155,32 @@ export function useSyncedDb(userId, seed, options = {}) {
         }
       }
       
+      // 413 PAYLOAD_TOO_LARGE: state exceeds server's per-user quota. Outbox
+      // retries with the same body would loop forever. Clear the outbox so
+      // we don't keep replaying an oversized payload, and surface a distinct
+      // error so the UI can ask the user to clean up images / large data.
+      if (status === 413 || code === "PAYLOAD_TOO_LARGE") {
+        clearOutbox(userId);
+        setHasUnsavedChanges(true);
+        setLastError({
+          code: "PAYLOAD_TOO_LARGE",
+          message: "Saved data exceeds server limit — please remove large images or attachments",
+          status: 413,
+        });
+        return { success: false, payloadTooLarge: true };
+      }
+
       // Save to outbox for later retry. Reuse effectiveIdempotencyKey so
       // subsequent outbox retries hit the server's idempotency cache and
       // dedupe replays of this same logical save.
       saveToOutbox(userId, stateToSync, { status, code, message }, effectiveIdempotencyKey);
       setHasUnsavedChanges(true);
-      
+
       // Determine error type
       if (status === 401 || status === 403) {
         setLastError({ code: "UNAUTHORIZED", message, status });
         return { success: false, unauthorized: true };
       }
-      
-      // 413 / PAYLOAD_TOO_LARGE is no longer treated as a permanent failure.
-      // The chunked sync pipeline now handles oversized chunks by stripping
-      // images and retrying, so a 413 that reaches here is a transient error
-      // that should be retried via the normal outbox mechanism.
       
       // Network or server error — classify for better UI messages
       const errorCategory = classifySyncError(e);
@@ -2257,8 +2299,30 @@ export function useSyncedDb(userId, seed, options = {}) {
     // If unauthorized, keep that status but still save locally (done above)
 
     saveTimer.current = setTimeout(async () => {
+      // Defer the server sync if the tab went hidden while the debounce
+      // was pending. A fetch fired now would race with browser background
+      // throttling and frequently fail with NETWORK_ERROR/TIMEOUT, which
+      // would in turn flip the badge to red and surface the "Нет
+      // подключения" banner even though the connection is fine.
+      // The state is already in localStorage (above); the visibility
+      // handler will pick it up via the heartbeat outbox flush as soon
+      // as the tab is in the foreground again.
+      if (isTabHidden()) {
+        if (syncStatusRef.current === "saving") setSyncStatus("pending");
+        // Persist to outbox so the heartbeat / online listener can pick
+        // it up the moment the tab is visible again.
+        saveToOutbox(
+          userId,
+          db,
+          { code: "DEFERRED_HIDDEN", message: "Sync deferred: tab hidden" },
+          newIdempotencyKey()
+        );
+        setHasUnsavedChanges(true);
+        return;
+      }
+
       const result = await syncToServer(db);
-      
+
       if (result.success) {
         setSyncStatus("synced");
         changeCount.current = 0;
@@ -2319,13 +2383,23 @@ export function useSyncedDb(userId, seed, options = {}) {
     
     // Track visibility fetch timer to prevent race conditions
     let visibilityFetchTimer = null;
-    
+    // Track the cancellation token of any in-flight visibility/bfcache fetch
+    // so we can abort the merge when the page goes hidden again. Without this,
+    // an in-flight fetch can complete and merge stale server state into local
+    // state after the user has already started editing again.
+    let activeFetchCancelToken = null;
+
     const handleVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
         // Clear any pending visibility fetch when going hidden
         if (visibilityFetchTimer) {
           clearTimeout(visibilityFetchTimer);
           visibilityFetchTimer = null;
+        }
+        // Cancel any in-flight visibility fetch's merge
+        if (activeFetchCancelToken) {
+          activeFetchCancelToken.value = true;
+          activeFetchCancelToken = null;
         }
         flushOnHide();
       } else if (document.visibilityState === "visible") {
@@ -2404,8 +2478,13 @@ export function useSyncedDb(userId, seed, options = {}) {
                 console.log("[syncDb] Executing delayed visibility fetch");
               }
               const cancelled = { value: false };
+              activeFetchCancelToken = cancelled;
               fetchState(cancelled).catch(() => {
                 // Ignore errors - this is best effort
+              }).finally(() => {
+                if (activeFetchCancelToken === cancelled) {
+                  activeFetchCancelToken = null;
+                }
               });
             } else {
               if (IS_DEV) {
@@ -2459,7 +2538,12 @@ export function useSyncedDb(userId, seed, options = {}) {
               console.log("[syncDb] Executing bfcache restoration fetch");
             }
             const cancelled = { value: false };
-            fetchState(cancelled).catch(() => {});
+            activeFetchCancelToken = cancelled;
+            fetchState(cancelled).catch(() => {}).finally(() => {
+              if (activeFetchCancelToken === cancelled) {
+                activeFetchCancelToken = null;
+              }
+            });
           }
         }, 2000);
       }
@@ -2475,6 +2559,11 @@ export function useSyncedDb(userId, seed, options = {}) {
       // Clean up visibility fetch timer
       if (visibilityFetchTimer) {
         clearTimeout(visibilityFetchTimer);
+      }
+      // Cancel any in-flight visibility fetch on unmount
+      if (activeFetchCancelToken) {
+        activeFetchCancelToken.value = true;
+        activeFetchCancelToken = null;
       }
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("pagehide", handlePageHide);
@@ -2497,6 +2586,14 @@ export function useSyncedDb(userId, seed, options = {}) {
     let lastReachable = true;
     
     const checkServerReachability = async () => {
+      // Skip while the tab is hidden — background-tab throttling can cause
+      // pingServer's AbortController timer to fire before the throttled
+      // fetch resolves, producing spurious "timeout"/"network" results
+      // that wrongly mark the server as unreachable. The next heartbeat
+      // tick (and the visibilitychange handler below) will catch up as
+      // soon as the tab is in the foreground again.
+      if (isTabHidden()) return;
+
       // Fast pre-check: if definitely offline (browser API), skip ping
       if (!navigator.onLine) {
         if (lastReachable) {
@@ -2508,20 +2605,20 @@ export function useSyncedDb(userId, seed, options = {}) {
         }
         return;
       }
-      
+
       // Ping the actual server
       const ping = await pingServer();
       const reachable = ping.ok;
-      
+
       if (reachable !== lastReachable) {
         setIsServerReachable(reachable);
         lastReachable = reachable;
-        
+
         if (IS_DEV) {
           console.log("[syncDb] Heartbeat: server reachability changed:", reachable);
         }
       }
-      
+
       // Flush outbox whenever server is reachable and outbox exists.
       // Previously this only ran on unreachable→reachable transitions,
       // which missed cases where syncToServer's inline ping failed
@@ -2531,22 +2628,63 @@ export function useSyncedDb(userId, seed, options = {}) {
         if (IS_DEV) {
           console.log("[syncDb] Heartbeat: server reachable, flushing outbox");
         }
-        retryOutbox().then(success => {
-          if (success) {
-            outboxAttempt.current = 0;
-            setSyncStatus("synced");
-          }
-        });
+        retryOutbox()
+          .then(success => {
+            if (success) {
+              outboxAttempt.current = 0;
+              setSyncStatus("synced");
+            }
+          })
+          .catch(err => {
+            // Without an explicit catch a rejection here triggers the global
+            // unhandledrejection handler and (worse) prevents the next
+            // heartbeat tick from observing that the outbox is still pending.
+            if (IS_DEV) {
+              console.warn("[syncDb] Heartbeat outbox flush failed:", err?.message || err);
+            }
+          });
       }
     };
-    
+
+    // When the tab becomes visible again, immediately re-check reachability
+    // and clear any transient network errors that accumulated while the tab
+    // was throttled in the background. Without this the user can return to
+    // a stale red "NETWORK_ERROR" banner that only clears on the next
+    // successful sync — the actual connection is fine, the failures were
+    // just artifacts of background-tab throttling.
+    const handleHeartbeatVisibility = () => {
+      if (isTabHidden()) return;
+      // Reset the soft failure counter so a couple of throttled-background
+      // failures don't immediately escalate to "error" once we're back.
+      consecutiveFailures.current = 0;
+      setLastError(prev => {
+        if (!prev) return prev;
+        if (prev.code === "NETWORK_ERROR" || prev.code === "TIMEOUT" || prev.code === "PING_FAILED") {
+          return null;
+        }
+        return prev;
+      });
+      // Demote a stale "error" status to "pending" if there are unsynced
+      // changes, otherwise back to "synced". The reachability check below
+      // will refine this once the ping returns.
+      if (syncStatusRef.current === "error") {
+        setSyncStatus(hasOutbox(userId) ? "pending" : "synced");
+      }
+      // Force a fresh ping so the badge updates without waiting up to 30s.
+      lastReachable = false; // ensure the result is treated as a transition
+      checkServerReachability();
+    };
+
+    document.addEventListener("visibilitychange", handleHeartbeatVisibility);
+
     // Initial check
     checkServerReachability();
-    
+
     // Periodic heartbeat
     heartbeatTimer.current = setInterval(checkServerReachability, HEARTBEAT_INTERVAL_MS);
-    
+
     return () => {
+      document.removeEventListener("visibilitychange", handleHeartbeatVisibility);
       if (heartbeatTimer.current) clearInterval(heartbeatTimer.current);
     };
   }, [userId, retryOutbox]);
@@ -2583,7 +2721,12 @@ export function useSyncedDb(userId, seed, options = {}) {
       const delay = Math.max(OUTBOX_BASE_DELAY, Math.round(base + jitter));
 
       outboxRetryTimer.current = setTimeout(async () => {
-        if (navigator.onLine && hasOutbox(userId) && syncStatusRef.current !== "unauthorized") {
+        // Skip the retry while the tab is hidden — background fetches are
+        // throttled and tend to fail spuriously, which both inflates the
+        // backoff exponent and accumulates consecutiveFailures. The
+        // heartbeat's visibilitychange handler triggers a fresh attempt
+        // the moment the tab is visible again, so deferring here is safe.
+        if (!isTabHidden() && navigator.onLine && hasOutbox(userId) && syncStatusRef.current !== "unauthorized") {
           const success = await retryOutbox();
           if (success) {
             setSyncStatus("synced");

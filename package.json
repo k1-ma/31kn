@@ -15,7 +15,8 @@
     "start": "node server/index.js",
     "migrate": "node server/scripts/migrate.js",
     "seed:updates": "node server/scripts/seedUpdates.js",
-    "reset:display-name-cooldown": "node server/scripts/resetDisplayNameCooldown.js"
+    "reset:display-name-cooldown": "node server/scripts/resetDisplayNameCooldown.js",
+    "backfill:images-v2": "node server/scripts/backfillImagesV2.js"
   },
   "dependencies": {
     "@fontsource/orbitron": "^5.2.8",
@@ -43,6 +44,7 @@
     "express": "^4.19.2",
     "framer-motion": "^11.0.0",
     "helmet": "^8.1.0",
+    "jspdf": "^4.2.1",
     "lucide-react": "^0.474.0",
     "marked": "^17.0.1",
     "multer": "^2.0.2",
@@ -51,10 +53,8 @@
     "qrcode": "^1.5.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-markdown": "^9.0.1",
     "react-router-dom": "^6.26.2",
     "recharts": "^3.7.0",
-    "remark-gfm": "^4.0.0",
     "resend": "^4.0.0"
   },
   "devDependencies": {

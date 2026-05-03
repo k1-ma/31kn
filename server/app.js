@@ -13,7 +13,7 @@ import { runSeedUpdates } from "./scripts/seedUpdates.js";
 // Routes
 import authRoutes from "./routes/auth.routes.js";
 import stateRoutes from "./routes/state.routes.js";
-import syncRoutes from "./routes/sync.routes.js";
+import syncRoutes, { runOrphanedSyncChunkCleanup } from "./routes/sync.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import healthRoutes from "./routes/health.routes.js";
 import ideasRoutes from "./routes/ideas.routes.js";
@@ -39,7 +39,7 @@ const CORS_WHITELIST = process.env.CORS_WHITELIST
 
 function corsOptions(req, callback) {
   const origin = req.header("Origin");
-  // Allow requests with no origin (same-origin, mobile apps, curl, etc.)
+  // Allow requests with no origin (mobile apps, curl, server-to-server, etc.)
   if (!origin) {
     return callback(null, { origin: true, credentials: true });
   }
@@ -47,22 +47,39 @@ function corsOptions(req, callback) {
   if (!IS_PROD) {
     return callback(null, { origin: true, credentials: true });
   }
-  // In production, check whitelist (if configured)
-  if (CORS_WHITELIST.length > 0) {
-    // Precise domain matching to prevent subdomain spoofing
-    // e.g., whitelist "example.com" should not allow "malicious-example.com"
-    const allowed = CORS_WHITELIST.some((w) => {
-      // Exact match
-      if (origin === w) return true;
-      // Match with https:// prefix
-      if (origin === `https://${w}`) return true;
-      // Match subdomain (whitelist entry must start with '.')
-      if (w.startsWith(".") && origin.endsWith(w)) return true;
-      return false;
-    });
-    if (!allowed) {
-      return callback(new Error(`CORS not allowed for origin: ${origin}`), { origin: false });
+  // Same-origin requests are always safe — Chrome/Firefox/Safari attach an
+  // Origin header on POST/PUT/DELETE even when the request goes to the same
+  // host the page was loaded from, so we cannot treat the mere presence of
+  // an Origin header as proof that the request is cross-origin. Compare the
+  // origin's host against the incoming Host header and allow when they
+  // match. Without this check, any same-origin POST (e.g. /api/auth/login)
+  // returns 500 in production unless CORS_WHITELIST is set.
+  try {
+    const originHost = new URL(origin).host;
+    const reqHost = req.header("X-Forwarded-Host") || req.header("Host");
+    if (reqHost && originHost === reqHost) {
+      return callback(null, { origin: true, credentials: true });
     }
+  } catch {
+    // Malformed Origin — fall through to whitelist check
+  }
+  // Cross-origin in production: require an explicit whitelist
+  if (CORS_WHITELIST.length === 0) {
+    return callback(new Error("CORS_WHITELIST is empty in production; refusing cross-origin request"), { origin: false });
+  }
+  // Precise domain matching to prevent subdomain spoofing
+  // e.g., whitelist "example.com" should not allow "malicious-example.com"
+  const allowed = CORS_WHITELIST.some((w) => {
+    // Exact match
+    if (origin === w) return true;
+    // Match with https:// prefix
+    if (origin === `https://${w}`) return true;
+    // Match subdomain (whitelist entry must start with '.')
+    if (w.startsWith(".") && origin.endsWith(w)) return true;
+    return false;
+  });
+  if (!allowed) {
+    return callback(new Error(`CORS not allowed for origin: ${origin}`), { origin: false });
   }
   return callback(null, { origin: true, credentials: true });
 }
@@ -76,8 +93,8 @@ export async function createApp() {
     console.warn("[db] init skipped:", err?.message || err);
   }
 
-  // Auto-seed updates if RUN_SEED_UPDATES environment variable is set
-  // This allows seeding on Vercel deploy by setting the env variable
+  // Auto-seed updates if RUN_SEED_UPDATES environment variable is set.
+  // Useful for one-shot seeding on either Railway or a Vercel deploy.
   if (["1", "true"].includes(process.env.RUN_SEED_UPDATES)) {
     try {
       const pool = getPool();
@@ -113,6 +130,9 @@ export async function createApp() {
           connectSrc: ["'self'", "https://accounts.google.com", "https://oauth2.googleapis.com", "https://www.googleapis.com", "https://hauntedxcdn.b-cdn.net"],
           mediaSrc: ["'self'", "https://hauntedxcdn.b-cdn.net", "https://*.b-cdn.net"],
           frameSrc: ["'self'", "https://accounts.google.com", "https://hauntedxcdn.b-cdn.net", "https://iframe.mediadelivery.net"],
+          // frame-ancestors blocks clickjacking by refusing to be framed by
+          // any other site. This is the modern replacement for X-Frame-Options.
+          frameAncestors: ["'self'"],
           formAction: ["'self'"],
           baseUri: ["'self'"],
           objectSrc: ["'none'"],
@@ -126,9 +146,15 @@ export async function createApp() {
   // CORS configuration
   app.use(cors(corsOptions));
 
-  // Body parser with increased size limit (50MB) to support larger state/share payloads
-  // PATCH endpoint is preferred for incremental updates to reduce payload size
-  app.use(express.json({ limit: "50mb" }));
+  // Body parser. Limit raised from 50MB to 100MB after a real user hit the
+  // Express 50MB ceiling on a single-blob save (their full state_json was
+  // 53.85MB). The long-term answer is per-entity tables, but until then
+  // raising the cap here gives heavy users headroom while the chunked sync
+  // path picks up everything ≥ ~45MB anyway.
+  // Configurable via STATE_BODY_LIMIT env var (e.g. "150mb") for ops
+  // tuning without a redeploy.
+  const STATE_BODY_LIMIT = process.env.STATE_BODY_LIMIT || "100mb";
+  app.use(express.json({ limit: STATE_BODY_LIMIT }));
 
   // Session middleware - attach minimal session-like object
   // Handles duplicate cookies: when the browser sends several tradecrm.sid
@@ -322,7 +348,9 @@ export async function createApp() {
       return res.status(413).json({
         error: "Payload too large. Try reducing data size or removing images.",
         code: "PAYLOAD_TOO_LARGE",
-        limit: "50mb",
+        limit: STATE_BODY_LIMIT,
+        // Hint to the client: switch to chunked sync if available.
+        useChunkedSync: true,
       });
     }
     
@@ -353,6 +381,18 @@ export async function createApp() {
       console.warn("[voting-timer] background process error:", err?.message || err);
     });
   }, 30_000);
+
+  // Background job: GC orphaned chunked-sync rows every 5 minutes.
+  // Per-request cleanup runs only on chunk 0, so a client that drops
+  // mid-upload leaves chunks until another client starts a new session.
+  // This timer ensures expired chunks/sessions are reclaimed on long-lived
+  // (non-serverless) deployments.
+  setInterval(() => {
+    runOrphanedSyncChunkCleanup(getPool()).catch((err) => {
+      // eslint-disable-next-line no-console
+      console.warn("[sync-cleanup] background error:", err?.message || err);
+    });
+  }, 5 * 60_000);
 
   return app;
 }

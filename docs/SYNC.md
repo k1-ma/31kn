@@ -21,12 +21,12 @@ The TradeJ application uses a **hybrid sync model** combining local-first storag
 
 ## Chunked Sync
 
-For large payloads (>800KB), the client automatically splits data into smaller chunks:
+For large payloads (>3MB), the client automatically splits data into smaller chunks:
 
 ### When Chunking Occurs
 
-- Total payload exceeds `MAX_SINGLE_REQUEST_SIZE_BYTES` (800KB)
-- Each chunk is limited to `MAX_CHUNK_SIZE_BYTES` (200KB)
+- Total payload exceeds `MAX_SINGLE_REQUEST_SIZE_BYTES` (3MB; defined in `src/lib/syncDb.js`)
+- Each chunk is limited to `MAX_CHUNK_SIZE_BYTES` (1MB; defined in `src/lib/syncChunked.js`)
 
 ### Chunk Protocol
 

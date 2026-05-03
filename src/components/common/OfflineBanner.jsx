@@ -1,7 +1,19 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
-import { AlertTriangle, RefreshCw, ExternalLink, WifiOff, Shield, CloudOff } from "lucide-react";
+import { AlertTriangle, RefreshCw, ExternalLink, WifiOff, Shield, CloudUpload } from "lucide-react";
 import Button from "@/components/ui/Button.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
+
+/**
+ * Format milliseconds as a short "Xs" / "Xm Ys" string.
+ */
+function formatDuration(ms) {
+  const totalSeconds = Math.max(0, Math.round(ms / 1000));
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (seconds === 0) return `${minutes}m`;
+  return `${minutes}m ${seconds}s`;
+}
 
 /**
  * Get the canonical domain for this app.
@@ -65,17 +77,21 @@ function getOutboxInfo(userId) {
  * @param {boolean} isReadOnly - Whether app is in read-only mode (using cached userId)
  * @param {boolean} hasUnsavedChanges - Whether there are unsaved changes
  * @param {string} userId - Current user ID for outbox lookup
- * @param {boolean} showDelayedSyncWarning - Whether to show the delayed sync warning (save taking longer than threshold)
- * @param {function} onResetSyncWarning - Callback to reset the sync warning timer when retrying
+ * @param {boolean} showDelayedSyncWarning - Whether the sync indicator should be shown
+ * @param {number} syncElapsedMs - How long the current sync has been running (ms)
+ * @param {{ current: number, total: number, percent: number } | null} syncProgress - Chunk progress, when available
+ * @param {function} onResetSyncWarning - Callback to reset the sync indicator timer when retrying
  */
-export default function OfflineBanner({ 
-  syncStatus, 
-  onRetry, 
+export default function OfflineBanner({
+  syncStatus,
+  onRetry,
   lastError,
   isReadOnly = false,
   hasUnsavedChanges = false,
   userId = null,
   showDelayedSyncWarning = false,
+  syncElapsedMs = 0,
+  syncProgress = null,
   onResetSyncWarning,
 }) {
   const { t } = useI18n();
@@ -312,40 +328,116 @@ export default function OfflineBanner({
         </div>
       )}
 
-      {/* Delayed Sync Warning Banner - shown when save takes longer than threshold */}
-      {showPendingBanner && (
-        <div className="relative overflow-hidden rounded-xl border border-yellow-300 dark:border-yellow-500/30 bg-yellow-50 dark:bg-yellow-500/10 backdrop-blur-sm p-4">
-          <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 h-10 w-10 rounded-xl bg-yellow-100 dark:bg-yellow-500/20 flex items-center justify-center">
-              <CloudOff className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <h3 className="text-sm font-semibold text-yellow-800 dark:text-yellow-200">
-                {t("offlineBanner.syncTakingLong") || "Saving is taking longer than usual…"}
-              </h3>
-              <p className="mt-1 text-xs text-yellow-700 dark:text-yellow-300/80">
-                {t("offlineBanner.syncTakingLongDesc") || "Your changes are saved locally. Sync will complete when connection is stable."}
-              </p>
-              
-              {/* Retry button */}
-              {onRetry && (
-                <div className="mt-3">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleRetry}
-                    disabled={retrying}
-                    className="border-yellow-300 dark:border-yellow-500/30 text-yellow-700 dark:text-yellow-300 hover:bg-yellow-100 dark:hover:bg-yellow-500/20 hover:text-yellow-800 dark:hover:text-yellow-200"
-                  >
-                    <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${retrying ? "animate-spin" : ""}`} />
-                    {t("offlineBanner.restartSync") || "Restart sync"}
-                  </Button>
+      {/* Sync-in-progress indicator — friendly card with progress + elapsed time */}
+      {showPendingBanner && (() => {
+        const hasProgress = !!syncProgress && syncProgress.total > 0;
+        const percent = hasProgress
+          ? Math.max(0, Math.min(100, Number(syncProgress.percent) || 0))
+          : null;
+        const elapsedLabel = formatDuration(syncElapsedMs);
+
+        // Estimate remaining time only when we have meaningful chunk progress
+        let remainingLabel = null;
+        if (hasProgress && percent > 5 && percent < 100 && syncElapsedMs > 1000) {
+          const totalEstimate = syncElapsedMs * (100 / percent);
+          const remaining = Math.max(0, totalEstimate - syncElapsedMs);
+          remainingLabel = formatDuration(remaining);
+        }
+
+        const titleText =
+          t("offlineBanner.syncInProgress") || "Syncing your data";
+        const descText =
+          t("offlineBanner.syncInProgressDesc") ||
+          "Synchronization is in progress, please wait…";
+
+        const progressLabel = hasProgress
+          ? interpolate(
+              t("offlineBanner.syncProgressChunks") ||
+                "{current} of {total} ({percent}%)",
+              { current: syncProgress.current, total: syncProgress.total, percent }
+            )
+          : null;
+
+        return (
+          <div className="relative overflow-hidden rounded-xl border border-sky-300 dark:border-sky-500/30 bg-sky-50 dark:bg-sky-500/10 backdrop-blur-sm p-4">
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0 h-10 w-10 rounded-xl bg-sky-100 dark:bg-sky-500/20 flex items-center justify-center">
+                <CloudUpload className="h-5 w-5 text-sky-600 dark:text-sky-400 animate-pulse" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-sm font-semibold text-sky-800 dark:text-sky-200">
+                    {titleText}
+                  </h3>
+                  <span className="text-[11px] font-mono tabular-nums text-sky-700/80 dark:text-sky-300/70 whitespace-nowrap">
+                    {hasProgress
+                      ? `${percent}%`
+                      : interpolate(
+                          t("offlineBanner.syncElapsed") || "Elapsed: {time}",
+                          { time: elapsedLabel }
+                        )}
+                  </span>
                 </div>
-              )}
+
+                <p className="mt-1 text-xs text-sky-700 dark:text-sky-300/80">
+                  {descText}
+                </p>
+
+                {/* Progress bar — determinate when we know percent, otherwise indeterminate */}
+                <div className="mt-3 h-1.5 w-full rounded-full overflow-hidden bg-sky-100 dark:bg-sky-500/15">
+                  {hasProgress ? (
+                    <div
+                      className="h-full rounded-full bg-sky-500 dark:bg-sky-400 transition-[width] duration-500 ease-out"
+                      style={{ width: `${percent}%` }}
+                    />
+                  ) : (
+                    <div className="h-full w-1/3 rounded-full bg-sky-500 dark:bg-sky-400 sync-indeterminate" />
+                  )}
+                </div>
+
+                {/* Sub-line: chunk count, elapsed, ETA */}
+                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-sky-700/80 dark:text-sky-300/70 font-mono tabular-nums">
+                  {progressLabel && (
+                    <span>{progressLabel}</span>
+                  )}
+                  {hasProgress && (
+                    <span>
+                      {interpolate(
+                        t("offlineBanner.syncElapsed") || "Elapsed: {time}",
+                        { time: elapsedLabel }
+                      )}
+                    </span>
+                  )}
+                  {remainingLabel && (
+                    <span>
+                      {interpolate(
+                        t("offlineBanner.syncRemaining") || "≈ {time} left",
+                        { time: remainingLabel }
+                      )}
+                    </span>
+                  )}
+                </div>
+
+                {/* Retry button — only after a long stall to avoid encouraging restarts on healthy syncs */}
+                {onRetry && syncElapsedMs > 30000 && (
+                  <div className="mt-3">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleRetry}
+                      disabled={retrying}
+                      className="border-sky-300 dark:border-sky-500/30 text-sky-700 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-500/20 hover:text-sky-800 dark:hover:text-sky-200"
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${retrying ? "animate-spin" : ""}`} />
+                      {t("offlineBanner.restartSync") || "Restart sync"}
+                    </Button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

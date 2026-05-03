@@ -230,8 +230,41 @@ function resolvePublicUrl(origin, type, shareId) {
   return `${origin}${prefix}${shareId}`;
 }
 
+// Best-effort per-IP rate limit (per warm container). Mirrors og-image.
+const META_RATE_LIMIT_PER_MIN = parseInt(process.env.META_RATE_LIMIT_PER_MIN || "120", 10);
+function checkMetaRateLimit(ip) {
+  if (!ip) return true;
+  const buckets = (globalThis.__share_meta_rate_buckets ||= new Map());
+  const now = Date.now();
+  const windowStart = now - 60_000;
+  let bucket = buckets.get(ip);
+  if (!bucket) { bucket = []; buckets.set(ip, bucket); }
+  while (bucket.length && bucket[0] < windowStart) bucket.shift();
+  if (bucket.length >= META_RATE_LIMIT_PER_MIN) return false;
+  bucket.push(now);
+  if (buckets.size > 5000) {
+    for (const k of buckets.keys()) {
+      const b = buckets.get(k);
+      if (!b || (b.length && b[b.length - 1] < windowStart)) buckets.delete(k);
+      if (buckets.size <= 2500) break;
+    }
+  }
+  return true;
+}
+function getMetaClientIp(req) {
+  const fwd = req.headers["x-forwarded-for"];
+  if (fwd) return String(fwd).split(",")[0].trim();
+  return req.headers["cf-connecting-ip"] || req.socket?.remoteAddress || "";
+}
+
 export default async function handler(req, res) {
   try {
+    if (!checkMetaRateLimit(getMetaClientIp(req))) {
+      res.setHeader("Retry-After", "60");
+      res.setHeader("Cache-Control", "no-store");
+      return res.status(429).end("Too Many Requests");
+    }
+
     // Vercel rewrites pass named params (:id) and explicit query params (?type=...) via req.query.
     // Fallback to URL path parsing for local dev where Vercel rewrites are not active.
     const pathname = req.url?.split("?")[0] || "";

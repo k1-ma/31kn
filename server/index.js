@@ -19,9 +19,28 @@ const app = await createApp();
 if (IS_PROD) {
   const dist = path.join(ROOT, "dist");
   if (fs.existsSync(dist)) {
-    app.use((await import("express")).default.static(dist));
+    const expressStatic = (await import("express")).default.static;
+    // Vite emits hashed filenames into /assets — safe to cache forever.
+    // Other top-level files (index.html, manifests, sw.js) must revalidate
+    // so PWA updates aren't served stale.
+    app.use(
+      expressStatic(dist, {
+        etag: true,
+        lastModified: true,
+        setHeaders(res, filePath) {
+          if (/\/assets\//.test(filePath)) {
+            res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+          } else if (/\.(?:woff2?|ttf|otf|eot)$/.test(filePath)) {
+            res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+          } else if (/\/(?:index\.html|sw\.js|registerSW\.js|manifest\.webmanifest)$/.test(filePath)) {
+            res.setHeader("Cache-Control", "no-cache, must-revalidate");
+          }
+        },
+      })
+    );
     app.get("*", (req, res) => {
       if (req.path.startsWith("/api/")) return res.status(404).json({ error: "Not found" });
+      res.setHeader("Cache-Control", "no-cache, must-revalidate");
       return res.sendFile(path.join(dist, "index.html"));
     });
   } else {

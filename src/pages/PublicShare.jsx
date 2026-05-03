@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useParams, Link } from "react-router-dom";
+import { sanitizeRichText } from "@/lib/sanitize.js";
+
+const sanitizeHtml = (html) => sanitizeRichText(html, "full");
 import { motion, AnimatePresence } from "framer-motion";
 import { fetchPublicShare } from "@/lib/share.js";
 import { fmtMoney, fmtRR, sessionTone, clampNum } from "@/lib/utils";
@@ -605,9 +608,9 @@ function DocumentDetailModal({ doc, open, onClose }) {
           {(doc.contentHtml || doc.contentText) && (
             <div className="rounded-xl bg-muted/20 p-4 border border-accent/10">
               {doc.contentHtml ? (
-                <div 
+                <div
                   className="prose prose-sm dark:prose-invert max-w-none"
-                  dangerouslySetInnerHTML={{ __html: doc.contentHtml }}
+                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(doc.contentHtml) }}
                 />
               ) : (
                 <p className="text-sm text-foreground/90 whitespace-pre-wrap">
@@ -738,9 +741,9 @@ function IdeaDetailModal({ idea, open, onClose }) {
           {(idea.notesHtml || idea.notesText) && (
             <div className="rounded-xl bg-muted/20 p-4 border border-accent/10">
               {idea.notesHtml ? (
-                <div 
+                <div
                   className="prose prose-sm dark:prose-invert max-w-none"
-                  dangerouslySetInnerHTML={{ __html: idea.notesHtml }}
+                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(idea.notesHtml) }}
                 />
               ) : (
                 <p className="text-sm text-foreground/90 whitespace-pre-wrap">

@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/Card.jsx";
 import Input from "@/components/ui/Input.jsx";
 import Button from "@/components/ui/Button.jsx";
 import Modal from "@/components/common/Modal.jsx";
+import ConfirmDialog from "@/components/common/ConfirmDialog.jsx";
 import Badge from "@/components/ui/Badge.jsx";
 import Switch from "@/components/ui/Switch.jsx";
 import { AvatarBubble } from "@/components/common/Avatar.jsx";
@@ -591,7 +592,7 @@ function AccountCard({ account, templates, trades, onEdit, onPayout, onArchive, 
               <div className="flex flex-wrap gap-1 mt-1">
                 {account.tags.slice(0, 3).map((tag, idx) => (
                   <span
-                    key={idx}
+                    key={`${tag}-${idx}`}
                     className="px-1.5 py-0.5 rounded text-[9px] bg-muted/60 text-muted-foreground"
                   >
                     #{tag}
@@ -607,11 +608,14 @@ function AccountCard({ account, templates, trades, onEdit, onPayout, onArchive, 
 
         {/* Actions menu */}
         <div className="relative">
-          <Button 
-            variant="ghost" 
-            size="icon" 
+          <Button
+            variant="ghost"
+            size="icon"
             className="h-8 w-8 rounded-xl"
             onClick={() => setMenuOpen(!menuOpen)}
+            aria-label={t("common.menu") || "Menu"}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
           >
             <MoreVertical className="h-4 w-4" />
           </Button>
@@ -1963,7 +1967,7 @@ function AccountModal({ open, onClose, account, accounts = [], templates, onSave
               <div className="flex flex-wrap gap-2 mb-2">
                 {(form.tags || []).map((tag, idx) => (
                   <span
-                    key={idx}
+                    key={`${tag}-${idx}`}
                     className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-accent/15 text-accent-foreground text-xs font-medium border border-accent/20"
                   >
                     {tag}
@@ -3289,6 +3293,15 @@ export default function Accounts({
   const [modalOpen, setModalOpen] = useState(false);
   const [payoutAccountId, setPayoutAccountId] = useState(null);
   const [detailAccountId, setDetailAccountId] = useState(null);
+  const [archiveConfirmId, setArchiveConfirmId] = useState(null);
+  const archiveTarget = useMemo(
+    () => (archiveConfirmId ? accounts.find((a) => a.id === archiveConfirmId) : null),
+    [archiveConfirmId, accounts]
+  );
+
+  // Wrap archive in a confirmation dialog so a single accidental click
+  // doesn't hide an account from the active list.
+  const requestArchive = (id) => setArchiveConfirmId(id);
   
   // Derive modal accounts from accounts prop using IDs
   // This ensures modals always have the latest account data after payout actions
@@ -3705,7 +3718,7 @@ export default function Accounts({
                         trades={trades}
                         onEdit={handleEdit}
                         onPayout={handlePayout}
-                        onArchive={onArchive}
+                        onArchive={requestArchive}
                         onTrash={onTrash}
                         onPin={handlePin}
                         onQuickTrade={onQuickTrade}
@@ -3743,7 +3756,7 @@ export default function Accounts({
                   trades={trades}
                   onEdit={handleEdit}
                   onPayout={handlePayout}
-                  onArchive={onArchive}
+                  onArchive={requestArchive}
                   onTrash={onTrash}
                   onPin={handlePin}
                   onQuickTrade={onQuickTrade}
@@ -3829,6 +3842,24 @@ export default function Accounts({
           winRateMode={winRateMode}
         />
       )}
+
+      <ConfirmDialog
+        open={!!archiveConfirmId}
+        onOpenChange={(v) => { if (!v) setArchiveConfirmId(null); }}
+        title={t("pages.accounts.archiveAccount") || "Archive account?"}
+        description={
+          (t("pages.accounts.archiveConfirmDescription") ||
+            "This account will be hidden from the active list. You can restore it from the archive section later.") +
+          (archiveTarget?.name ? `\n\n${archiveTarget.name}` : "")
+        }
+        confirmText={t("common.archiveVerb") || "Archive"}
+        cancelText={t("common.cancel") || "Cancel"}
+        tone="secondary"
+        onConfirm={() => {
+          if (archiveConfirmId) onArchive(archiveConfirmId);
+          setArchiveConfirmId(null);
+        }}
+      />
     </div>
   );
 }

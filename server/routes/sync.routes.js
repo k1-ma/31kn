@@ -5,6 +5,7 @@ import { requireAuth } from "../middleware/requireAuth.js";
 import { idempotency } from "../middleware/idempotency.js";
 import { restoreStrippedImages, hasStrippedImages } from "../utils/imageRestore.js";
 import { isDeleted } from "../utils/tombstones.js";
+import { writeStateV2, IMAGE_DUAL_WRITE_ENABLED } from "../services/imageStore.service.js";
 
 const router = Router();
 
@@ -199,6 +200,25 @@ function computeMissingChunks(receivedIndices, totalChunks) {
 }
 
 /**
+ * Atomically claim the right to finalize a session. Returns true if this
+ * caller transitioned the session from 'receiving' → 'finalizing' (i.e. it
+ * holds the right to assemble + apply chunks). Returns false if another
+ * concurrent request already claimed it (so this caller should skip
+ * loadAllChunks/applyOperations to avoid double-apply or empty reads from
+ * a half-cleaned session).
+ */
+async function tryClaimFinalize(pool, sessionId, userId) {
+  const result = await pool.query(
+    `UPDATE sync_state_sessions
+        SET status = 'finalizing', updated_at = now()
+      WHERE session_id = $1 AND user_id = $2 AND status = 'receiving'
+      RETURNING session_id`,
+    [sessionId, userId]
+  );
+  return (result.rowCount || 0) > 0;
+}
+
+/**
  * Load all chunks for a session from DB, ordered by chunk_index.
  */
 async function loadAllChunks(pool, sessionId, userId) {
@@ -250,20 +270,53 @@ async function sessionBelongsToOtherUser(pool, sessionId, userId) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// EXPIRED SESSION CLEANUP (best-effort, runs on each request)
+// EXPIRED SESSION CLEANUP (best-effort, runs on each request + periodic timer)
 // ─────────────────────────────────────────────────────────────────────────────
 async function cleanupExpiredSessions(pool) {
   try {
     // Delete chunks for expired sessions first
-    await pool.query(
+    const chunksDel = await pool.query(
       `DELETE FROM sync_state_chunks WHERE (session_id, user_id) IN (
          SELECT session_id, user_id FROM sync_state_sessions WHERE expires_at < now()
        )`
     );
-    await pool.query("DELETE FROM sync_state_sessions WHERE expires_at < now()");
-  } catch {
-    // Best-effort cleanup, don't fail the request
+    const sessionsDel = await pool.query(
+      "DELETE FROM sync_state_sessions WHERE expires_at < now()"
+    );
+    // Defensive: also drop chunks whose parent session row is missing entirely
+    // (can happen if a session row was deleted without its chunks, e.g.
+    // legacy data created before the cleanup logic existed).
+    const orphanDel = await pool.query(
+      `DELETE FROM sync_state_chunks c
+        WHERE NOT EXISTS (
+          SELECT 1 FROM sync_state_sessions s
+           WHERE s.session_id = c.session_id AND s.user_id = c.user_id
+        )`
+    );
+    const total =
+      (chunksDel.rowCount || 0) +
+      (sessionsDel.rowCount || 0) +
+      (orphanDel.rowCount || 0);
+    if (total > 0) {
+      // eslint-disable-next-line no-console
+      console.log(
+        `[sync-cleanup] reclaimed: chunks=${chunksDel.rowCount} sessions=${sessionsDel.rowCount} orphan_chunks=${orphanDel.rowCount}`
+      );
+    }
+  } catch (e) {
+    // Surface so cleanup regressions don't silently rot. Previous behaviour
+    // swallowed everything which is how 91 orphan rows accumulated in prod.
+    // eslint-disable-next-line no-console
+    console.warn("[sync-cleanup] failed:", e?.message || e);
   }
+}
+
+// Exported so the long-lived server can run it on a periodic timer in
+// addition to per-request best-effort cleanup. Serverless invocations rely
+// on the per-request path.
+export async function runOrphanedSyncChunkCleanup(pool) {
+  if (!pool) return;
+  await cleanupExpiredSessions(pool);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -313,8 +366,11 @@ router.post("/chunk", requireAuth, idempotency(), async (req, res) => {
     return res.status(400).json({ error: "Operations must be an array", code: "INVALID_OPERATIONS" });
   }
 
-  // Best-effort cleanup of expired sessions (only on first chunk to reduce DB pool contention)
-  if (chunkIndex === 0) {
+  // Best-effort cleanup of expired sessions. Runs on every chunk 0 and
+  // probabilistically on subsequent chunks (5%) so serverless deployments —
+  // where the in-process setInterval timer cannot fire — still reclaim
+  // orphaned rows. Fire-and-forget; never blocks the response.
+  if (chunkIndex === 0 || Math.random() < 0.05) {
     cleanupExpiredSessions(pool);
   }
 
@@ -375,6 +431,21 @@ router.post("/chunk", requireAuth, idempotency(), async (req, res) => {
     // Idempotency: if duplicate chunk, still check if we can finalize
     // Finalize ONLY when ALL chunks are received
     if (chunksReceived === totalChunks) {
+      // Atomically claim finalize. Concurrent requests for the same session
+      // (e.g. client double-fires the last chunk) lose the race here and
+      // return a benign "already finalizing" response instead of double-
+      // applying operations or reading from a half-cleaned session.
+      const claimed = await tryClaimFinalize(pool, opSessionId, userId);
+      if (!claimed) {
+        logSyncOp("chunk", userId, { sessionId, status: "already_finalizing" });
+        return res.status(202).json({
+          ok: true,
+          status: "finalizing",
+          sessionId,
+          message: "Another worker is finalizing this session",
+        });
+      }
+
       // All chunks received - assemble and apply operations
       const allChunkRows = await loadAllChunks(pool, opSessionId, userId);
 
@@ -499,8 +570,11 @@ router.post("/state-chunk", requireAuth, idempotency(), async (req, res) => {
     return res.status(400).json({ error: "Chunk must be an object", code: "INVALID_CHUNK" });
   }
 
-  // Best-effort cleanup of expired sessions (only on first chunk to reduce DB pool contention)
-  if (chunkIndex === 0) {
+  // Best-effort cleanup of expired sessions. Runs on every chunk 0 and
+  // probabilistically on subsequent chunks (5%) so serverless deployments —
+  // where the in-process setInterval timer cannot fire — still reclaim
+  // orphaned rows. Fire-and-forget; never blocks the response.
+  if (chunkIndex === 0 || Math.random() < 0.05) {
     cleanupExpiredSessions(pool);
   }
 
@@ -553,6 +627,18 @@ router.post("/state-chunk", requireAuth, idempotency(), async (req, res) => {
 
     // Finalize ONLY when ALL chunks are received
     if (chunksReceived === totalChunks) {
+      // Atomically claim finalize. See tryClaimFinalize doc for rationale.
+      const claimed = await tryClaimFinalize(pool, stateSessionId, userId);
+      if (!claimed) {
+        logSyncOp("state-chunk", userId, { sessionId, status: "already_finalizing" });
+        return res.status(202).json({
+          ok: true,
+          status: "finalizing",
+          sessionId,
+          message: "Another worker is finalizing this session",
+        });
+      }
+
       // All chunks received - assemble state from DB
       const allChunkRows = await loadAllChunks(pool, stateSessionId, userId);
 
@@ -590,12 +676,20 @@ router.post("/state-chunk", requireAuth, idempotency(), async (req, res) => {
         // Verify completeness: all slots should be filled
         const filledCount = combined.filter(item => item !== undefined).length;
         if (filledCount < totalLength) {
+          // Build the precise missingIndices list so the client can re-send
+          // just the gaps instead of restarting the whole upload (which used
+          // to risk dupes / wasted bandwidth on every retry).
+          const missingIndices = [];
+          for (let i = 0; i < totalLength; i++) {
+            if (combined[i] === undefined) missingIndices.push(i);
+          }
           logSyncOp("state-chunk", userId, {
             sessionId,
             error: "incomplete_array_batch_abort",
             key,
             expectedLength: totalLength,
             filledCount,
+            missingCount: missingIndices.length,
             severity: "CRITICAL"
           });
           // CRITICAL FIX: Abort save to prevent permanent data loss.
@@ -608,7 +702,12 @@ router.post("/state-chunk", requireAuth, idempotency(), async (req, res) => {
             message: `Array '${key}' is incomplete: ${filledCount}/${totalLength} items. Retry required.`,
             key,
             expectedLength: totalLength,
-            filledCount
+            filledCount,
+            // Cap at 100 indices to keep the response payload bounded —
+            // anything above that is almost certainly a systemic upload
+            // failure where the client should restart the session anyway.
+            missingIndices: missingIndices.slice(0, 100),
+            missingTruncated: missingIndices.length > 100,
           });
         }
         // Only include defined items (no undefined holes)
@@ -619,28 +718,81 @@ router.post("/state-chunk", requireAuth, idempotency(), async (req, res) => {
       // Client-side merge on load handles conflicts when multiple tabs/devices sync
 
       // Fetch current server state for image restoration AND data loss protection.
-      // Both checks need the current state, so we do a single query.
+      // OPTIMIZATION: Loading the full 3-5MB JSONB blob just to count records or
+      // skip the merge entirely is wasteful. We first probe with a cheap counts-only
+      // query; we only pay the cost of pulling the full state_json when:
+      //  (a) the assembled payload contains [IMAGE_STRIPPED] markers we must rehydrate, or
+      //  (b) the cheap probe indicates a potential data-loss scenario.
+      const incomingTradesCount = assembledState?.trades?.length ?? 0;
+      const incomingBacktestsCount = assembledState?.backtests?.length ?? 0;
+      const needsImageRestore = hasStrippedImages(assembledState);
+
       let currentState = null;
-      try {
-        const currentRow = await pool.query(
-          "SELECT state_json FROM states WHERE user_id = $1",
-          [userId]
-        );
-        currentState = currentRow.rows?.[0]?.state_json;
-      } catch (fetchErr) {
-        logSyncOp("state-chunk", userId, {
-          sessionId,
-          warning: "fetch_current_state_failed",
-          error: fetchErr?.message
-        });
-        // Continue — we can still save, just without protection/restoration
+      let serverTradesCount = 0;
+      let serverBacktestsCount = 0;
+      let needFullState = needsImageRestore;
+
+      if (!needFullState) {
+        try {
+          const countRow = await pool.query(
+            `SELECT
+               COALESCE(jsonb_array_length(state_json->'trades'), 0)::int AS trades,
+               COALESCE(jsonb_array_length(state_json->'backtests'), 0)::int AS backtests
+             FROM states WHERE user_id = $1`,
+            [userId]
+          );
+          serverTradesCount = countRow.rows?.[0]?.trades ?? 0;
+          serverBacktestsCount = countRow.rows?.[0]?.backtests ?? 0;
+        } catch (probeErr) {
+          // Probe failed — fall back to full fetch so protection still runs.
+          logSyncOp("state-chunk", userId, {
+            sessionId,
+            warning: "counts_probe_failed",
+            error: probeErr?.message
+          });
+          needFullState = true;
+        }
+
+        // Decide whether the protection logic below would actually trigger.
+        // If counts look safe, skip the full-state fetch entirely.
+        const tradesWipe = incomingTradesCount === 0 && serverTradesCount > 0;
+        const backtestsWipe = incomingBacktestsCount === 0 && serverBacktestsCount > 0;
+        const tradesPartialLoss =
+          serverTradesCount > MIN_RECORDS_FOR_PROTECTION &&
+          incomingTradesCount > 0 &&
+          (serverTradesCount - incomingTradesCount) / serverTradesCount > MAX_ACCEPTABLE_DROP_PERCENTAGE;
+        const backtestsPartialLoss =
+          serverBacktestsCount > MIN_RECORDS_FOR_PROTECTION &&
+          incomingBacktestsCount > 0 &&
+          (serverBacktestsCount - incomingBacktestsCount) / serverBacktestsCount > MAX_ACCEPTABLE_DROP_PERCENTAGE;
+
+        if (tradesWipe || backtestsWipe || tradesPartialLoss || backtestsPartialLoss) {
+          needFullState = true;
+        }
+      }
+
+      if (needFullState) {
+        try {
+          const currentRow = await pool.query(
+            "SELECT state_json FROM states WHERE user_id = $1",
+            [userId]
+          );
+          currentState = currentRow.rows?.[0]?.state_json;
+        } catch (fetchErr) {
+          logSyncOp("state-chunk", userId, {
+            sessionId,
+            warning: "fetch_current_state_failed",
+            error: fetchErr?.message
+          });
+          // Continue — we can still save, just without protection/restoration
+        }
       }
 
       // CRITICAL: Restore images stripped during chunking.
       // ensureChunksFitBodyLimit replaces base64 images with [IMAGE_STRIPPED]
       // when a chunk exceeds the Vercel body limit. Without this restoration,
       // the full state replacement would permanently lose those images.
-      if (hasStrippedImages(assembledState)) {
+      if (needsImageRestore) {
         if (currentState) {
           try {
             assembledState = restoreStrippedImages(assembledState, currentState);
@@ -655,6 +807,31 @@ router.post("/state-chunk", requireAuth, idempotency(), async (req, res) => {
               error: restoreErr?.message
             });
           }
+        } else {
+          // First-ever sync for this user but the payload contains [IMAGE_STRIPPED]
+          // markers — there is nothing on the server to restore from, so persisting
+          // the assembled state would permanently corrupt those images.
+          // Reject so the client retries with a payload that includes the images
+          // (e.g. via per-image upload to imageStore before the chunked state sync).
+          logSyncOp("state-chunk", userId, {
+            sessionId,
+            warning: "stripped_images_no_current_state",
+            severity: "HIGH",
+          });
+          await pool.query(
+            "DELETE FROM sync_state_chunks WHERE session_id = $1 AND user_id = $2",
+            [sessionId, userId]
+          );
+          await pool.query(
+            "DELETE FROM sync_state_sessions WHERE session_id = $1 AND user_id = $2",
+            [sessionId, userId]
+          );
+          return res.status(422).json({
+            error: "stripped_images_without_baseline",
+            code: "STRIPPED_IMAGES_NO_BASELINE",
+            message:
+              "Initial sync contains stripped image markers but no server state exists to restore from. Upload images individually before retrying chunked state sync.",
+          });
         }
       }
 
@@ -662,35 +839,33 @@ router.post("/state-chunk", requireAuth, idempotency(), async (req, res) => {
       // with significantly fewer records. This matches the protection in PUT /api/state
       // (state.routes.js) which was previously missing from the chunked sync path.
       if (currentState) {
-        const incomingTradesCount = assembledState?.trades?.length ?? 0;
-        const serverTradesCount = currentState?.trades?.length ?? 0;
-        const incomingBacktestsCount = assembledState?.backtests?.length ?? 0;
-        const serverBacktestsCount = currentState?.backtests?.length ?? 0;
+        const sTrades = currentState?.trades?.length ?? 0;
+        const sBacktests = currentState?.backtests?.length ?? 0;
 
         let shouldMerge = false;
         let mergeReason = "";
 
         // Block complete data wipe for trades
-        if (incomingTradesCount === 0 && serverTradesCount > 0) {
+        if (incomingTradesCount === 0 && sTrades > 0) {
           shouldMerge = true;
           mergeReason = "chunked_merge_prevent_trades_wipe";
         }
         // Block complete data wipe for backtests
-        else if (incomingBacktestsCount === 0 && serverBacktestsCount > 0) {
+        else if (incomingBacktestsCount === 0 && sBacktests > 0) {
           shouldMerge = true;
           mergeReason = "chunked_merge_prevent_backtests_wipe";
         }
         // Detect partial data loss for trades (>50% reduction)
-        else if (serverTradesCount > MIN_RECORDS_FOR_PROTECTION && incomingTradesCount > 0) {
-          const dropPercentage = (serverTradesCount - incomingTradesCount) / serverTradesCount;
+        else if (sTrades > MIN_RECORDS_FOR_PROTECTION && incomingTradesCount > 0) {
+          const dropPercentage = (sTrades - incomingTradesCount) / sTrades;
           if (dropPercentage > MAX_ACCEPTABLE_DROP_PERCENTAGE) {
             shouldMerge = true;
             mergeReason = "chunked_merge_prevent_trades_partial_loss";
           }
         }
         // Detect partial data loss for backtests (>50% reduction)
-        else if (serverBacktestsCount > MIN_RECORDS_FOR_PROTECTION && incomingBacktestsCount > 0) {
-          const dropPercentage = (serverBacktestsCount - incomingBacktestsCount) / serverBacktestsCount;
+        else if (sBacktests > MIN_RECORDS_FOR_PROTECTION && incomingBacktestsCount > 0) {
+          const dropPercentage = (sBacktests - incomingBacktestsCount) / sBacktests;
           if (dropPercentage > MAX_ACCEPTABLE_DROP_PERCENTAGE) {
             shouldMerge = true;
             mergeReason = "chunked_merge_prevent_backtests_partial_loss";
@@ -702,9 +877,9 @@ router.post("/state-chunk", requireAuth, idempotency(), async (req, res) => {
             sessionId,
             action: mergeReason,
             incomingTradesCount,
-            serverTradesCount,
+            serverTradesCount: sTrades,
             incomingBacktestsCount,
-            serverBacktestsCount,
+            serverBacktestsCount: sBacktests,
             severity: "CRITICAL"
           });
           assembledState = mergeStatesForProtection(assembledState, currentState);
@@ -723,6 +898,28 @@ router.post("/state-chunk", requireAuth, idempotency(), async (req, res) => {
 
       // Clean up session
       await cleanupSession(pool, stateSessionId, userId);
+
+      // Phase 2 dual-write (gated by IMAGE_DUAL_WRITE=1). Best-effort: any
+      // failure here MUST NOT affect the success of the canonical state_json
+      // write that just completed. The v2 column / user_images table are
+      // not read by anything until a future phase enables READ_FROM_V2.
+      if (IMAGE_DUAL_WRITE_ENABLED) {
+        // Fire-and-forget; the response should not wait on the v2 path.
+        Promise.resolve()
+          .then(() => writeStateV2({
+            pool,
+            userId,
+            canonicalState: assembledState,
+            statementTimeout: STATEMENT_TIMEOUT_LARGE_WRITE,
+          }))
+          .catch((err) => {
+            logSyncOp("state-chunk", userId, {
+              sessionId,
+              warning: "v2_dual_write_threw",
+              error: err?.message,
+            });
+          });
+      }
 
       const tradeCount = assembledState?.trades?.length ?? 0;
       const stateSize = JSON.stringify(assembledState).length;

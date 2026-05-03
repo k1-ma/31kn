@@ -1,4 +1,35 @@
+import bcrypt from "bcryptjs";
 import { getPool } from "./db.service.js";
+
+// Hash a tournament vote password before storing in DB.
+// Empty/nullish input is preserved as null (no password required).
+// Already-hashed values (bcrypt prefix) pass through unchanged so that
+// updates preserving the existing hash don't double-hash.
+export function hashVotePassword(input) {
+  if (input === null || input === undefined) return null;
+  const s = String(input);
+  if (!s) return null;
+  if (/^\$2[aby]\$/.test(s)) return s;
+  return bcrypt.hashSync(s, 10);
+}
+
+// Compare a submitted plain-text vote password against the stored value.
+// Supports both the new bcrypt-hashed format and legacy plaintext rows
+// so existing tournaments keep working until they're updated.
+export function verifyVotePassword(stored, submitted) {
+  if (typeof stored !== "string" || typeof submitted !== "string") return false;
+  if (!stored) return false;
+  if (/^\$2[aby]\$/.test(stored)) {
+    try { return bcrypt.compareSync(submitted, stored); } catch { return false; }
+  }
+  // Legacy plaintext fallback (constant-time on equal-length buffers).
+  if (stored.length !== submitted.length) return false;
+  let diff = 0;
+  for (let i = 0; i < stored.length; i++) {
+    diff |= stored.charCodeAt(i) ^ submitted.charCodeAt(i);
+  }
+  return diff === 0;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -91,7 +122,7 @@ export async function createTournament(data, adminId) {
       data.status || "draft",
       JSON.stringify(data.scoring_config || {}),
       data.timezone || "Europe/Kyiv",
-      data.vote_password || null,
+      hashVotePassword(data.vote_password),
       adminId || null,
     ]
   );
@@ -115,9 +146,14 @@ export async function updateTournament(id, data, adminId) {
   for (const field of allowedFields) {
     if (data[field] !== undefined) {
       sets.push(`${field} = $${idx++}`);
-      const val = ["scoring_config", "visibility_config", "theme_config"].includes(field)
-        ? JSON.stringify(data[field])
-        : data[field];
+      let val;
+      if (["scoring_config", "visibility_config", "theme_config"].includes(field)) {
+        val = JSON.stringify(data[field]);
+      } else if (field === "vote_password") {
+        val = hashVotePassword(data[field]);
+      } else {
+        val = data[field];
+      }
       params.push(val);
     }
   }
@@ -763,9 +799,24 @@ export async function setDisplayedTournament(id, adminId) {
   const check = await pool.query("SELECT id FROM tournaments WHERE id = $1", [id]);
   if (!check.rows.length) return { error: "Tournament not found" };
 
-  // Clear all displayed flags, then set the chosen one
-  await pool.query("UPDATE tournaments SET is_displayed = false WHERE is_displayed = true");
-  await pool.query("UPDATE tournaments SET is_displayed = true, updated_by = $2 WHERE id = $1", [id, adminId || null]);
+  // Atomic single-statement update: at most one tournament can be is_displayed.
+  // Avoids the race where two concurrent admins both pass the clear+set
+  // sequence and end up with two displayed tournaments.
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("UPDATE tournaments SET is_displayed = false WHERE is_displayed = true AND id <> $1", [id]);
+    await client.query(
+      "UPDATE tournaments SET is_displayed = true, updated_by = $2 WHERE id = $1",
+      [id, adminId || null]
+    );
+    await client.query("COMMIT");
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => {});
+    return { error: e?.message || "Failed to set displayed tournament" };
+  } finally {
+    client.release();
+  }
 
   return { ok: true };
 }

@@ -59,7 +59,20 @@ export async function generateBackupPayload(pool) {
     { name: "admin_backups", orderBy: "created_at" },
   ];
 
+  // Defense in depth: even though `tables` is a hardcoded literal above, run
+  // each entry through identifier-shape regexes before interpolating into
+  // SQL. If a future change ever pulls names from another source, this turns
+  // a potential injection into a "skip + warn" instead.
+  const SAFE_IDENT_RE = /^[a-z_][a-z0-9_]*$/i;
+  const SAFE_ORDER_RE = /^[a-z_][a-z0-9_]*(\s*,\s*[a-z_][a-z0-9_]*)*$/i;
+
   for (const { name, orderBy } of tables) {
+    if (!SAFE_IDENT_RE.test(name) || !SAFE_ORDER_RE.test(orderBy)) {
+      // eslint-disable-next-line no-console
+      console.warn(`[backup] Refusing unsafe identifier in backup config: ${name}/${orderBy}`);
+      payload.tables[name] = [];
+      continue;
+    }
     try {
       const result = await pool.query(`SELECT * FROM ${name} ORDER BY ${orderBy}`);
       payload.tables[name] = result.rows || [];

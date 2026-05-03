@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { Router } from "express";
 import { requireAdmin } from "../middleware/requireAdmin.js";
 import { requireAuth } from "../middleware/requireAuth.js";
-import { voteRateLimit } from "../middleware/rateLimitDb.js";
+import { voteRateLimit, publicReadRateLimit } from "../middleware/rateLimitDb.js";
 import * as svc from "../services/tournament.service.js";
 import * as scoring from "../services/tournamentScoring.service.js";
 import * as importExport from "../services/tournamentImportExport.service.js";
@@ -12,20 +12,24 @@ const adminRouter = Router();
 const publicRouter = Router();
 const userRouter = Router();
 
+// Per-IP rate limit for unauthenticated public reads (leaderboard, vote-config,
+// participant history, etc.). Prevents trivial DoS / scraping of public DB.
+publicRouter.use(publicReadRateLimit);
+
 /**
  * Constant-time string comparison to mitigate timing attacks on vote_password.
- * Pads/aligns lengths so that mismatched-length comparisons still take constant time.
+ *
+ * Hashing both inputs through SHA-256 before timingSafeEqual eliminates the
+ * length-based side channel: regardless of the original lengths, the
+ * compared buffers are always 32 bytes. The previous implementation took an
+ * obvious early-exit on length mismatch (and the dummy compare ran on a
+ * different-sized buffer), which leaks the password length over the network.
  */
 function safeEqualString(a, b) {
   if (typeof a !== "string" || typeof b !== "string") return false;
-  const ab = Buffer.from(a, "utf8");
-  const bb = Buffer.from(b, "utf8");
-  if (ab.length !== bb.length) {
-    // Run a dummy compare for constant time
-    crypto.timingSafeEqual(ab, ab);
-    return false;
-  }
-  return crypto.timingSafeEqual(ab, bb);
+  const ah = crypto.createHash("sha256").update(a, "utf8").digest();
+  const bh = crypto.createHash("sha256").update(b, "utf8").digest();
+  return crypto.timingSafeEqual(ah, bh);
 }
 
 // --------------- Admin Routes ---------------
@@ -1111,9 +1115,9 @@ publicRouter.post("/:publicSlug/vote", voteRateLimit, async (req, res) => {
       return res.status(400).json({ error: "No active voting day" });
     }
 
-    // Check vote password if set (constant-time comparison)
+    // Check vote password if set (supports legacy plaintext + bcrypt-hashed)
     if (config.tournament.vote_password) {
-      if (!safeEqualString(submittedPassword || "", config.tournament.vote_password)) {
+      if (!svc.verifyVotePassword(config.tournament.vote_password, submittedPassword || "")) {
         return res.status(403).json({ error: "invalid_vote_password" });
       }
     }
@@ -1167,9 +1171,9 @@ publicRouter.post("/:publicSlug/vote/:voteToken", voteRateLimit, async (req, res
       return res.status(400).json({ error: "voting_window_closed" });
     }
 
-    // Check vote password if set (constant-time comparison)
+    // Check vote password if set (supports legacy plaintext + bcrypt-hashed)
     if (config.tournament.vote_password) {
-      if (!safeEqualString(submittedPassword || "", config.tournament.vote_password)) {
+      if (!svc.verifyVotePassword(config.tournament.vote_password, submittedPassword || "")) {
         return res.status(403).json({ error: "invalid_vote_password" });
       }
     }

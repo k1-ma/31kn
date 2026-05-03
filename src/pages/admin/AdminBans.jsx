@@ -57,6 +57,7 @@ function IpBanRow({ ban, onDelete }) {
         className="rounded-xl text-rose-500 hover:bg-rose-500/10"
         onClick={() => onDelete(ban)}
         title={t("common.delete", null, "Delete")}
+        aria-label={t("common.delete", null, "Delete")}
       >
         <Trash2 className="h-4 w-4" />
       </Button>

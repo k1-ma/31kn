@@ -271,9 +271,12 @@ router.delete("/bans/ip/:id", requireAdmin, async (req, res) => {
 });
 
 // Logs
+const ADMIN_LOGS_MAX_LIMIT = 500;
 router.get("/logs", requireAdmin, async (req, res) => {
-  const limit = Number(req.query.limit || 50);
-  const offset = Number(req.query.offset || 0);
+  const rawLimit = Number(req.query.limit || 50);
+  const rawOffset = Number(req.query.offset || 0);
+  const limit = Math.min(Math.max(Number.isFinite(rawLimit) ? rawLimit : 50, 1), ADMIN_LOGS_MAX_LIMIT);
+  const offset = Math.max(Number.isFinite(rawOffset) ? rawOffset : 0, 0);
   const action = req.query.action || null;
   const adminUsername = req.query.admin || null;
 
@@ -347,8 +350,11 @@ router.get("/backups/:name", requireAdmin, async (req, res) => {
   }
 
   const { name } = req.params;
-  if (!name) {
-    return res.status(400).json({ error: "Backup name required" });
+  // Reject anything outside the canonical backup name format produced by
+  // generateBackupName(). This blocks header injection (CR/LF, quotes) into
+  // Content-Disposition and rejects bogus DB lookups in one check.
+  if (!name || !/^tradecrm_backup_[\w\-]+\.json\.gz$/.test(name) || name.length > 128) {
+    return res.status(400).json({ error: "Invalid backup name" });
   }
 
   try {

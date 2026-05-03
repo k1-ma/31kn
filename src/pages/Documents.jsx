@@ -24,8 +24,8 @@ import { uid, fmtMoney, fmtRR, clampNum, isoDate, resizeImageFileToDataUrl } fro
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { createPublicShare, createShareWithToast, sanitizeDocForPublic, getDocShareUrl } from "@/lib/share.js";
 import { marked } from "marked";
-import DOMPurify from "dompurify";
-import { isDeleted, monoNow } from "@/lib/syncDb.js";
+import { sanitizeRichText } from "@/lib/sanitize.js";
+import { isDeleted } from "@/lib/syncDb.js";
 
 // Document type configuration
 const DOC_TYPES = {
@@ -201,10 +201,7 @@ function migrateMarkdownToHtml(markdownContent) {
   if (!markdownContent) return { html: "", text: "" };
   try {
     const rawHtml = marked(markdownContent);
-    const cleanHtml = DOMPurify.sanitize(rawHtml, {
-      ALLOWED_TAGS: ["h1", "h2", "h3", "p", "br", "strong", "em", "ul", "ol", "li", "a", "code", "pre", "blockquote", "hr"],
-      ALLOWED_ATTR: ["href", "target", "rel"],
-    });
+    const cleanHtml = sanitizeRichText(rawHtml, "noImages");
     // Create plain text version
     const tempDiv = document.createElement("div");
     tempDiv.innerHTML = cleanHtml;
@@ -896,11 +893,8 @@ function DocumentEditor({ doc, open, onClose, onSave, onDelete, trades, librarie
           {showPreview ? (
             <div 
               className="document-preview text-foreground leading-relaxed"
-              dangerouslySetInnerHTML={{ 
-                __html: DOMPurify.sanitize(editDoc.contentHtml || "", {
-                  ALLOWED_TAGS: ["h1", "h2", "h3", "p", "br", "strong", "em", "ul", "ol", "li", "a", "code", "pre", "blockquote", "hr", "img", "table", "thead", "tbody", "tr", "th", "td", "input"],
-                  ALLOWED_ATTR: ["href", "target", "rel", "src", "alt", "class", "data-image-id", "type", "checked", "disabled"],
-                })
+              dangerouslySetInnerHTML={{
+                __html: sanitizeRichText(editDoc.contentHtml || "", "full"),
               }}
             />
           ) : (

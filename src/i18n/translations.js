@@ -44,6 +44,7 @@ const COMMON_DEFAULT = {
   optional: "Optional",
   required: "Required",
   refresh: "Refresh",
+  retry: "Retry",
   loading: "Loading…",
   working: "Working…",
 
@@ -108,7 +109,15 @@ const COMMON_DEFAULT = {
   deleteSelected: "Delete selected",
   deleteSelectedConfirmTitle: "Are you sure?",
   deleteSelectedConfirmMessage: "You are about to delete {count} trades. This action cannot be undone.",
+  deleteSelectedConfirmMessagePlural: {
+    one: "You are about to delete {count} trade. This action cannot be undone.",
+    other: "You are about to delete {count} trades. This action cannot be undone.",
+  },
   deleteSelectedSuccess: "Deleted trades: {count}",
+  deleteSelectedSuccessPlural: {
+    one: "Deleted {count} trade",
+    other: "Deleted {count} trades",
+  },
   deleteSelectedError: "Failed to delete trades. Please try again.",
   deleting: "Deleting...",
   shareLinkReady: "Share link ready",
@@ -187,9 +196,14 @@ const COMMON_DEFAULT = {
     pendingSync: "Changes pending sync",
     pendingSyncDesc: "Your changes are saved locally and will sync when connection is available.",
     retrySync: "Retry sync",
-    syncTakingLong: "Saving is taking longer than usual…",
-    syncTakingLongDesc: "Your changes are saved locally. Sync will complete when connection is stable.",
+    syncTakingLong: "Syncing your data",
+    syncTakingLongDesc: "Synchronization is in progress, please wait…",
     restartSync: "Restart sync",
+    syncInProgress: "Syncing your data",
+    syncInProgressDesc: "Synchronization is in progress, please wait…",
+    syncProgressChunks: "{current} of {total} ({percent}%)",
+    syncElapsed: "Elapsed: {time}",
+    syncRemaining: "≈ {time} left",
   },
   pwa: {
     installTitle: "Install Haunted Dev",
@@ -324,6 +338,7 @@ export const TRANSLATIONS = {
       newNotifications: "New notifications",
       unread: "Unread",
       all: "All",
+      loadError: "Failed to load notifications",
       types: {
         risk_max_loss_warning: "Risk: Max loss warning",
         risk_max_loss_exceeded: "Risk: Max loss exceeded",
@@ -700,6 +715,10 @@ export const TRANSLATIONS = {
       lightMode: "Light mode",
       darkMode: "Dark mode",
       logout: "Logout",
+      sidebar: "Sidebar navigation",
+    },
+    a11y: {
+      skipToContent: "Skip to content",
     },
     cmd: {
       search: "Search commands…",
@@ -984,6 +1003,7 @@ export const TRANSLATIONS = {
         ideasWinRate: "Ideas Win Rate",
         thisMonth: "this month",
         ideasEvaluated: "ideas evaluated this month",
+        exportError: "Failed to export PDF. Please try again.",
       },
 
       analytics: {
@@ -2843,6 +2863,10 @@ export const TRANSLATIONS = {
       lightMode: "Light mode",
       darkMode: "Dark mode",
       logout: "Logout",
+      sidebar: "Sidebar navigation",
+    },
+    a11y: {
+      skipToContent: "Skip to content",
     },
     cmd: {
       search: "Search commands…",
@@ -4424,9 +4448,14 @@ export const TRANSLATIONS = {
       pendingSync: "Changes pending sync",
       pendingSyncDesc: "Your changes are saved locally and will sync when connection is available.",
       retrySync: "Retry sync",
-      syncTakingLong: "Saving is taking longer than usual…",
-      syncTakingLongDesc: "Your changes are saved locally. Sync will complete when connection is stable.",
+      syncTakingLong: "Syncing your data",
+      syncTakingLongDesc: "Synchronization is in progress, please wait…",
       restartSync: "Restart sync",
+      syncInProgress: "Syncing your data",
+      syncInProgressDesc: "Synchronization is in progress, please wait…",
+      syncProgressChunks: "{current} of {total} ({percent}%)",
+      syncElapsed: "Elapsed: {time}",
+      syncRemaining: "≈ {time} left",
     },
     pwa: {
       installTitle: "Install Haunted Dev",
@@ -4776,6 +4805,7 @@ export const TRANSLATIONS = {
       newNotifications: "Новые уведомления",
       unread: "Непрочитанные",
       all: "Все",
+      loadError: "Не удалось загрузить уведомления",
       types: {
         risk_max_loss_warning: "Риск: Предупреждение макс. убытка",
         risk_max_loss_exceeded: "Риск: Макс. убыток превышен",
@@ -5152,6 +5182,10 @@ export const TRANSLATIONS = {
       lightMode: "Светлая тема",
       darkMode: "Тёмная тема",
       logout: "Выход",
+      sidebar: "Боковая навигация",
+    },
+    a11y: {
+      skipToContent: "Перейти к содержимому",
     },
     cmd: {
       search: "Поиск команд…",
@@ -5183,6 +5217,7 @@ export const TRANSLATIONS = {
       loading: "Загрузка…",
       working: "Выполняется…",
       refresh: "Обновить",
+      retry: "Повторить",
       clear: "Очистить",
       close: "Закрыть",
       cancel: "Отмена",
@@ -5236,7 +5271,17 @@ export const TRANSLATIONS = {
       deleteSelected: "Удалить выбранные",
       deleteSelectedConfirmTitle: "Вы уверены?",
       deleteSelectedConfirmMessage: "Вы собираетесь удалить: {count} сделок. Это действие нельзя отменить.",
+      deleteSelectedConfirmMessagePlural: {
+        one: "Вы собираетесь удалить {count} сделку. Это действие нельзя отменить.",
+        few: "Вы собираетесь удалить {count} сделки. Это действие нельзя отменить.",
+        many: "Вы собираетесь удалить {count} сделок. Это действие нельзя отменить.",
+      },
       deleteSelectedSuccess: "Удалено сделок: {count}",
+      deleteSelectedSuccessPlural: {
+        one: "Удалена {count} сделка",
+        few: "Удалено {count} сделки",
+        many: "Удалено {count} сделок",
+      },
       deleteSelectedError: "Не удалось удалить сделки. Попробуйте ещё раз.",
       deleting: "Удаление...",
       shareLinkReady: "Ссылка готова",
@@ -5558,6 +5603,7 @@ export const TRANSLATIONS = {
         ideasWinRate: "Винрейт идей",
         thisMonth: "за месяц",
         ideasEvaluated: "идей оценено за месяц",
+        exportError: "Не удалось экспортировать PDF. Попробуйте ещё раз.",
         riskMonitor: {
           title: "Контроль рисков",
           equityCurve: "Кривая капитала",
@@ -6874,9 +6920,14 @@ export const TRANSLATIONS = {
       pendingSync: "Изменения ожидают синхронизации",
       pendingSyncDesc: "Ваши изменения сохранены локально и будут синхронизированы при восстановлении соединения.",
       retrySync: "Повторить синхронизацию",
-      syncTakingLong: "Сохранение занимает больше обычного…",
-      syncTakingLongDesc: "Ваши изменения сохранены локально. Синхронизация завершится при стабильном соединении.",
+      syncTakingLong: "Идёт синхронизация",
+      syncTakingLongDesc: "Сейчас проходит синхронизация, пожалуйста подождите…",
       restartSync: "Перезапустить синхронизацию",
+      syncInProgress: "Идёт синхронизация",
+      syncInProgressDesc: "Сейчас проходит синхронизация, пожалуйста подождите…",
+      syncProgressChunks: "{current} из {total} ({percent}%)",
+      syncElapsed: "Прошло: {time}",
+      syncRemaining: "≈ осталось {time}",
     },
     pwa: {
       installTitle: "Установить Haunted Dev",
@@ -7226,6 +7277,7 @@ export const TRANSLATIONS = {
       newNotifications: "Нові сповіщення",
       unread: "Непрочитані",
       all: "Всі",
+      loadError: "Не вдалося завантажити сповіщення",
       types: {
         risk_max_loss_warning: "Ризик: Попередження макс. збитку",
         risk_max_loss_exceeded: "Ризик: Макс. збиток перевищено",
@@ -7580,6 +7632,10 @@ export const TRANSLATIONS = {
       lightMode: "Світла тема",
       darkMode: "Темна тема",
       logout: "Вихід",
+      sidebar: "Бічна навігація",
+    },
+    a11y: {
+      skipToContent: "Перейти до вмісту",
     },
     cmd: {
       search: "Пошук команд…",
@@ -7611,6 +7667,7 @@ export const TRANSLATIONS = {
       loading: "Завантаження…",
       working: "Виконується…",
       refresh: "Оновити",
+      retry: "Повторити",
       clear: "Очистити",
       close: "Закрити",
       cancel: "Скасувати",
@@ -7663,7 +7720,17 @@ export const TRANSLATIONS = {
       deleteSelected: "Видалити обрані",
       deleteSelectedConfirmTitle: "Ви впевнені?",
       deleteSelectedConfirmMessage: "Ви збираєтесь видалити: {count} угод. Цю дію не можна скасувати.",
+      deleteSelectedConfirmMessagePlural: {
+        one: "Ви збираєтесь видалити {count} угоду. Цю дію не можна скасувати.",
+        few: "Ви збираєтесь видалити {count} угоди. Цю дію не можна скасувати.",
+        many: "Ви збираєтесь видалити {count} угод. Цю дію не можна скасувати.",
+      },
       deleteSelectedSuccess: "Видалено угод: {count}",
+      deleteSelectedSuccessPlural: {
+        one: "Видалено {count} угоду",
+        few: "Видалено {count} угоди",
+        many: "Видалено {count} угод",
+      },
       deleteSelectedError: "Не вдалося видалити угоди. Спробуйте ще раз.",
       deleting: "Видалення...",
       shareLinkReady: "Посилання готове",
@@ -7985,6 +8052,7 @@ export const TRANSLATIONS = {
         ideasWinRate: "Вінрейт ідей",
         thisMonth: "за місяць",
         ideasEvaluated: "ідей оцінено за місяць",
+        exportError: "Не вдалося експортувати PDF. Спробуйте ще раз.",
       },
 
       analytics: {
@@ -9252,9 +9320,14 @@ export const TRANSLATIONS = {
       pendingSync: "Зміни очікують синхронізації",
       pendingSyncDesc: "Ваші зміни збережені локально і будуть синхронізовані при відновленні з'єднання.",
       retrySync: "Повторити синхронізацію",
-      syncTakingLong: "Збереження займає більше часу, ніж зазвичай…",
-      syncTakingLongDesc: "Ваші зміни збережені локально. Синхронізація завершиться при стабільному з'єднанні.",
+      syncTakingLong: "Триває синхронізація",
+      syncTakingLongDesc: "Зараз відбувається синхронізація, будь ласка, зачекайте…",
       restartSync: "Перезапустити синхронізацію",
+      syncInProgress: "Триває синхронізація",
+      syncInProgressDesc: "Зараз відбувається синхронізація, будь ласка, зачекайте…",
+      syncProgressChunks: "{current} з {total} ({percent}%)",
+      syncElapsed: "Минуло: {time}",
+      syncRemaining: "≈ залишилось {time}",
     },
     pwa: {
       installTitle: "Встановити Haunted Dev",

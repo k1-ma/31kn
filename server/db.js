@@ -65,7 +65,7 @@ export async function createPoolOnly() {
 
   const pool = new Pool({
     connectionString: DATABASE_URL,
-    max: 5,
+    max: Number(process.env.PG_POOL_MAX) || 15,
     ssl,
     connectionTimeoutMillis: 20_000,  // Allow time for serverless DB cold start
     idleTimeoutMillis: 30_000,
@@ -458,6 +458,22 @@ export async function initDb({ admin }) {
     console.warn("[db] backup_codes table:", e?.message || e);
   }
 
+  // Create totp_used_codes table for replay protection
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS totp_used_codes (
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        code_hash TEXT NOT NULL,
+        used_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (user_id, code_hash)
+      );
+      CREATE INDEX IF NOT EXISTS totp_used_codes_used_at_idx ON totp_used_codes(used_at);
+    `);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn("[db] totp_used_codes table:", e?.message || e);
+  }
+
   // Add display_name and display_name_changed_at columns to users table
   try {
     await pool.query(`
@@ -580,6 +596,21 @@ export async function initDb({ admin }) {
   } catch (e) {
     // eslint-disable-next-line no-console
     console.warn("[db] user_feedback admin_read_at migration:", e?.message || e);
+  }
+
+  // Index admin_read_at for the admin panel "unread feedback" counter query.
+  // The query "SELECT COUNT(*) FILTER (WHERE admin_read_at IS NULL)" runs on
+  // every admin panel load — without this index it sequential-scans the
+  // entire feedback table.
+  try {
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS user_feedback_admin_read_at_idx
+        ON user_feedback(admin_read_at)
+        WHERE admin_read_at IS NULL;
+    `);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn("[db] user_feedback admin_read_at index:", e?.message || e);
   }
 
   // Chunked sync session tables (replaces in-memory Map for serverless compatibility)
@@ -1064,6 +1095,60 @@ export async function initDb({ admin }) {
     `);
   } catch (e) {
     console.warn("[db] user_stats_cache table migration:", e?.message || e);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // IMAGE EXTRACTION (Phase 1 of base64-out-of-state migration).
+  //
+  // user_images stores extracted base64 image payloads keyed by per-user
+  // image_id. state_json_v2 mirrors state_json but with each base64 string
+  // replaced by a small {__imgRef: <id>} object, shrinking the JSONB blob
+  // by 70-90% for typical journals.
+  //
+  // Phase 1 only creates the schema — nothing reads or writes these tables
+  // until Phase 2 turns on dual-write behind the IMAGE_DUAL_WRITE flag.
+  // The state_json column remains the canonical source of truth.
+  // ─────────────────────────────────────────────────────────────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_images (
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        image_id TEXT NOT NULL,
+        content_type TEXT NOT NULL DEFAULT 'image/png',
+        data BYTEA NOT NULL,
+        sha256 TEXT NOT NULL,
+        byte_size INTEGER NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        last_used_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (user_id, image_id)
+      );
+      CREATE INDEX IF NOT EXISTS user_images_user_sha_idx ON user_images(user_id, sha256);
+      CREATE INDEX IF NOT EXISTS user_images_last_used_idx ON user_images(last_used_at);
+      ALTER TABLE states ADD COLUMN IF NOT EXISTS state_json_v2 JSONB;
+      ALTER TABLE states ADD COLUMN IF NOT EXISTS state_v2_updated_at TIMESTAMPTZ;
+      ALTER TABLE states ADD COLUMN IF NOT EXISTS state_v2_verify_failed_at TIMESTAMPTZ;
+    `);
+
+    // Verify the table actually exists post-migration. A silent CREATE
+    // failure (e.g. missing privilege, locked table) used to be swallowed
+    // by the catch below; if image dual-write is enabled at runtime the
+    // INSERTs would then fail per-request without anyone noticing.
+    const verify = await pool.query(
+      `SELECT to_regclass('public.user_images') AS t,
+              to_regclass('public.user_images_user_sha_idx') AS i_sha,
+              to_regclass('public.user_images_last_used_idx') AS i_used`
+    );
+    const row = verify.rows?.[0] || {};
+    if (!row.t) {
+      console.error("[db] FATAL: user_images table missing after migration");
+    } else if (!row.i_sha || !row.i_used) {
+      console.error("[db] WARN: user_images indexes missing — sha/last_used queries will full-scan");
+    }
+  } catch (e) {
+    // Use console.error (not warn) so this surfaces in error-only log
+    // pipelines. Production drift on this migration silently breaks
+    // image dual-write and v2 reads.
+    console.error("[db] user_images / state_json_v2 migration FAILED:", e?.message || e);
   }
 
   // Ensure initial admin exists (idempotent)

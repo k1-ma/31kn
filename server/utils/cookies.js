@@ -1,14 +1,45 @@
 import crypto from "crypto";
 
-const SESSION_SECRET = process.env.SESSION_SECRET || "dev-secret-change-me";
+const DEFAULT_DEV_SECRET = "dev-secret-change-me";
+const MIN_SECRET_LENGTH = 32;
+const isProd = process.env.NODE_ENV === "production";
+const envSecret = process.env.SESSION_SECRET;
 
-if (
-  process.env.NODE_ENV === "production" &&
-  (!process.env.SESSION_SECRET || process.env.SESSION_SECRET === "dev-secret-change-me")
-) {
-  // eslint-disable-next-line no-console
-  console.warn("[cookies] WARNING: SESSION_SECRET is not set or uses the default value in production. Sessions will not be secure.");
+// Picking the session secret in production:
+//   1. If SESSION_SECRET is the exact dev placeholder, refuse to start —
+//      that almost certainly means a config file was committed by mistake
+//      and is the one case where booting silently is dangerous.
+//   2. If it is missing or shorter than MIN_SECRET_LENGTH, generate a
+//      strong ephemeral secret for this process and log a loud warning.
+//      Sessions won't survive a restart until the operator sets a real
+//      SESSION_SECRET, which is annoying but lets the deploy come back up
+//      instead of crash-looping (the previous behaviour broke production).
+function pickSessionSecret() {
+  if (!isProd) return envSecret || DEFAULT_DEV_SECRET;
+
+  if (envSecret === DEFAULT_DEV_SECRET) {
+    throw new Error(
+      "[cookies] SESSION_SECRET is set to the development placeholder value in production. Refusing to start."
+    );
+  }
+
+  if (!envSecret || envSecret.length < MIN_SECRET_LENGTH) {
+    const ephemeral = crypto.randomBytes(48).toString("hex");
+    // eslint-disable-next-line no-console
+    console.error(
+      "[cookies] WARNING: SESSION_SECRET is " +
+        (!envSecret ? "not set" : `only ${envSecret.length} chars (min ${MIN_SECRET_LENGTH})`) +
+        ". Falling back to a randomly-generated per-process secret. " +
+        "All existing sessions are invalid and any restart will log every user out. " +
+        "Set SESSION_SECRET to a >=" + MIN_SECRET_LENGTH + "-char random string in your deploy environment."
+    );
+    return ephemeral;
+  }
+
+  return envSecret;
 }
+
+const SESSION_SECRET = pickSessionSecret();
 
 export function b64url(buf) {
   return Buffer.from(buf)

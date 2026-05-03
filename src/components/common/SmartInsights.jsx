@@ -24,20 +24,37 @@ function generateInsights(trades, accounts, winRateMode = "ignore") {
     const allocs = Array.isArray(trade?.allocations) ? trade.allocations : [];
     return allocs.reduce((sum, a) => sum + clampNum(a?.pnl), 0);
   };
-  
+
+  // Returns true if any allocation (or the trade itself) is user-marked as break-even
+  const getIsBreakEven = (trade) => {
+    if (trade?.isBreakEven === true) return true;
+    const allocs = Array.isArray(trade?.allocations) ? trade.allocations : [];
+    return allocs.some((a) => a?.isBreakEven === true);
+  };
+
+  // Classify a trade respecting isBreakEven and the global winRateMode
+  const getOutcome = (trade) => classifyOutcomeByRRAndPnL({
+    pnl: getPnL(trade),
+    rr: trade?.rr,
+    neutralRR: 0,
+    isBreakEven: getIsBreakEven(trade),
+    mode: winRateMode,
+  });
+
   // Parse trade date
   const getDate = (trade) => {
     if (!trade?.date) return null;
     const d = new Date(`${trade.date}T12:00:00`);
     return isNaN(d.getTime()) ? null : d;
   };
-  
+
   // Calculate overall stats with break-even handling
   const allPnL = trades.map(getPnL);
   let wins = 0, losses = 0, breakEvens = 0;
-  for (const p of allPnL) {
-    if (p > 0) wins++;
-    else if (p < 0) losses++;
+  for (const trade of trades) {
+    const outcome = getOutcome(trade);
+    if (outcome === "win") wins++;
+    else if (outcome === "loss") losses++;
     else breakEvens++;
   }
   const winRate = calcWinRatePct({ wins, losses, breakEvens, mode: winRateMode });
@@ -56,7 +73,7 @@ function generateInsights(trades, accounts, winRateMode = "ignore") {
     const stat = dayStats.get(day);
     stat.pnl += pnl;
     stat.count++;
-    if (pnl > 0) stat.wins++;
+    if (getOutcome(trade) === "win") stat.wins++;
   }
   
   const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -108,7 +125,7 @@ function generateInsights(trades, accounts, winRateMode = "ignore") {
     const stat = sessionStats.get(session);
     stat.pnl += pnl;
     stat.count++;
-    if (pnl > 0) stat.wins++;
+    if (getOutcome(trade) === "win") stat.wins++;
   }
   
   let bestSession = null, bestSessionPnL = -Infinity;
@@ -140,7 +157,7 @@ function generateInsights(trades, accounts, winRateMode = "ignore") {
     const stat = modelStats.get(model);
     stat.pnl += pnl;
     stat.count++;
-    if (pnl > 0) stat.wins++;
+    if (getOutcome(trade) === "win") stat.wins++;
   }
   
   let bestModel = null, bestModelPnL = -Infinity;
@@ -171,8 +188,8 @@ function generateInsights(trades, accounts, winRateMode = "ignore") {
   });
   
   for (const trade of sortedTrades) {
-    const pnl = getPnL(trade);
-    if (pnl > 0) {
+    const outcome = getOutcome(trade);
+    if (outcome === "win") {
       if (streakType === "win") {
         currentStreak++;
       } else {
@@ -180,7 +197,7 @@ function generateInsights(trades, accounts, winRateMode = "ignore") {
         streakType = "win";
       }
       maxWinStreak = Math.max(maxWinStreak, currentStreak);
-    } else if (pnl < 0) {
+    } else if (outcome === "loss") {
       if (streakType === "loss") {
         currentStreak++;
       } else {
@@ -220,7 +237,7 @@ function generateInsights(trades, accounts, winRateMode = "ignore") {
       const pnl = getPnL(trade);
       directionStats[dir].pnl += pnl;
       directionStats[dir].count++;
-      if (pnl > 0) directionStats[dir].wins++;
+      if (getOutcome(trade) === "win") directionStats[dir].wins++;
     }
   }
   
@@ -283,8 +300,9 @@ function generateInsights(trades, accounts, winRateMode = "ignore") {
       for (const a of allocs) {
         const pnl = clampNum(a?.pnl);
         const rr = clampNum(a?.rr);
+        const isBreakEven = Boolean(a?.isBreakEven);
         // Use classification function for consistency
-        const outcome = classifyOutcomeByRRAndPnL({ pnl, rr, neutralRR: 0 });
+        const outcome = classifyOutcomeByRRAndPnL({ pnl, rr, neutralRR: 0, isBreakEven });
         // Only include winning trades with positive RR
         if (outcome === "win" && rr > 0) {
           rrValues.push(rr);
@@ -294,8 +312,9 @@ function generateInsights(trades, accounts, winRateMode = "ignore") {
       // For trades without allocations, check the trade itself
       const pnl = clampNum(trade?.pnl);
       const rr = clampNum(trade?.rr);
+      const isBreakEven = Boolean(trade?.isBreakEven);
       // Use classification function for consistency
-      const outcome = classifyOutcomeByRRAndPnL({ pnl, rr, neutralRR: 0 });
+      const outcome = classifyOutcomeByRRAndPnL({ pnl, rr, neutralRR: 0, isBreakEven });
       // Only include winning trades with positive RR
       if (outcome === "win" && rr > 0) {
         rrValues.push(rr);

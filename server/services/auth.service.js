@@ -17,6 +17,28 @@ import {
 const EMAIL_VERIFY_TOKEN_EXPIRY_HOURS = 24;
 const PASSWORD_RESET_TOKEN_EXPIRY_HOURS = 1;
 
+// Cost factor for newly-created bcrypt hashes. Existing hashes (cost 12)
+// keep working; loginUser opportunistically rehashes them on the next
+// successful login so the migration is invisible to users.
+const BCRYPT_COST = 14;
+const LEGACY_BCRYPT_COSTS = new Set([10, 11, 12, 13]);
+
+// Detect the cost embedded in a bcrypt hash. Returns null if not a bcrypt hash.
+function bcryptCostOf(hash) {
+  if (typeof hash !== "string") return null;
+  const m = /^\$2[aby]\$(\d{2})\$/.exec(hash);
+  if (!m) return null;
+  return parseInt(m[1], 10);
+}
+
+// Dummy bcrypt hash used to equalize login timing for non-existent users.
+// Generated once at module load with the same cost factor used by the real
+// password hashing path.
+const DUMMY_BCRYPT_HASH = bcrypt.hashSync(
+  "dummy-password-for-timing-equalization",
+  BCRYPT_COST
+);
+
 // Registration is ENABLED by default (set to "0" to disable)
 const PUBLIC_REGISTRATION_ENV = process.env.PUBLIC_REGISTRATION !== "0";
 
@@ -76,7 +98,7 @@ export async function registerUser({ username, password, nickname, email, ip }) 
   const verifyTokenExpiresAt = new Date(Date.now() + EMAIL_VERIFY_TOKEN_EXPIRY_HOURS * 60 * 60 * 1000);
 
   // Create user with created_ip and email verification token
-  const hash = await bcrypt.hash(String(password), 12);
+  const hash = await bcrypt.hash(String(password), BCRYPT_COST);
   const r = await pool.query(
     `INSERT INTO users (
       username, nickname, password_hash, role, email, is_disabled, created_ip, 
@@ -127,6 +149,10 @@ export async function loginUser({ username, password }) {
   }
   
   if (!u) {
+    // Equalize timing: still run a bcrypt comparison so that a non-existent
+    // user takes roughly the same time as a wrong-password attempt against a
+    // real account. Mitigates user enumeration via response timing.
+    await bcrypt.compare(String(password), DUMMY_BCRYPT_HASH);
     return { error: "Invalid credentials", status: 401 };
   }
 
@@ -142,6 +168,24 @@ export async function loginUser({ username, password }) {
   const ok = await bcrypt.compare(String(password), u.password_hash);
   if (!ok) {
     return { error: "Invalid credentials", status: 401 };
+  }
+
+  // Opportunistic rehash: if the stored hash uses a legacy (lower) cost,
+  // upgrade it to BCRYPT_COST while we have the plaintext password.
+  // Fire-and-forget so a slow rehash doesn't delay the login response.
+  const storedCost = bcryptCostOf(u.password_hash);
+  if (storedCost !== null && storedCost < BCRYPT_COST && LEGACY_BCRYPT_COSTS.has(storedCost)) {
+    bcrypt.hash(String(password), BCRYPT_COST)
+      .then((newHash) =>
+        pool.query(
+          `UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2 AND password_hash = $3`,
+          [newHash, u.id, u.password_hash]
+        )
+      )
+      .catch((e) => {
+        // eslint-disable-next-line no-console
+        console.warn("[auth] opportunistic rehash failed:", e?.message || e);
+      });
   }
 
   // Check if email is verified (only if email service is enabled)
@@ -199,7 +243,7 @@ export async function changePassword(userId, oldPassword, newPassword) {
   const ok = await bcrypt.compare(String(oldPassword), u.password_hash);
   if (!ok) return { error: "Current password is wrong" };
 
-  const hash = await bcrypt.hash(String(newPassword), 12);
+  const hash = await bcrypt.hash(String(newPassword), BCRYPT_COST);
   await pool.query("UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2", [hash, userId]);
   return { ok: true };
 }
@@ -231,7 +275,7 @@ export async function findOrCreateGoogleUser({ googleId, email, name }) {
   // Create new user
   const username = await generateUniqueUsername(email || name || "user");
   const randomPassword = crypto.randomBytes(32).toString("hex");
-  const hash = await bcrypt.hash(randomPassword, 12);
+  const hash = await bcrypt.hash(randomPassword, BCRYPT_COST);
 
   const r = await pool.query(
     `INSERT INTO users (username, nickname, password_hash, role, email, google_id, is_disabled, created_at, updated_at)
@@ -332,15 +376,22 @@ export async function verifyEmail(token) {
  * @param {number} userId - User ID
  * @returns {Promise<{ ok: boolean, error?: string }>}
  */
+// Minimum interval between resend-verification emails for the same userId.
+// Without this, /resend-verification accepts a sequential userId in the body
+// and can be used to spam any user's inbox at the per-IP login rate limit.
+const RESEND_VERIFICATION_COOLDOWN_MS = 60 * 1000;
+
 export async function resendVerificationEmail(userId) {
   const pool = getPool();
   if (!pool) return { error: "Database unavailable" };
 
   const q = await pool.query(
-    `SELECT id, email, email_verified, username, nickname FROM users WHERE id = $1`,
+    `SELECT id, email, email_verified, username, nickname,
+            email_verify_token_expires_at
+     FROM users WHERE id = $1`,
     [userId]
   );
-  
+
   const user = q.rows?.[0];
   if (!user) {
     return { error: "User not found" };
@@ -354,12 +405,28 @@ export async function resendVerificationEmail(userId) {
     return { error: "No email address", errorCode: "NO_EMAIL" };
   }
 
+  // Per-user cooldown. The token expiry is EMAIL_VERIFY_TOKEN_EXPIRY_HOURS
+  // hours; if the existing token was issued less than the cooldown ago, we
+  // refuse to re-issue/re-send.
+  if (user.email_verify_token_expires_at) {
+    const issuedAtMs =
+      new Date(user.email_verify_token_expires_at).getTime() -
+      EMAIL_VERIFY_TOKEN_EXPIRY_HOURS * 60 * 60 * 1000;
+    const sinceLastMs = Date.now() - issuedAtMs;
+    if (sinceLastMs >= 0 && sinceLastMs < RESEND_VERIFICATION_COOLDOWN_MS) {
+      return {
+        error: "Please wait a moment before requesting another email.",
+        errorCode: "RESEND_COOLDOWN",
+      };
+    }
+  }
+
   // Generate new token
   const verifyToken = crypto.randomBytes(32).toString("hex");
   const verifyTokenExpiresAt = new Date(Date.now() + EMAIL_VERIFY_TOKEN_EXPIRY_HOURS * 60 * 60 * 1000);
 
   await pool.query(
-    `UPDATE users SET 
+    `UPDATE users SET
        email_verify_token = $1,
        email_verify_token_expires_at = $2,
        updated_at = now()
@@ -486,44 +553,61 @@ export async function resetPasswordWithToken(token, newPassword, ip, ua) {
   const pool = getPool();
   if (!pool) return { error: "Database unavailable" };
 
-  // Validate token
-  const tokenCheck = await validatePasswordResetToken(token);
-  if (!tokenCheck.valid) {
-    return { error: tokenCheck.error, errorCode: tokenCheck.errorCode };
+  if (!token || typeof token !== "string" || token.length < 16) {
+    return { error: "Invalid token", errorCode: "TOKEN_INVALID" };
   }
 
-  // Validate new password
+  // Validate new password before consuming token
   const passwordCheck = validatePassword(newPassword);
   if (!passwordCheck.valid) {
     return { error: passwordCheck.error };
   }
 
   // Hash new password
-  const hash = await bcrypt.hash(String(newPassword), 12);
+  const hash = await bcrypt.hash(String(newPassword), BCRYPT_COST);
+
+  // Atomically claim the token: only consume if unused and not expired.
+  // Prevents race where a stolen token is reused between validate + update.
+  const claim = await pool.query(
+    `UPDATE password_resets
+       SET used_at = now()
+     WHERE token = $1
+       AND used_at IS NULL
+       AND expires_at > now()
+     RETURNING id, user_id, expires_at`,
+    [token]
+  );
+  const reset = claim.rows?.[0];
+  if (!reset) {
+    // Distinguish error reason for UX
+    const probe = await pool.query(
+      `SELECT used_at, expires_at FROM password_resets WHERE token = $1`,
+      [token]
+    );
+    const row = probe.rows?.[0];
+    if (!row) return { error: "Invalid token", errorCode: "TOKEN_INVALID" };
+    if (row.used_at) return { error: "Token already used", errorCode: "TOKEN_USED" };
+    return { error: "Token expired", errorCode: "TOKEN_EXPIRED" };
+  }
+  const userId = reset.user_id;
 
   // Get user info for email
   const userQ = await pool.query(
     "SELECT id, email, username, nickname FROM users WHERE id = $1",
-    [tokenCheck.userId]
+    [userId]
   );
   const user = userQ.rows?.[0];
 
   // Update password
   await pool.query(
     `UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2`,
-    [hash, tokenCheck.userId]
-  );
-
-  // Mark token as used
-  await pool.query(
-    `UPDATE password_resets SET used_at = now() WHERE token = $1`,
-    [token]
+    [hash, userId]
   );
 
   // Invalidate ALL sessions for this user (security measure)
   await pool.query(
     `UPDATE sessions SET revoked = true WHERE user_id = $1`,
-    [tokenCheck.userId]
+    [userId]
   );
 
   // Send security notification
@@ -538,7 +622,7 @@ export async function resetPasswordWithToken(token, newPassword, ip, ua) {
 
   // Log password reset
   try {
-    await logAdmin(null, "auth.password_reset_completed", tokenCheck.userId, { ip });
+    await logAdmin(null, "auth.password_reset_completed", userId, { ip });
   } catch {}
 
   return { ok: true };
@@ -555,10 +639,32 @@ export async function resetPasswordWithToken(token, newPassword, ip, ua) {
  */
 export async function changePasswordWithNotification(userId, oldPassword, newPassword, options = {}) {
   const result = await changePassword(userId, oldPassword, newPassword);
-  
+
   if (result.ok) {
     const pool = getPool();
     if (pool) {
+      // Invalidate all OTHER active sessions for this user. The current
+      // session (options.currentSid) is preserved so the caller stays
+      // logged in. Without this, an attacker who briefly captured a
+      // session would keep access after the legitimate user changes
+      // their password.
+      try {
+        if (options.currentSid) {
+          await pool.query(
+            "UPDATE sessions SET revoked = true WHERE user_id = $1 AND sid <> $2 AND revoked = false",
+            [userId, options.currentSid]
+          );
+        } else {
+          await pool.query(
+            "UPDATE sessions SET revoked = true WHERE user_id = $1 AND revoked = false",
+            [userId]
+          );
+        }
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error("[auth] Failed to revoke other sessions after password change:", e?.message || e);
+      }
+
       // Get user info for email
       const userQ = await pool.query(
         "SELECT email, username, nickname FROM users WHERE id = $1",
@@ -569,10 +675,10 @@ export async function changePasswordWithNotification(userId, oldPassword, newPas
       // Send security notification
       if (user?.email) {
         try {
-          await sendPasswordChangedEmail(user.email, user.nickname || user.username, { 
-            ip: options.ip, 
-            ua: options.ua, 
-            isReset: false 
+          await sendPasswordChangedEmail(user.email, user.nickname || user.username, {
+            ip: options.ip,
+            ua: options.ua,
+            isReset: false
           });
         } catch (e) {
           // eslint-disable-next-line no-console

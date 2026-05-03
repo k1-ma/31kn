@@ -10,6 +10,36 @@ export default defineConfig({
       '/api': 'http://localhost:8080',
     },
   },
+  // Production build settings — keep esbuild minifier (Vite default, no extra
+  // dep). drop:console strips logs from prod bundles. sourcemap is off in prod
+  // to shave bundle download + avoid leaking source paths.
+  esbuild: {
+    drop: process.env.NODE_ENV === 'production' ? ['console', 'debugger'] : [],
+  },
+  build: {
+    sourcemap: false,
+    reportCompressedSize: true,
+    chunkSizeWarningLimit: 800,
+    rollupOptions: {
+      output: {
+        // Split heavy libs into separate chunks so route-level lazy loading
+        // can actually skip them. Without this, Recharts/TipTap/framer-motion
+        // all land in the single vendor chunk and ship on initial load.
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+          if (id.includes('recharts')) return 'recharts';
+          if (id.includes('@tiptap') || id.includes('prosemirror')) return 'tiptap';
+          if (id.includes('framer-motion')) return 'framer-motion';
+          if (id.includes('exceljs')) return 'exceljs';
+          if (id.includes('marked')) return 'markdown';
+          if (id.includes('lucide-react')) return 'icons';
+          if (id.includes('react-router')) return 'router';
+          if (id.includes('/react/') || id.includes('/react-dom/') || id.includes('scheduler')) return 'react';
+          return undefined;
+        },
+      },
+    },
+  },
   plugins: [
     react(),
     VitePWA({
@@ -33,9 +63,10 @@ export default defineConfig({
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
-          // Auth + state: never cache, never abort.
+          // Auth + state + sync: never cache, never abort.
           { urlPattern: /\/api\/auth\//, handler: 'NetworkOnly', method: 'GET' },
           { urlPattern: /\/api\/state/, handler: 'NetworkOnly', method: 'GET' },
+          { urlPattern: /\/api\/sync\//, handler: 'NetworkOnly', method: 'GET' },
 
           // Mutations: NetworkOnly has no timeout, so the SW never aborts a
           // slow save. Workbox runtimeCaching matches a single method per

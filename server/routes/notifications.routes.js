@@ -82,7 +82,7 @@ router.post("/", requireAuth, async (req, res) => {
   if (!pool) return res.status(503).json(dbUnavailableResponse());
 
   try {
-    const { type, data, targetUserId } = req.body;
+    const { type, data } = req.body;
 
     // Validate type
     const validTypes = Object.values(NOTIFICATION_TYPES);
@@ -94,11 +94,9 @@ router.post("/", requireAuth, async (req, res) => {
       });
     }
 
-    // If targetUserId is provided and user is admin, allow creating for other users
-    // Otherwise, create for current user
-    const userId = (targetUserId && req.session.role === "admin") 
-      ? targetUserId 
-      : req.session.userId;
+    // Always create for the current authenticated user.
+    // Admin-targeted notifications must go through admin routes.
+    const userId = req.session.userId;
 
     const notification = await createNotification(userId, type, data || {});
 

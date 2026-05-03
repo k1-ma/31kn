@@ -1605,6 +1605,7 @@ export default function Analytics({ trades, accounts, libraries, reduceMotion, o
           </Card>
         </motion.div>
 
+        {ui.modelsEnabled && (
         <motion.div {...fadeUp(reduceMotion, 0.36)}>
           <Card className="rounded-xl border-2 border-border/50 bg-gradient-to-br from-violet-500/5 to-transparent">
             <CardHeader className="pb-2">
@@ -1642,6 +1643,7 @@ export default function Analytics({ trades, accounts, libraries, reduceMotion, o
             </CardContent>
           </Card>
         </motion.div>
+        )}
       </div>
 
       {/* ─────────────────────────────────────────────────────────────────────
@@ -1696,11 +1698,12 @@ export default function Analytics({ trades, accounts, libraries, reduceMotion, o
           PREMIUM BREAKDOWN TABS
           ───────────────────────────────────────────────────────────────────── */}
       <motion.div {...fadeUp(reduceMotion, 0.34)}>
-        <BreakdownTabs 
+        <BreakdownTabs
           breakdowns={reportData.breakdowns}
           currency={currency}
           reduceMotion={reduceMotion}
           t={t}
+          modelsEnabled={!!ui.modelsEnabled}
         />
       </motion.div>
 
