@@ -116,6 +116,32 @@ const SERVER_VERSION_KEY_PREFIX = "tradecrm:serverVersion:";
 // Sync progress key prefix
 const SYNC_PROGRESS_KEY_PREFIX = "tradecrm:syncProgress:";
 
+/**
+ * Drop every per-user sync artefact for `userId`: outbox, lastSynced,
+ * lastLocalSave, serverVersion, syncProgress, the cached user blob in
+ * localStorage, and the IDB-backed copy. Called on logout so a different
+ * user signing in on the same device cannot inherit pending writes.
+ *
+ * @param {string|number|null|undefined} userId
+ * @returns {Promise<void>}
+ */
+export async function clearUserSyncArtefacts(userId) {
+  if (!userId) return;
+  const id = String(userId);
+  const lsKeys = [
+    `${OUTBOX_KEY_PREFIX}${id}`,
+    `${LAST_SYNCED_KEY_PREFIX}${id}`,
+    `${LAST_LOCAL_SAVE_KEY_PREFIX}${id}`,
+    `${SERVER_VERSION_KEY_PREFIX}${id}`,
+    `${SYNC_PROGRESS_KEY_PREFIX}${id}`,
+    `tradecrm:user:${id}`,
+  ];
+  for (const k of lsKeys) {
+    try { localStorage.removeItem(k); } catch { /* quota / private mode */ }
+  }
+  try { await idbStorage.del(`tradecrm:user:${id}`); } catch { /* IDB unavailable */ }
+}
+
 // Current schema version for outbox entries and local cache (BUG #10).
 // Bump this when the state schema changes (field added/removed/renamed).
 // Old outbox entries with a lower version are migrated before use.

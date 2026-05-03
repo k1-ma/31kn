@@ -32,6 +32,16 @@ const IS_PROD = NODE_ENV === "production";
 const COOKIE_NAME = "tradecrm.sid";
 const AUTH_DEBUG = process.env.AUTH_DEBUG === "true";
 
+// State-blob payload limit (env-tunable). Default 100MB to handle prod-observed
+// 53MB blobs with headroom; clients are still expected to use chunked sync for
+// large payloads (>3.5MB). Set MAX_STATE_BLOB_MB to override.
+const MAX_STATE_BLOB_MB = (() => {
+  const raw = Number(process.env.MAX_STATE_BLOB_MB);
+  if (Number.isFinite(raw) && raw > 0) return Math.floor(raw);
+  return 100;
+})();
+const MAX_STATE_BLOB_LIMIT = `${MAX_STATE_BLOB_MB}mb`;
+
 // CORS whitelist configuration
 const CORS_WHITELIST = process.env.CORS_WHITELIST
   ? process.env.CORS_WHITELIST.split(",").map((s) => s.trim()).filter(Boolean)
@@ -126,9 +136,10 @@ export async function createApp() {
   // CORS configuration
   app.use(cors(corsOptions));
 
-  // Body parser with increased size limit (50MB) to support larger state/share payloads
-  // PATCH endpoint is preferred for incremental updates to reduce payload size
-  app.use(express.json({ limit: "50mb" }));
+  // Body parser with env-tunable size limit (default 100MB) to support larger
+  // state/share payloads. Prod observed 53MB blobs at the previous 50MB limit.
+  // PATCH endpoint and chunked sync are still preferred for incremental updates.
+  app.use(express.json({ limit: MAX_STATE_BLOB_LIMIT }));
 
   // Session middleware - attach minimal session-like object
   // Handles duplicate cookies: when the browser sends several tradecrm.sid
@@ -320,9 +331,13 @@ export async function createApp() {
   app.use((err, req, res, next) => {
     if (err.type === "entity.too.large") {
       return res.status(413).json({
-        error: "Payload too large. Try reducing data size or removing images.",
+        error: "Payload too large. Use chunked sync, reduce data, or strip images.",
         code: "PAYLOAD_TOO_LARGE",
-        limit: "50mb",
+        limit: MAX_STATE_BLOB_LIMIT,
+        limitBytes: MAX_STATE_BLOB_MB * 1024 * 1024,
+        // Hint to the client SDK: switch to chunked sync (POST /api/sync/state-chunks/*).
+        // syncDb.js inspects this and falls back automatically.
+        useChunkedSync: true,
       });
     }
     

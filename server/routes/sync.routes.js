@@ -249,19 +249,52 @@ async function sessionBelongsToOtherUser(pool, sessionId, userId) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// EXPIRED SESSION CLEANUP (best-effort, runs on each request)
+// EXPIRED SESSION CLEANUP
+// On Vercel setInterval doesn't run between invocations, so we trigger this
+// probabilistically on chunk requests (5% per request). Errors are surfaced
+// to logs (we previously silently swallowed them, leaving 91 orphaned rows).
 // ─────────────────────────────────────────────────────────────────────────────
+const ORPHAN_CLEANUP_PROBABILITY = 0.05;
+
 async function cleanupExpiredSessions(pool) {
   try {
-    // Delete chunks for expired sessions first
-    await pool.query(
-      `DELETE FROM sync_state_chunks WHERE (session_id, user_id) IN (
+    // Delete chunks for expired sessions first (and orphaned chunks whose
+    // session row is gone — covers the prod-observed orphan case).
+    const chunkRes = await pool.query(
+      `DELETE FROM sync_state_chunks
+       WHERE (session_id, user_id) IN (
          SELECT session_id, user_id FROM sync_state_sessions WHERE expires_at < now()
+       )
+       OR NOT EXISTS (
+         SELECT 1 FROM sync_state_sessions s
+         WHERE s.session_id = sync_state_chunks.session_id
+           AND s.user_id = sync_state_chunks.user_id
        )`
     );
-    await pool.query("DELETE FROM sync_state_sessions WHERE expires_at < now()");
-  } catch {
-    // Best-effort cleanup, don't fail the request
+    const sessionRes = await pool.query(
+      "DELETE FROM sync_state_sessions WHERE expires_at < now()"
+    );
+    const removedChunks = chunkRes.rowCount ?? 0;
+    const removedSessions = sessionRes.rowCount ?? 0;
+    if (removedChunks > 0 || removedSessions > 0) {
+      console.log(
+        `[sync.routes] cleanupExpiredSessions removed chunks=${removedChunks} sessions=${removedSessions}`
+      );
+    }
+  } catch (err) {
+    console.error(
+      "[sync.routes] cleanupExpiredSessions failed:",
+      err?.message || err,
+      err?.stack || ""
+    );
+  }
+}
+
+// Probabilistic per-request trigger so Vercel deployments still cycle expired
+// rows even though setInterval is unreliable between serverless invocations.
+function maybeCleanupExpiredSessions(pool) {
+  if (Math.random() < ORPHAN_CLEANUP_PROBABILITY) {
+    cleanupExpiredSessions(pool);
   }
 }
 
@@ -312,9 +345,12 @@ router.post("/chunk", requireAuth, async (req, res) => {
     return res.status(400).json({ error: "Operations must be an array", code: "INVALID_OPERATIONS" });
   }
 
-  // Best-effort cleanup of expired sessions (only on first chunk to reduce DB pool contention)
+  // Always run on the first chunk; otherwise run probabilistically (5%) so
+  // Vercel-style serverless deployments still flush expired/orphaned rows.
   if (chunkIndex === 0) {
     cleanupExpiredSessions(pool);
+  } else {
+    maybeCleanupExpiredSessions(pool);
   }
 
   const opSessionId = `ops:${sessionId}`;
@@ -498,9 +534,12 @@ router.post("/state-chunk", requireAuth, async (req, res) => {
     return res.status(400).json({ error: "Chunk must be an object", code: "INVALID_CHUNK" });
   }
 
-  // Best-effort cleanup of expired sessions (only on first chunk to reduce DB pool contention)
+  // Always run on the first chunk; otherwise run probabilistically (5%) so
+  // Vercel-style serverless deployments still flush expired/orphaned rows.
   if (chunkIndex === 0) {
     cleanupExpiredSessions(pool);
+  } else {
+    maybeCleanupExpiredSessions(pool);
   }
 
   const stateSessionId = `state:${sessionId}`;

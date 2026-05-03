@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState, useRef } from "react";
 import { apiJson } from "@/lib/api.js";
+import { clearUserSyncArtefacts } from "@/lib/syncDb.js";
 
 const AuthCtx = createContext(null);
 
@@ -129,7 +130,14 @@ export function AuthProvider({ children }) {
   };
 
   const logout = async () => {
+    const previousUserId = user?.id;
     try { await apiJson("/api/auth/logout", { method: "POST" }); } catch {}
+    // Drop per-user sync artefacts (outbox, lastSynced, IDB blob, etc.) so a
+    // different user signing in on the same device can't inherit pending
+    // writes from the previous session.
+    if (previousUserId) {
+      try { await clearUserSyncArtefacts(previousUserId); } catch {}
+    }
     setUser(null);
   };
 
@@ -229,8 +237,12 @@ const logoutOtherDevices = async () => {
 };
 
 const logoutAllDevices = async () => {
+  const previousUserId = user?.id;
   const res = await apiJson("/api/auth/sessions/logout-all", { method: "POST" });
   // This will also destroy current session on server side
+  if (previousUserId) {
+    try { await clearUserSyncArtefacts(previousUserId); } catch {}
+  }
   setUser(null);
   return res;
 };

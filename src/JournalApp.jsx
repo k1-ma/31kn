@@ -1754,27 +1754,72 @@ export default function JournalApp() {
     });
   };
 
+  // Collect ids reachable from `rootId` via parentId edges (root + descendants).
+  const collectDocSubtreeIds = (docs, rootId) => {
+    const ids = new Set([rootId]);
+    let added = true;
+    while (added) {
+      added = false;
+      for (const d of docs) {
+        if (d?.parentId && ids.has(d.parentId) && !ids.has(d.id)) {
+          ids.add(d.id);
+          added = true;
+        }
+      }
+    }
+    return ids;
+  };
+
+  // Archiving a parent must cascade so children don't become invisible orphans.
   const deleteDocument = (id) =>
-    setDb((prev) => ({
-      ...prev,
-      documents: (prev.documents ?? []).map((d) =>
-        d.id === id ? { ...d, archivedAt: Date.now(), updatedAt: Date.now() } : d
-      ),
-    }));
+    setDb((prev) => {
+      const list = prev.documents ?? [];
+      const ids = collectDocSubtreeIds(list, id);
+      const ts = Date.now();
+      return {
+        ...prev,
+        documents: list.map((d) =>
+          ids.has(d.id) ? { ...d, archivedAt: ts, updatedAt: ts } : d
+        ),
+      };
+    });
 
+  // Restore must mirror the archive cascade — but only un-archive descendants
+  // that share the same archivedAt as the root (i.e. were archived together).
   const restoreDocument = (id) =>
-    setDb((prev) => ({
-      ...prev,
-      documents: (prev.documents ?? []).map((d) =>
-        d.id === id ? { ...d, archivedAt: null, updatedAt: Date.now() } : d
-      ),
-    }));
+    setDb((prev) => {
+      const list = prev.documents ?? [];
+      const root = list.find((d) => d.id === id);
+      if (!root) return prev;
+      const ids = collectDocSubtreeIds(list, id);
+      const rootArchivedAt = root.archivedAt;
+      const ts = Date.now();
+      return {
+        ...prev,
+        documents: list.map((d) => {
+          if (!ids.has(d.id)) return d;
+          // Root: always unarchive. Descendants: only unarchive if they were
+          // archived in the same cascade (matching archivedAt) so we don't
+          // resurrect children the user had already archived independently.
+          if (d.id === id || d.archivedAt === rootArchivedAt) {
+            return { ...d, archivedAt: null, updatedAt: ts };
+          }
+          return d;
+        }),
+      };
+    });
 
+  // Hard delete must also remove descendants — leaving them behind orphans them
+  // with a dangling parentId.
   const deleteDocumentForever = (id) =>
-    setDb((prev) => ({
-      ...prev,
-      documents: (prev.documents ?? []).filter((d) => d.id !== id),
-    }));
+    setDb((prev) => {
+      const list = prev.documents ?? [];
+      const ids = collectDocSubtreeIds(list, id);
+      return {
+        ...prev,
+        documents: list.filter((d) => !ids.has(d.id)),
+      };
+    });
 
 
   // -----------------------------

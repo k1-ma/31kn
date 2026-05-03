@@ -14,6 +14,7 @@ import { AnimatePresence, motion, Reorder, useDragControls } from "framer-motion
 import { GripVertical, Plus, Search, Trash2, Upload, X, Layers } from "lucide-react";
 import { uid, resizeImageFileToDataUrl } from "@/lib/utils";
 import { HOVER_GLOW } from "@/lib/ui.js";
+import { isDeleted } from "@/lib/tombstones.js";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 
 // Default emoji options for pairs
@@ -41,7 +42,7 @@ const DEFAULT_COLORS = [
   "#dcc218", // gold
 ];
 
-function ItemForm({ initial, onSave, onDelete, reduceMotion, defaults, kind, toast }) {
+function ItemForm({ initial, onSave, onDelete, reduceMotion, defaults, kind, toast, existingItems }) {
   const { t } = useI18n();
   const fileInputRef = useRef(null);
   
@@ -85,15 +86,32 @@ function ItemForm({ initial, onSave, onDelete, reduceMotion, defaults, kind, toa
       toast?.push?.({ title: t("common.error"), description: t("pages.library.nameRequired"), tone: "danger" });
       return;
     }
-    
+
+    // Reject case-insensitive duplicates among active (non-tombstoned) items,
+    // ignoring the record being edited so a no-op save still works.
+    const lowered = name.toLowerCase();
+    const dup = (existingItems || []).find((it) =>
+      it && it.id !== form.id
+        && !isDeleted(it)
+        && String(it.name || "").trim().toLowerCase() === lowered
+    );
+    if (dup) {
+      toast?.push?.({
+        title: t("common.error"),
+        description: t("pages.library.duplicateName", { name }) || `"${name}" already exists`,
+        tone: "danger",
+      });
+      return;
+    }
+
     // Build avatar object
     const avatar = form.avatarType === "image" && form.imageData
       ? { type: "image", imageData: form.imageData }
       : { type: "emoji", emoji: form.emoji };
-    
-    onSave({ 
+
+    onSave({
       id: form.id,
-      name, 
+      name,
       avatar,
       color: form.color || defaults.color,
       createdAt: form.createdAt,
@@ -508,6 +526,7 @@ function LibraryPageInner({
           kind={kind}
           reduceMotion={reduceMotion}
           toast={toast}
+          existingItems={items}
           onSave={(v) => {
             onUpsert(v);
             setOpenCreate(false);
@@ -532,6 +551,7 @@ function LibraryPageInner({
             kind={kind}
             reduceMotion={reduceMotion}
             toast={toast}
+            existingItems={items}
             onSave={(v) => {
               onUpsert(v);
               setOpenEdit(false);

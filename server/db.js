@@ -364,7 +364,7 @@ export async function initDb({ admin }) {
   } catch (e) {
     // Some databases might not support ADD COLUMN IF NOT EXISTS, so ignore errors
     // eslint-disable-next-line no-console
-    console.warn("[db] column migration:", e?.message || e);
+    console.error("[db] column migration:", e?.message || e);
   }
 
   // Create unique index for google_id if not exists
@@ -376,7 +376,7 @@ export async function initDb({ admin }) {
     `);
   } catch (e) {
     // eslint-disable-next-line no-console
-    console.warn("[db] index creation:", e?.message || e);
+    console.error("[db] index creation:", e?.message || e);
   }
 
   // Add version column to states table for optimistic concurrency control
@@ -386,7 +386,7 @@ export async function initDb({ admin }) {
     `);
   } catch (e) {
     // eslint-disable-next-line no-console
-    console.warn("[db] states version migration:", e?.message || e);
+    console.error("[db] states version migration:", e?.message || e);
   }
 
   // Add TOTP 2FA columns to users table
@@ -399,7 +399,7 @@ export async function initDb({ admin }) {
     `);
   } catch (e) {
     // eslint-disable-next-line no-console
-    console.warn("[db] totp columns migration:", e?.message || e);
+    console.error("[db] totp columns migration:", e?.message || e);
   }
 
   // Create login_challenges table for 2FA ticket flow
@@ -417,7 +417,7 @@ export async function initDb({ admin }) {
     `);
   } catch (e) {
     // eslint-disable-next-line no-console
-    console.warn("[db] login_challenges table:", e?.message || e);
+    console.error("[db] login_challenges table:", e?.message || e);
   }
 
   // Create backup_codes table for 2FA recovery
@@ -434,7 +434,7 @@ export async function initDb({ admin }) {
     `);
   } catch (e) {
     // eslint-disable-next-line no-console
-    console.warn("[db] backup_codes table:", e?.message || e);
+    console.error("[db] backup_codes table:", e?.message || e);
   }
 
   // Add display_name and display_name_changed_at columns to users table
@@ -445,7 +445,7 @@ export async function initDb({ admin }) {
     `);
   } catch (e) {
     // eslint-disable-next-line no-console
-    console.warn("[db] display_name columns migration:", e?.message || e);
+    console.error("[db] display_name columns migration:", e?.message || e);
   }
 
   // Add username_changed_at column for username change cooldown
@@ -455,7 +455,7 @@ export async function initDb({ admin }) {
     `);
   } catch (e) {
     // eslint-disable-next-line no-console
-    console.warn("[db] username_changed_at column migration:", e?.message || e);
+    console.error("[db] username_changed_at column migration:", e?.message || e);
   }
 
   // Add email verification columns to users table
@@ -471,7 +471,7 @@ export async function initDb({ admin }) {
     `);
   } catch (e) {
     // eslint-disable-next-line no-console
-    console.warn("[db] email verification columns migration:", e?.message || e);
+    console.error("[db] email verification columns migration:", e?.message || e);
   }
 
   // Create password_resets table
@@ -493,7 +493,7 @@ export async function initDb({ admin }) {
     `);
   } catch (e) {
     // eslint-disable-next-line no-console
-    console.warn("[db] password_resets table:", e?.message || e);
+    console.error("[db] password_resets table:", e?.message || e);
   }
 
   // Add linked_trade_ids column to trading_ideas table for bidirectional linking
@@ -503,7 +503,7 @@ export async function initDb({ admin }) {
     `);
   } catch (e) {
     // eslint-disable-next-line no-console
-    console.warn("[db] trading_ideas linked_trade_ids migration:", e?.message || e);
+    console.error("[db] trading_ideas linked_trade_ids migration:", e?.message || e);
   }
 
   // Add idea_date column to trading_ideas table for user-specified idea date
@@ -513,7 +513,7 @@ export async function initDb({ admin }) {
     `);
   } catch (e) {
     // eslint-disable-next-line no-console
-    console.warn("[db] trading_ideas idea_date migration:", e?.message || e);
+    console.error("[db] trading_ideas idea_date migration:", e?.message || e);
   }
 
   // Add model_id column to trading_ideas table for linking ideas to trading models
@@ -523,7 +523,7 @@ export async function initDb({ admin }) {
     `);
   } catch (e) {
     // eslint-disable-next-line no-console
-    console.warn("[db] trading_ideas model_id migration:", e?.message || e);
+    console.error("[db] trading_ideas model_id migration:", e?.message || e);
   }
 
   // Add ticket status columns to user_feedback table for ticketing system
@@ -537,7 +537,7 @@ export async function initDb({ admin }) {
     `);
   } catch (e) {
     // eslint-disable-next-line no-console
-    console.warn("[db] user_feedback ticket columns migration:", e?.message || e);
+    console.error("[db] user_feedback ticket columns migration:", e?.message || e);
   }
 
   // Add admin_read_at column to track whether admin has read a feedback item
@@ -547,7 +547,7 @@ export async function initDb({ admin }) {
     `);
   } catch (e) {
     // eslint-disable-next-line no-console
-    console.warn("[db] user_feedback admin_read_at migration:", e?.message || e);
+    console.error("[db] user_feedback admin_read_at migration:", e?.message || e);
   }
 
   // Chunked sync session tables (replaces in-memory Map for serverless compatibility)
@@ -578,7 +578,7 @@ export async function initDb({ admin }) {
     `);
   } catch (e) {
     // eslint-disable-next-line no-console
-    console.warn("[db] sync session tables migration:", e?.message || e);
+    console.error("[db] sync session tables migration:", e?.message || e);
   }
 
   // Migrate public_shares type CHECK constraint to include 'backtest'
@@ -588,7 +588,7 @@ export async function initDb({ admin }) {
       ALTER TABLE public_shares ADD CONSTRAINT public_shares_type_check CHECK (type IN ('trade', 'doc', 'idea', 'backtest'));
     `);
   } catch (e) {
-    console.warn("[db] public_shares type constraint migration:", e?.message || e);
+    console.error("[db] public_shares type constraint migration:", e?.message || e);
   }
 
   // --- Tournament tables ---
@@ -618,7 +618,7 @@ export async function initDb({ admin }) {
       CREATE INDEX IF NOT EXISTS tournaments_status_idx ON tournaments(status);
     `);
   } catch (e) {
-    console.warn("[db] tournaments table migration:", e?.message || e);
+    console.error("[db] tournaments table migration:", e?.message || e);
   }
 
   try {
@@ -640,7 +640,7 @@ export async function initDb({ admin }) {
       CREATE INDEX IF NOT EXISTS tournament_tables_tournament_idx ON tournament_tables(tournament_id);
     `);
   } catch (e) {
-    console.warn("[db] tournament_tables table migration:", e?.message || e);
+    console.error("[db] tournament_tables table migration:", e?.message || e);
   }
 
   try {
@@ -669,7 +669,7 @@ export async function initDb({ admin }) {
       CREATE INDEX IF NOT EXISTS tournament_participants_table_idx ON tournament_participants(table_id);
     `);
   } catch (e) {
-    console.warn("[db] tournament_participants table migration:", e?.message || e);
+    console.error("[db] tournament_participants table migration:", e?.message || e);
   }
 
   try {
@@ -694,7 +694,7 @@ export async function initDb({ admin }) {
       CREATE INDEX IF NOT EXISTS tournament_rounds_table_idx ON tournament_rounds(table_id);
     `);
   } catch (e) {
-    console.warn("[db] tournament_rounds table migration:", e?.message || e);
+    console.error("[db] tournament_rounds table migration:", e?.message || e);
   }
 
   try {
@@ -723,7 +723,7 @@ export async function initDb({ admin }) {
       CREATE INDEX IF NOT EXISTS tournament_results_participant_idx ON tournament_results(participant_id);
     `);
   } catch (e) {
-    console.warn("[db] tournament_results table migration:", e?.message || e);
+    console.error("[db] tournament_results table migration:", e?.message || e);
   }
 
   try {
@@ -740,7 +740,7 @@ export async function initDb({ admin }) {
       CREATE INDEX IF NOT EXISTS tournament_public_links_slug_idx ON tournament_public_links(public_slug);
     `);
   } catch (e) {
-    console.warn("[db] tournament_public_links table migration:", e?.message || e);
+    console.error("[db] tournament_public_links table migration:", e?.message || e);
   }
 
   try {
@@ -760,7 +760,7 @@ export async function initDb({ admin }) {
       CREATE INDEX IF NOT EXISTS tournament_audit_log_created_idx ON tournament_audit_log(created_at DESC);
     `);
   } catch (e) {
-    console.warn("[db] tournament_audit_log table migration:", e?.message || e);
+    console.error("[db] tournament_audit_log table migration:", e?.message || e);
   }
 
   // --- Tournament schema migration: add points-based workflow columns ---
@@ -774,7 +774,7 @@ export async function initDb({ admin }) {
         ADD COLUMN IF NOT EXISTS manual_rank INTEGER;
     `);
   } catch (e) {
-    console.warn("[db] tournament_participants migration (add columns):", e?.message || e);
+    console.error("[db] tournament_participants migration (add columns):", e?.message || e);
   }
 
   try {
@@ -795,7 +795,7 @@ export async function initDb({ admin }) {
       CREATE INDEX IF NOT EXISTS tournament_points_log_participant_created_idx ON tournament_points_log(participant_id, created_at DESC);
     `);
   } catch (e) {
-    console.warn("[db] tournament_points_log table migration:", e?.message || e);
+    console.error("[db] tournament_points_log table migration:", e?.message || e);
   }
 
   try {
@@ -821,10 +821,10 @@ export async function initDb({ admin }) {
     await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS tournament_vote_days_token_idx ON tournament_vote_days(vote_token) WHERE vote_token IS NOT NULL`).catch(() => {});
     // Backfill vote_token for existing rows that don't have one
     await pool.query(`UPDATE tournament_vote_days SET vote_token = encode(gen_random_bytes(16), 'hex') WHERE vote_token IS NULL`).catch((e) => {
-      console.warn("[db] vote_token backfill warning:", e?.message || e);
+      console.error("[db] vote_token backfill warning:", e?.message || e);
     });
   } catch (e) {
-    console.warn("[db] tournament_vote_days table migration:", e?.message || e);
+    console.error("[db] tournament_vote_days table migration:", e?.message || e);
   }
 
   try {
@@ -845,7 +845,7 @@ export async function initDb({ admin }) {
     // Migration: add icon_url if missing
     await pool.query(`ALTER TABLE tournament_vote_assets ADD COLUMN IF NOT EXISTS icon_url TEXT`).catch(() => {});
   } catch (e) {
-    console.warn("[db] tournament_vote_assets table migration:", e?.message || e);
+    console.error("[db] tournament_vote_assets table migration:", e?.message || e);
   }
 
   // Tournament default assets (per-tournament custom default pairs)
@@ -863,7 +863,7 @@ export async function initDb({ admin }) {
       CREATE INDEX IF NOT EXISTS tournament_default_assets_tid_idx ON tournament_default_assets(tournament_id);
     `);
   } catch (e) {
-    console.warn("[db] tournament_default_assets table migration:", e?.message || e);
+    console.error("[db] tournament_default_assets table migration:", e?.message || e);
   }
 
   try {
@@ -886,14 +886,14 @@ export async function initDb({ admin }) {
       CREATE INDEX IF NOT EXISTS tournament_votes_nickname_idx ON tournament_votes(normalized_nickname);
     `);
   } catch (e) {
-    console.warn("[db] tournament_votes table migration:", e?.message || e);
+    console.error("[db] tournament_votes table migration:", e?.message || e);
   }
 
   // Add user_agent column if missing
   try {
     await pool.query(`ALTER TABLE tournament_votes ADD COLUMN IF NOT EXISTS user_agent TEXT`);
   } catch (e) {
-    console.warn("[db] tournament_votes user_agent migration:", e?.message || e);
+    console.error("[db] tournament_votes user_agent migration:", e?.message || e);
   }
 
   try {
@@ -908,7 +908,7 @@ export async function initDb({ admin }) {
       CREATE INDEX IF NOT EXISTS tournament_vote_selections_vote_idx ON tournament_vote_selections(vote_id);
     `);
   } catch (e) {
-    console.warn("[db] tournament_vote_selections table migration:", e?.message || e);
+    console.error("[db] tournament_vote_selections table migration:", e?.message || e);
   }
 
   try {
@@ -926,7 +926,7 @@ export async function initDb({ admin }) {
       CREATE INDEX IF NOT EXISTS tournament_day_results_day_idx ON tournament_day_results(vote_day_id);
     `);
   } catch (e) {
-    console.warn("[db] tournament_day_results table migration:", e?.message || e);
+    console.error("[db] tournament_day_results table migration:", e?.message || e);
   }
 
   try {
@@ -951,7 +951,7 @@ export async function initDb({ admin }) {
       CREATE INDEX IF NOT EXISTS tournament_day_scores_nickname_idx ON tournament_day_scores(normalized_nickname);
     `);
   } catch (e) {
-    console.warn("[db] tournament_day_scores table migration:", e?.message || e);
+    console.error("[db] tournament_day_scores table migration:", e?.message || e);
   }
 
   try {
@@ -971,19 +971,19 @@ export async function initDb({ admin }) {
       CREATE INDEX IF NOT EXISTS tournament_leaderboard_cache_points_idx ON tournament_leaderboard_cache(tournament_id, total_points DESC);
     `);
   } catch (e) {
-    console.warn("[db] tournament_leaderboard_cache table migration:", e?.message || e);
+    console.error("[db] tournament_leaderboard_cache table migration:", e?.message || e);
   }
 
   // Migration: change day_points and total_points from INTEGER to NUMERIC for fractional multipliers
   try {
     await pool.query(`ALTER TABLE tournament_day_scores ALTER COLUMN day_points TYPE NUMERIC(10,2)`);
   } catch (e) {
-    console.warn("[db] tournament_day_scores day_points type migration:", e?.message || e);
+    console.error("[db] tournament_day_scores day_points type migration:", e?.message || e);
   }
   try {
     await pool.query(`ALTER TABLE tournament_leaderboard_cache ALTER COLUMN total_points TYPE NUMERIC(10,2)`);
   } catch (e) {
-    console.warn("[db] tournament_leaderboard_cache total_points type migration:", e?.message || e);
+    console.error("[db] tournament_leaderboard_cache total_points type migration:", e?.message || e);
   }
 
   // Add is_displayed column to tournaments (only one can be true at a time)
@@ -992,7 +992,7 @@ export async function initDb({ admin }) {
       ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS is_displayed BOOLEAN NOT NULL DEFAULT false;
     `);
   } catch (e) {
-    console.warn("[db] tournaments is_displayed migration:", e?.message || e);
+    console.error("[db] tournaments is_displayed migration:", e?.message || e);
   }
 
   // Add vote_password column to tournaments (optional password for public voting)
@@ -1001,7 +1001,7 @@ export async function initDb({ admin }) {
       ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS vote_password TEXT;
     `);
   } catch (e) {
-    console.warn("[db] tournaments vote_password migration:", e?.message || e);
+    console.error("[db] tournaments vote_password migration:", e?.message || e);
   }
 
   // Materialized counters cache to avoid expensive JSONB full-scans on every admin request
@@ -1017,8 +1017,36 @@ export async function initDb({ admin }) {
       CREATE INDEX IF NOT EXISTS user_stats_cache_updated_at_idx ON user_stats_cache(updated_at);
     `);
   } catch (e) {
-    console.warn("[db] user_stats_cache table migration:", e?.message || e);
+    console.error("[db] user_stats_cache table migration:", e?.message || e);
   }
+
+  // user_images: externalized image storage so 50MB+ state blobs can be slimmed
+  // by referencing images by hash rather than embedding base64 in state JSONB.
+  // Hash uniqueness lets the same image be reused across trades/documents.
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_images (
+        id BIGSERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        hash TEXT NOT NULL,
+        mime_type TEXT NOT NULL,
+        byte_size INTEGER NOT NULL DEFAULT 0,
+        data BYTEA,
+        url TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        UNIQUE(user_id, hash)
+      );
+      CREATE INDEX IF NOT EXISTS user_images_user_idx ON user_images(user_id);
+      CREATE INDEX IF NOT EXISTS user_images_user_created_idx ON user_images(user_id, created_at DESC);
+    `);
+  } catch (e) {
+    console.error("[db] user_images table migration:", e?.message || e);
+  }
+
+  // Post-create verify: confirms critical tables and indexes actually exist
+  // after initDb finishes. Earlier silent migration failures (e.g. user_images
+  // missing in prod) were masked because CREATE TABLE errors only logged warns.
+  await verifySchema(pool);
 
   // Ensure initial admin exists (idempotent)
   const adminUsername = String(admin.username || "admin");
@@ -1037,4 +1065,49 @@ export async function initDb({ admin }) {
   }
 
   return pool;
+}
+
+// Critical tables + indexes that must exist after initDb. Add new ones here
+// when you add a table that downstream code depends on at runtime.
+const REQUIRED_SCHEMA = [
+  { table: "users",                indexes: [] },
+  { table: "states",               indexes: [] },
+  { table: "sessions",             indexes: [] },
+  { table: "sync_state_sessions",  indexes: [] },
+  { table: "sync_state_chunks",    indexes: ["sync_state_chunks_session_idx"] },
+  { table: "user_images",          indexes: ["user_images_user_idx", "user_images_user_created_idx"] },
+  { table: "user_stats_cache",     indexes: ["user_stats_cache_updated_at_idx"] },
+  { table: "notifications",        indexes: [] },
+  { table: "public_shares",        indexes: [] },
+];
+
+async function verifySchema(pool) {
+  const missingTables = [];
+  const missingIndexes = [];
+
+  for (const { table, indexes } of REQUIRED_SCHEMA) {
+    const t = await pool.query(
+      "SELECT to_regclass($1) AS reg",
+      [`public.${table}`]
+    );
+    if (!t.rows?.[0]?.reg) {
+      missingTables.push(table);
+      continue;
+    }
+    for (const idx of indexes) {
+      const i = await pool.query(
+        "SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = $1",
+        [idx]
+      );
+      if ((i.rows || []).length === 0) missingIndexes.push(`${table}.${idx}`);
+    }
+  }
+
+  if (missingTables.length || missingIndexes.length) {
+    const msg = `[db] schema verify failed: missing tables=[${missingTables.join(",")}] missing indexes=[${missingIndexes.join(",")}]`;
+    console.error(msg);
+    throw new Error(msg);
+  }
+  // eslint-disable-next-line no-console
+  console.log("[db] schema verify ok");
 }
