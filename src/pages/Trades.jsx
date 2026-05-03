@@ -3362,7 +3362,7 @@ export default function Trades({ trades, accounts, documents, ideas = [], librar
                             initial={reduceMotion ? false : { opacity: 0, y: 6 }}
                             animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
                             exit={reduceMotion ? { opacity: 1 } : { opacity: 0, y: 6 }}
-                            transition={reduceMotion ? { duration: 0 } : { duration: 0.16, delay: Math.min(idx * 0.02, 0.12) }}
+                            transition={reduceMotion ? { duration: 0 } : { duration: 0.16 }}
                             className={`border-t border-accent/15 hover:bg-white/30 dark:hover:bg-slate-900/30 cursor-pointer ${isSelected ? "bg-accent/10" : ""}`}
                             style={trade.highlightColor ? { borderLeft: `3px solid ${trade.highlightColor}`, backgroundColor: trade.highlightColor + "0a" } : undefined}
                             onClick={() => handleTradeRowClick(trade)}

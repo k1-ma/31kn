@@ -162,7 +162,7 @@ export default function TradesGalleryGrid({
             
             {/* Trades Grid */}
             <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4">
-              <AnimatePresence mode="popLayout">
+              <AnimatePresence initial={false}>
                 {group.trades.map((trade, idx) => renderTradeCard(trade, idx))}
               </AnimatePresence>
             </div>
@@ -175,7 +175,7 @@ export default function TradesGalleryGrid({
   // Original flat grid (no grouping)
   return (
     <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4">
-      <AnimatePresence mode="popLayout">
+      <AnimatePresence initial={false}>
         {trades.map((trade, idx) => renderTradeCard(trade, idx))}
       </AnimatePresence>
     </div>

@@ -2,20 +2,11 @@ import React, { useState } from "react";
 import Button from "@/components/ui/Button.jsx";
 import Badge from "@/components/ui/Badge.jsx";
 import { useAuth } from "@/auth/AuthProvider.jsx";
-import { LogOut, Shield, Cloud, CloudOff, User, AlertTriangle, RefreshCw, Save, Check, Upload } from "lucide-react";
+import { LogOut, Shield, Cloud, CloudOff, User, AlertTriangle, RefreshCw, Save, Check } from "lucide-react";
 
-function statusBadge(syncStatus, hasUnsavedChanges, syncProgress) {
-  // Show chunk progress during chunked sync
-  if (syncProgress && syncProgress.total > 0) {
-    const label = `${syncProgress.current}/${syncProgress.total}`;
-    return { 
-      label, 
-      icon: <Upload className="h-3.5 w-3.5 animate-pulse" />, 
-      variant: "default", 
-      tooltip: `Uploading chunk ${syncProgress.current} of ${syncProgress.total} (${syncProgress.percent}%)`, 
-      glowClass: "session-badge-glow-blue" 
-    };
-  }
+function statusBadge(syncStatus, hasUnsavedChanges) {
+  // Chunk-progress is rendered in OfflineBanner, not here — keeping it out of
+  // the topbar avoids width changes ("1/5" → "10/50") that shift adjacent items.
   if (syncStatus === "saving") return { label: "Saving…", icon: <Save className="h-3.5 w-3.5 animate-pulse" />, variant: "default", tooltip: "Syncing to server…", glowClass: "session-badge-glow-blue" };
   if (syncStatus === "synced" && !hasUnsavedChanges) return { label: "Synced", icon: <Check className="h-3.5 w-3.5" />, variant: "success", tooltip: "All changes saved", glowClass: "session-badge-glow-green" };
   if (syncStatus === "pending" || (syncStatus === "synced" && hasUnsavedChanges)) return { label: "Pending", icon: <Cloud className="h-3.5 w-3.5" />, variant: "warning", tooltip: "Changes saved locally, pending server sync", glowClass: "session-badge-glow-orange" };
@@ -31,7 +22,6 @@ function UserMenu({
   hasUnsavedChanges = false,
   onRetrySync,
   lastError,
-  syncProgress
 }) {
   const { user, logout } = useAuth();
   const role = user?.role || "user";
@@ -96,7 +86,7 @@ function UserMenu({
     return { label: rr, icon: baseIcon, className: palette[h % palette.length] };
   };
 
-  const s = statusBadge(syncStatus, hasUnsavedChanges, syncProgress);
+  const s = statusBadge(syncStatus, hasUnsavedChanges);
   const r = roleStyle(role, roleColor);
   const showRole = (role && role !== "user") || !!roleColor;
   const showRetry = onRetrySync && (syncStatus === "error" || syncStatus === "offline" || hasUnsavedChanges);
@@ -142,13 +132,14 @@ function UserMenu({
             </Badge>
           ) : null}
           
-          {/* Sync status indicator */}
-          <div 
-            className={`flex items-center gap-1.5 rounded-full px-2 py-1 cursor-help transition-all duration-200 ${s.glowClass} ${
-              s.variant === "error" 
-                ? "bg-red-500/15 border border-red-500/30 text-red-400" 
-                : s.variant === "warning" 
-                  ? "bg-amber-500/15 border border-amber-500/30 text-amber-400" 
+          {/* Sync status indicator — fixed-size box so neighbours don't shift
+              when the icon/variant swaps between saving/synced/error states. */}
+          <div
+            className={`flex items-center justify-center h-7 w-7 rounded-full cursor-help transition-colors duration-200 ${s.glowClass} ${
+              s.variant === "error"
+                ? "bg-red-500/15 border border-red-500/30 text-red-400"
+                : s.variant === "warning"
+                  ? "bg-amber-500/15 border border-amber-500/30 text-amber-400"
                   : s.variant === "success"
                     ? "bg-emerald-500/15 border border-emerald-500/30 text-emerald-400"
                     : "bg-accent/15 border border-accent/30 text-accent"

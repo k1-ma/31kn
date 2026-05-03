@@ -2234,7 +2234,6 @@ export default function JournalApp() {
         hasUnsavedChanges={hasUnsavedChanges}
         onRetrySync={retrySync}
         lastError={lastError}
-        syncProgress={syncProgress}
       />
     </div>
   ), [
@@ -2245,7 +2244,6 @@ export default function JournalApp() {
     hasUnsavedChanges,
     retrySync,
     lastError,
-    syncProgress,
   ]);
 
   return (

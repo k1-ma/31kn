@@ -42,7 +42,7 @@ export default function TradeGalleryCard({
       initial={reduceMotion ? false : { opacity: 0, y: 12, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.95 }}
-      transition={reduceMotion ? { duration: 0 } : { duration: 0.25, delay: Math.min(index * 0.03, 0.15) }}
+      transition={reduceMotion ? { duration: 0 } : { duration: 0.2 }}
       onClick={handleClick}
       className={`gallery-card cursor-pointer relative group ${isSelected ? "ring-2 ring-accent" : ""}`}
       style={trade.highlightColor ? { borderColor: trade.highlightColor + "66", boxShadow: `0 0 0 1px ${trade.highlightColor}33` } : undefined}
