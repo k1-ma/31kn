@@ -472,7 +472,7 @@ function TradeEditor({ initial, accounts, documents, ideas = [], libraries, onSa
       bestTrade: false,
       docIds: [], // Document IDs linked to this trade
       ideaIds: [], // Trading Idea IDs linked to this trade
-      createdAt: Date.now(),
+      createdAt: monoNow(),
     };
 
     const allocs0 = asAllocations(base, accounts).map(a => sanitizeAlloc(a, !!a?.accountId));

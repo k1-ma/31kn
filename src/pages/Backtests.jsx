@@ -12,7 +12,7 @@ import { Plus, FlaskConical, Search, ChevronDown, Check, ArrowUpDown, Archive } 
 import { uid } from "@/lib/utils.js";
 import { motion, AnimatePresence } from "framer-motion";
 import Switch from "@/components/ui/Switch.jsx";
-import { isDeleted } from "@/lib/syncDb.js";
+import { isDeleted, monoNow } from "@/lib/syncDb.js";
 
 /** Compute PnL for a backtest (sum of allocations, fallback to trade.pnl) */
 function backtestPnl(bt) {
@@ -175,7 +175,7 @@ export default function Backtests({
 
   const handleRenameSubmit = useCallback(() => {
     if (!renameId || !renameName.trim()) return;
-    onUpdateBacktest?.(renameId, { name: renameName.trim(), updatedAt: Date.now() });
+    onUpdateBacktest?.(renameId, { name: renameName.trim(), updatedAt: monoNow() });
     setRenameId(null);
     setRenameName("");
   }, [renameId, renameName, onUpdateBacktest]);
@@ -215,7 +215,7 @@ export default function Backtests({
 
   const handleSaveEdit = useCallback((data) => {
     if (!editBacktest) return;
-    onUpdateBacktest?.(editBacktest.id, { ...data, updatedAt: Date.now() });
+    onUpdateBacktest?.(editBacktest.id, { ...data, updatedAt: monoNow() });
     setEditBacktest(null);
     toast?.add?.({ title: t("backtests.saved"), variant: "success" });
   }, [editBacktest, onUpdateBacktest, toast, t]);

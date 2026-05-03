@@ -6,7 +6,7 @@ import ToastViewport from "@/components/common/ToastViewport.jsx";
 import OfflineBanner from "@/components/common/OfflineBanner.jsx";
 import {
   useToasts } from "@/components/common/toast.js";
-import { useSyncedDb, isDeleted } from "@/lib/syncDb.js";
+import { useSyncedDb, isDeleted, monoNow } from "@/lib/syncDb.js";
 import { useSyncWarning } from "@/lib/syncWarning.js";
 import { useAuth } from "@/auth/AuthProvider.jsx";
 import { SEED } from "@/lib/seed.js";
@@ -415,7 +415,7 @@ export default function JournalApp() {
             templateId: String(mapped),
             phaseId: String(prop.phaseId || "phase1"),
             size: clampNum(prop.size ?? startingEquity),
-            startedAt: Number(prop.startedAt || a?.createdAt || Date.now()),
+            startedAt: Number(prop.startedAt || a?.createdAt || monoNow()),
             autoProgress: prop.autoProgress === undefined ? true : !!prop.autoProgress,
             profitSplitPctOverride: prop.profitSplitPctOverride ?? null,
             previousAccountId: prop.previousAccountId || null,
@@ -559,8 +559,8 @@ export default function JournalApp() {
       let btChanged = false;
       const out = { ...bt };
       if (!Array.isArray(out.trades)) { out.trades = []; btChanged = true; }
-      if (!out.createdAt) { out.createdAt = Date.now(); btChanged = true; }
-      if (!out.updatedAt) { out.updatedAt = Date.now(); btChanged = true; }
+      if (!out.createdAt) { out.createdAt = monoNow(); btChanged = true; }
+      if (!out.updatedAt) { out.updatedAt = monoNow(); btChanged = true; }
       if (!out.period || typeof out.period !== "object") {
         out.period = { from: "", to: "" };
         btChanged = true;
@@ -597,7 +597,7 @@ export default function JournalApp() {
   // Auto-delete items from trash after 30 days
   useEffect(() => {
     const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
-    const now = Date.now();
+    const now = monoNow();
     
     // Helper function to filter items older than 30 days
     const filterExpiredItems = (items, changedRef) => {
@@ -786,7 +786,7 @@ export default function JournalApp() {
                 prop: {
                   ...(out.prop || {}),
                   isCurrent: false,
-                  completedAt: Date.now(),
+                  completedAt: monoNow(),
                   nextAccountId: created.id,
                   autoProgressDone: { ...(doneMap || {}), [phaseId]: true },
                 },
@@ -841,7 +841,7 @@ export default function JournalApp() {
       defaultRiskPct: clampNum(acc?.defaultRiskPct) || 0,
       archivedAt: typeof acc?.archivedAt === "number" ? acc.archivedAt : null,
       deletedAt: typeof acc?.deletedAt === "number" ? acc.deletedAt : null,
-      updatedAt: Date.now(),
+      updatedAt: monoNow(),
     };
     setDb((prev) => {
       const list = prev.accounts ?? [];
@@ -861,7 +861,7 @@ export default function JournalApp() {
         if (tpl && idxPhase > 0 && !hasPrev) {
           const size = clampNum(item?.prop?.size ?? item?.startingEquity);
           const currency = String(tpl.currency || item?.currency || '$');
-          const baseStartedAt = typeof item?.prop?.startedAt === 'number' ? item.prop.startedAt : (typeof item?.createdAt === 'number' ? item.createdAt : Date.now());
+          const baseStartedAt = typeof item?.prop?.startedAt === 'number' ? item.prop.startedAt : (typeof item?.createdAt === 'number' ? item.createdAt : monoNow());
           let prevId = null;
           for (let i = 0; i < idxPhase; i++) {
             const ph = phases[i];
@@ -882,7 +882,7 @@ export default function JournalApp() {
               status: phaseStatusLabel(tpl, ph.id, []),
               notes: '',
               // If adding a funded/live account directly, archive the placeholder phases
-              archivedAt: isFunded ? Date.now() : null,
+              archivedAt: isFunded ? monoNow() : null,
               prop: {
                 templateId: tpl.id,
                 phaseId: ph.id,
@@ -943,7 +943,7 @@ export default function JournalApp() {
     setDb((prev) => ({
       ...prev,
       accounts: (prev.accounts ?? []).map((a) =>
-        a.id === id ? { ...a, archivedAt: Date.now(), deletedAt: null, updatedAt: Date.now() } : a
+        a.id === id ? { ...a, archivedAt: monoNow(), deletedAt: null, updatedAt: monoNow() } : a
       ),
     }));
 
@@ -951,7 +951,7 @@ export default function JournalApp() {
     setDb((prev) => ({
       ...prev,
       accounts: (prev.accounts ?? []).map((a) =>
-        a.id === id ? { ...a, archivedAt: null, updatedAt: Date.now() } : a
+        a.id === id ? { ...a, archivedAt: null, updatedAt: monoNow() } : a
       ),
     }));
 
@@ -959,7 +959,7 @@ export default function JournalApp() {
     setDb((prev) => ({
       ...prev,
       accounts: (prev.accounts ?? []).map((a) =>
-        a.id === id ? { ...a, deletedAt: Date.now(), archivedAt: null, updatedAt: Date.now() } : a
+        a.id === id ? { ...a, deletedAt: monoNow(), archivedAt: null, updatedAt: monoNow() } : a
       ),
     }));
 
@@ -980,7 +980,7 @@ export default function JournalApp() {
       const currentEquity = startingEquity + netPnl;
 
       const next = list.map((a) =>
-        a.id === id ? { ...a, deletedAt: null, archivedAt: null, startingEquity, currentEquity, equityCorrection: 0, updatedAt: Date.now() } : a
+        a.id === id ? { ...a, deletedAt: null, archivedAt: null, startingEquity, currentEquity, equityCorrection: 0, updatedAt: monoNow() } : a
       );
       return { ...prev, accounts: next };
     });
@@ -1393,7 +1393,7 @@ export default function JournalApp() {
         );
       }
 
-      const now = Date.now();
+      const now = monoNow();
       const nextTrades = list.map((t, i) => (i === idx ? { ...t, deletedAt: now, updatedAt: now } : t));
       return { ...prev, trades: nextTrades, accounts: nextAccounts };
     });
@@ -1438,7 +1438,7 @@ export default function JournalApp() {
       }
       
       // Mark all selected trades as deleted
-      const deletedNow = Date.now();
+      const deletedNow = monoNow();
       const nextTrades = list.map((t) =>
         idsSet.has(t.id) && t.deletedAt == null ? { ...t, deletedAt: deletedNow, updatedAt: deletedNow } : t
       );
@@ -1474,7 +1474,7 @@ export default function JournalApp() {
         );
       }
 
-      const nextTrades = list.map((t, i) => (i === idx ? { ...t, deletedAt: null, updatedAt: Date.now() } : t));
+      const nextTrades = list.map((t, i) => (i === idx ? { ...t, deletedAt: null, updatedAt: monoNow() } : t));
       return { ...prev, trades: nextTrades, accounts: nextAccounts };
     });
 
@@ -1520,8 +1520,8 @@ export default function JournalApp() {
       ...sym, 
       id: sym.id || uid(), 
       deletedAt: null,
-      updatedAt: Date.now(),
-      createdAt: sym.createdAt || Date.now()
+      updatedAt: monoNow(),
+      createdAt: sym.createdAt || monoNow()
     };
     setDb((prev) => {
       const lib = prev.libraries ?? { symbols: [], sessions: [] };
@@ -1536,7 +1536,7 @@ export default function JournalApp() {
     setDb((prev) => {
       const lib = prev.libraries ?? { symbols: [], sessions: [] };
       const list = lib.symbols ?? [];
-      const now = Date.now();
+      const now = monoNow();
       return {
         ...prev,
         libraries: { ...lib, symbols: list.map((x) => (x.id === id ? { ...x, deletedAt: now, updatedAt: now } : x)) },
@@ -1549,7 +1549,7 @@ export default function JournalApp() {
       const list = lib.symbols ?? [];
       return {
         ...prev,
-        libraries: { ...lib, symbols: list.map((x) => (x.id === id ? { ...x, deletedAt: null, updatedAt: Date.now() } : x)) },
+        libraries: { ...lib, symbols: list.map((x) => (x.id === id ? { ...x, deletedAt: null, updatedAt: monoNow() } : x)) },
       };
     }), [setDb]);
 
@@ -1576,8 +1576,8 @@ export default function JournalApp() {
       ...ses, 
       id: ses.id || uid(), 
       deletedAt: null,
-      updatedAt: Date.now(),
-      createdAt: ses.createdAt || Date.now()
+      updatedAt: monoNow(),
+      createdAt: ses.createdAt || monoNow()
     };
     setDb((prev) => {
       const lib = prev.libraries ?? { symbols: [], sessions: [] };
@@ -1592,7 +1592,7 @@ export default function JournalApp() {
     setDb((prev) => {
       const lib = prev.libraries ?? { symbols: [], sessions: [] };
       const list = lib.sessions ?? [];
-      const now = Date.now();
+      const now = monoNow();
       return {
         ...prev,
         libraries: { ...lib, sessions: list.map((x) => (x.id === id ? { ...x, deletedAt: now, updatedAt: now } : x)) },
@@ -1605,7 +1605,7 @@ export default function JournalApp() {
       const list = lib.sessions ?? [];
       return {
         ...prev,
-        libraries: { ...lib, sessions: list.map((x) => (x.id === id ? { ...x, deletedAt: null, updatedAt: Date.now() } : x)) },
+        libraries: { ...lib, sessions: list.map((x) => (x.id === id ? { ...x, deletedAt: null, updatedAt: monoNow() } : x)) },
       };
     }), [setDb]);
 
@@ -1635,8 +1635,8 @@ export default function JournalApp() {
       ...mdl, 
       id: mdl.id || uid(), 
       deletedAt: null,
-      updatedAt: Date.now(),
-      createdAt: mdl.createdAt || Date.now()
+      updatedAt: monoNow(),
+      createdAt: mdl.createdAt || monoNow()
     };
     setDb((prev) => {
       const lib = prev.libraries ?? { symbols: [], sessions: [], models: [] };
@@ -1651,7 +1651,7 @@ export default function JournalApp() {
     setDb((prev) => {
       const lib = prev.libraries ?? { symbols: [], sessions: [], models: [] };
       const list = lib.models ?? [];
-      const now = Date.now();
+      const now = monoNow();
       return {
         ...prev,
         libraries: { ...lib, models: list.map((x) => (x.id === id ? { ...x, deletedAt: now, updatedAt: now } : x)) },
@@ -1664,7 +1664,7 @@ export default function JournalApp() {
       const list = lib.models ?? [];
       return {
         ...prev,
-        libraries: { ...lib, models: list.map((x) => (x.id === id ? { ...x, deletedAt: null, updatedAt: Date.now() } : x)) },
+        libraries: { ...lib, models: list.map((x) => (x.id === id ? { ...x, deletedAt: null, updatedAt: monoNow() } : x)) },
       };
     }), [setDb]);
 
@@ -1694,8 +1694,8 @@ export default function JournalApp() {
       ...tag, 
       id: tag.id || uid(), 
       deletedAt: null,
-      updatedAt: Date.now(),
-      createdAt: tag.createdAt || Date.now()
+      updatedAt: monoNow(),
+      createdAt: tag.createdAt || monoNow()
     };
     setDb((prev) => {
       const lib = prev.libraries ?? { symbols: [], sessions: [], models: [], customTags: [] };
@@ -1710,7 +1710,7 @@ export default function JournalApp() {
     setDb((prev) => {
       const lib = prev.libraries ?? { symbols: [], sessions: [], models: [], customTags: [] };
       const list = lib.customTags ?? [];
-      const now = Date.now();
+      const now = monoNow();
       return {
         ...prev,
         libraries: { ...lib, customTags: list.map((x) => (x.id === id ? { ...x, deletedAt: now, updatedAt: now } : x)) },
@@ -1723,7 +1723,7 @@ export default function JournalApp() {
       const list = lib.customTags ?? [];
       return {
         ...prev,
-        libraries: { ...lib, customTags: list.map((x) => (x.id === id ? { ...x, deletedAt: null, updatedAt: Date.now() } : x)) },
+        libraries: { ...lib, customTags: list.map((x) => (x.id === id ? { ...x, deletedAt: null, updatedAt: monoNow() } : x)) },
       };
     }), [setDb]);
 
@@ -1748,7 +1748,7 @@ export default function JournalApp() {
   // Documents
   // -----------------------------
   const upsertDocument = (doc) => {
-    const item = { ...doc, id: doc.id || uid(), updatedAt: Date.now() };
+    const item = { ...doc, id: doc.id || uid(), updatedAt: monoNow() };
     setDb((prev) => {
       const list = prev.documents ?? [];
       const idx = list.findIndex((d) => d.id === item.id);
@@ -2008,7 +2008,7 @@ export default function JournalApp() {
   }, []);
 
   const createBacktest = useCallback((data) => {
-    const now = Date.now();
+    const now = monoNow();
     const equity = Math.max(0, Number(data.initialEquity) || 10000);
     const accountId = uid();
     const newBt = {
@@ -2033,7 +2033,7 @@ export default function JournalApp() {
     setDb((prev) => ({
       ...prev,
       backtests: (prev.backtests || []).map((bt) =>
-        bt.id === id ? { ...bt, ...patch, updatedAt: Date.now() } : bt
+        bt.id === id ? { ...bt, ...patch, updatedAt: monoNow() } : bt
       ),
     }));
   }, [setDb]);
@@ -2042,7 +2042,7 @@ export default function JournalApp() {
     setDb((prev) => {
       const bt = (prev.backtests || []).find((b) => b.id === id);
       if (!bt) return prev;
-      const now = Date.now();
+      const now = monoNow();
       const newAccountId = uid();
       const copy = {
         ...bt,
@@ -2067,7 +2067,7 @@ export default function JournalApp() {
     setDb((prev) => ({
       ...prev,
       backtests: (prev.backtests || []).map((bt) =>
-        bt.id === id ? { ...bt, archivedAt: archive ? Date.now() : null, updatedAt: Date.now() } : bt
+        bt.id === id ? { ...bt, archivedAt: archive ? monoNow() : null, updatedAt: monoNow() } : bt
       ),
     }));
   }, [setDb]);
@@ -2079,7 +2079,7 @@ export default function JournalApp() {
       return {
         ...prev,
         backtests: (prev.backtests || []).map((bt) =>
-          bt.id === id ? { ...bt, deletedAt: Date.now(), updatedAt: Date.now() } : bt
+          bt.id === id ? { ...bt, deletedAt: monoNow(), updatedAt: monoNow() } : bt
         ),
       };
     });
@@ -2088,7 +2088,7 @@ export default function JournalApp() {
   // ── Backtest trade handlers (scoped to active backtest) ──
   const upsertBacktestTrade = useCallback((trade) => {
     if (!activeBacktestId) return;
-    const now = Date.now();
+    const now = monoNow();
     setDb((prev) => ({
       ...prev,
       backtests: (prev.backtests || []).map((bt) => {
@@ -2116,10 +2116,10 @@ export default function JournalApp() {
       backtests: (prev.backtests || []).map((bt) => {
         if (bt.id !== activeBacktestId) return bt;
         const nextTrades = (bt.trades || []).map((t) =>
-          t.id === tradeId ? { ...t, deletedAt: Date.now() } : t
+          t.id === tradeId ? { ...t, deletedAt: monoNow() } : t
         );
         const newEquity = (bt.account?.initialEquity || bt.initialEquity || 0) + calcBacktestPnl(nextTrades);
-        return { ...bt, trades: nextTrades, account: { ...bt.account, currentEquity: newEquity }, updatedAt: Date.now() };
+        return { ...bt, trades: nextTrades, account: { ...bt.account, currentEquity: newEquity }, updatedAt: monoNow() };
       }),
     }));
   }, [activeBacktestId, setDb]);
@@ -2132,10 +2132,10 @@ export default function JournalApp() {
       backtests: (prev.backtests || []).map((bt) => {
         if (bt.id !== activeBacktestId) return bt;
         const nextTrades = (bt.trades || []).map((t) =>
-          idsSet.has(t.id) && !isDeleted(t) ? { ...t, deletedAt: Date.now() } : t
+          idsSet.has(t.id) && !isDeleted(t) ? { ...t, deletedAt: monoNow() } : t
         );
         const newEquity = (bt.account?.initialEquity || bt.initialEquity || 0) + calcBacktestPnl(nextTrades);
-        return { ...bt, trades: nextTrades, account: { ...bt.account, currentEquity: newEquity }, updatedAt: Date.now() };
+        return { ...bt, trades: nextTrades, account: { ...bt.account, currentEquity: newEquity }, updatedAt: monoNow() };
       }),
     }));
   }, [activeBacktestId, setDb]);
@@ -2146,7 +2146,7 @@ export default function JournalApp() {
     setDb((prev) => ({
       ...prev,
       backtests: (prev.backtests || []).map((bt) =>
-        bt.id === activeBacktestId ? { ...bt, notes: { ...(bt.notes || {}), ...notes }, updatedAt: Date.now() } : bt
+        bt.id === activeBacktestId ? { ...bt, notes: { ...(bt.notes || {}), ...notes }, updatedAt: monoNow() } : bt
       ),
     }));
   }, [activeBacktestId, setDb]);
