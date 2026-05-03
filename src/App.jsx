@@ -1,4 +1,4 @@
-import React, { lazy, Suspense } from "react";
+import React, { lazy, Suspense, useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/auth/AuthProvider.jsx";
 import I18nProvider, { useI18n } from "@/i18n/I18nProvider.jsx";
@@ -82,6 +82,12 @@ function detectBrowserLang() {
 export default function App() {
   // For new users (no localStorage), detect language from browser; I18nProvider converts legacy "default" to "ru"
   const [publicLang, setPublicLang] = useLocalStorageState("tradej_lang", detectBrowserLang);
+  useEffect(() => {
+    // Tear down the static index.html boot screen once React has committed.
+    if (typeof window !== "undefined" && typeof window.__clearBootScreen === "function") {
+      window.__clearBootScreen();
+    }
+  }, []);
   return (
     <AuthProvider>
       <AnimationsProvider>
