@@ -374,7 +374,12 @@ export async function readStateV2({ pool, userId }) {
     ? row.updated_at.getTime()
     : new Date(row.updated_at || 0).getTime();
   const lagMs = v1Time - v2Time;
-  if (lagMs > V2_STALE_MS) {
+  // A positive lag past the threshold means v2 didn't catch up to v1 yet —
+  // serve from v1. A NEGATIVE lag means v2 reports a write timestamp newer
+  // than v1, which can happen on clock skew between connections in the
+  // pool or a buggy past write; treat that as stale too so we never read
+  // a "future" v2 mirror that v1 disagrees with.
+  if (lagMs > V2_STALE_MS || lagMs < 0) {
     return { ok: false, reason: "v2_stale", metrics: { lagMs } };
   }
 
