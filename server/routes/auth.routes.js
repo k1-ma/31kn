@@ -16,7 +16,7 @@ import {
   setupTotp, enableTotp, disableTotp, hasTotpEnabled
 } from "../services/totp.service.js";
 import { requireAuth, COOKIE_NAME } from "../middleware/requireAuth.js";
-import { loginRateLimit, adminLoginRateLimit, registerRateLimit } from "../middleware/rateLimitDb.js";
+import { loginRateLimit, registerRateLimit } from "../middleware/rateLimitDb.js";
 import { sign, makeCookie, appendSetCookie, parseCookies, getCookieDomain, getCookieDomainFromHost } from "../utils/cookies.js";
 
 const router = Router();
@@ -156,14 +156,18 @@ router.get("/me", async (req, res) => {
 });
 
 // POST /api/auth/login
+//
+// Note: an earlier version branched into a stricter `adminLoginRateLimit`
+// when `username === admin.username`. That leaked the admin login
+// (different Retry-After / 429 timing for the admin username vs random
+// ones), so the differential check was removed. Brute-force protection
+// is provided by:
+//   - loginRateLimit: 10 attempts per 5 min per IP
+//   - bcrypt verification (cost 12)
+//   - mandatory 2FA on the admin account (single-use ticket + TOTP)
 router.post(
   "/login",
   loginRateLimit,
-  (req, res, next) => {
-    const u = String(req.body?.username || "").trim().toLowerCase();
-    if (u && u === String(admin.username).toLowerCase()) return adminLoginRateLimit(req, res, next);
-    return next();
-  },
   async (req, res) => {
     let pool = getPool();
     if (!pool) {

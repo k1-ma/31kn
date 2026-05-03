@@ -80,8 +80,8 @@ export async function createApp() {
     console.warn("[db] init skipped:", err?.message || err);
   }
 
-  // Auto-seed updates if RUN_SEED_UPDATES environment variable is set
-  // This allows seeding on Vercel deploy by setting the env variable
+  // Auto-seed updates if RUN_SEED_UPDATES environment variable is set.
+  // Useful for one-shot seeding on either Railway or a Vercel deploy.
   if (["1", "true"].includes(process.env.RUN_SEED_UPDATES)) {
     try {
       const pool = getPool();

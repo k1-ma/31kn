@@ -637,12 +637,20 @@ router.post("/state-chunk", requireAuth, idempotency(), async (req, res) => {
         // Verify completeness: all slots should be filled
         const filledCount = combined.filter(item => item !== undefined).length;
         if (filledCount < totalLength) {
+          // Build the precise missingIndices list so the client can re-send
+          // just the gaps instead of restarting the whole upload (which used
+          // to risk dupes / wasted bandwidth on every retry).
+          const missingIndices = [];
+          for (let i = 0; i < totalLength; i++) {
+            if (combined[i] === undefined) missingIndices.push(i);
+          }
           logSyncOp("state-chunk", userId, {
             sessionId,
             error: "incomplete_array_batch_abort",
             key,
             expectedLength: totalLength,
             filledCount,
+            missingCount: missingIndices.length,
             severity: "CRITICAL"
           });
           // CRITICAL FIX: Abort save to prevent permanent data loss.
@@ -655,7 +663,12 @@ router.post("/state-chunk", requireAuth, idempotency(), async (req, res) => {
             message: `Array '${key}' is incomplete: ${filledCount}/${totalLength} items. Retry required.`,
             key,
             expectedLength: totalLength,
-            filledCount
+            filledCount,
+            // Cap at 100 indices to keep the response payload bounded —
+            // anything above that is almost certainly a systemic upload
+            // failure where the client should restart the session anyway.
+            missingIndices: missingIndices.slice(0, 100),
+            missingTruncated: missingIndices.length > 100,
           });
         }
         // Only include defined items (no undefined holes)
