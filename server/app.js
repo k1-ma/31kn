@@ -39,7 +39,7 @@ const CORS_WHITELIST = process.env.CORS_WHITELIST
 
 function corsOptions(req, callback) {
   const origin = req.header("Origin");
-  // Allow requests with no origin (same-origin, mobile apps, curl, etc.)
+  // Allow requests with no origin (mobile apps, curl, server-to-server, etc.)
   if (!origin) {
     return callback(null, { origin: true, credentials: true });
   }
@@ -47,10 +47,23 @@ function corsOptions(req, callback) {
   if (!IS_PROD) {
     return callback(null, { origin: true, credentials: true });
   }
-  // In production a whitelist is REQUIRED. Falling through with no
-  // configured origins used to fail open (any cross-origin request
-  // received credentials), which is the exact misconfiguration CSRF
-  // protections assume isn't there.
+  // Same-origin requests are always safe — Chrome/Firefox/Safari attach an
+  // Origin header on POST/PUT/DELETE even when the request goes to the same
+  // host the page was loaded from, so we cannot treat the mere presence of
+  // an Origin header as proof that the request is cross-origin. Compare the
+  // origin's host against the incoming Host header and allow when they
+  // match. Without this check, any same-origin POST (e.g. /api/auth/login)
+  // returns 500 in production unless CORS_WHITELIST is set.
+  try {
+    const originHost = new URL(origin).host;
+    const reqHost = req.header("X-Forwarded-Host") || req.header("Host");
+    if (reqHost && originHost === reqHost) {
+      return callback(null, { origin: true, credentials: true });
+    }
+  } catch {
+    // Malformed Origin — fall through to whitelist check
+  }
+  // Cross-origin in production: require an explicit whitelist
   if (CORS_WHITELIST.length === 0) {
     return callback(new Error("CORS_WHITELIST is empty in production; refusing cross-origin request"), { origin: false });
   }
