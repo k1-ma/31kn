@@ -8,7 +8,7 @@ import Button from "@/components/ui/Button.jsx";
  * NotificationBell - A bell icon with unread count badge that shows a dropdown
  * with recent notifications when clicked
  */
-export default function NotificationBell({ onInboxClick, onOpenUpdates, onOpenFeedback }) {
+function NotificationBell({ onInboxClick, onOpenUpdates, onOpenFeedback }) {
   const { t } = useI18n();
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
@@ -295,3 +295,5 @@ export default function NotificationBell({ onInboxClick, onOpenUpdates, onOpenFe
     </div>
   );
 }
+
+export default React.memo(NotificationBell);

@@ -26,12 +26,12 @@ function statusBadge(syncStatus, hasUnsavedChanges, syncProgress) {
   return { label: "Synced", icon: <Check className="h-3.5 w-3.5" />, variant: "success", tooltip: "All changes saved", glowClass: "session-badge-glow-green" };
 }
 
-export default function UserMenu({ 
-  syncStatus = "synced", 
-  hasUnsavedChanges = false, 
+function UserMenu({
+  syncStatus = "synced",
+  hasUnsavedChanges = false,
   onRetrySync,
   lastError,
-  syncProgress 
+  syncProgress
 }) {
   const { user, logout } = useAuth();
   const role = user?.role || "user";
@@ -188,3 +188,5 @@ export default function UserMenu({
     </div>
   );
 }
+
+export default React.memo(UserMenu);

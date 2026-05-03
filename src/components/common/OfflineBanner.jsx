@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from "react";
 import { AlertTriangle, RefreshCw, ExternalLink, WifiOff, Shield, CloudUpload } from "lucide-react";
 import Button from "@/components/ui/Button.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
+import { useSyncWarning } from "@/lib/syncWarning.js";
 
 /**
  * Format milliseconds as a short "Xs" / "Xm Ys" string.
@@ -77,10 +78,11 @@ function getOutboxInfo(userId) {
  * @param {boolean} isReadOnly - Whether app is in read-only mode (using cached userId)
  * @param {boolean} hasUnsavedChanges - Whether there are unsaved changes
  * @param {string} userId - Current user ID for outbox lookup
- * @param {boolean} showDelayedSyncWarning - Whether the sync indicator should be shown
- * @param {number} syncElapsedMs - How long the current sync has been running (ms)
  * @param {{ current: number, total: number, percent: number } | null} syncProgress - Chunk progress, when available
- * @param {function} onResetSyncWarning - Callback to reset the sync indicator timer when retrying
+ *
+ * Note: The sync-progress indicator (`useSyncWarning`) is owned here so its
+ * 500 ms tick doesn't re-render the entire app while saving. Only this banner
+ * needs the elapsed counter.
  */
 export default function OfflineBanner({
   syncStatus,
@@ -89,14 +91,17 @@ export default function OfflineBanner({
   isReadOnly = false,
   hasUnsavedChanges = false,
   userId = null,
-  showDelayedSyncWarning = false,
-  syncElapsedMs = 0,
   syncProgress = null,
-  onResetSyncWarning,
 }) {
   const { t } = useI18n();
   const [retrying, setRetrying] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+
+  const {
+    shouldShowWarning: showDelayedSyncWarning,
+    elapsedMs: syncElapsedMs,
+    resetWarning: resetSyncWarning,
+  } = useSyncWarning({ syncStatus, onStall: onRetry });
 
   // Delay showing red error banner by 10 seconds
   const ERROR_DELAY_MS = 10000;
@@ -142,9 +147,7 @@ export default function OfflineBanner({
     setRetrying(true);
     try {
       // Reset the sync warning timer when retrying
-      if (onResetSyncWarning) {
-        onResetSyncWarning();
-      }
+      resetSyncWarning();
       await onRetry();
     } finally {
       setRetrying(false);

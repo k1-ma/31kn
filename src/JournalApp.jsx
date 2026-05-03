@@ -7,7 +7,6 @@ import OfflineBanner from "@/components/common/OfflineBanner.jsx";
 import {
   useToasts } from "@/components/common/toast.js";
 import { useSyncedDb, isDeleted, monoNow } from "@/lib/syncDb.js";
-import { useSyncWarning } from "@/lib/syncWarning.js";
 import { useAuth } from "@/auth/AuthProvider.jsx";
 import { SEED } from "@/lib/seed.js";
 import { uid,
@@ -90,15 +89,7 @@ export default function JournalApp() {
   const allowedNavKeys = role === "loh" ? ["dashboard", "analytics", "trades", "settings"] : null;
   const navBanner = role === "loh" ? { i18nKey: "roles.lohBanner" } : null;
   const { db, setDb, syncStatus, refetch, retrySync, flushSync, setShareInFlight, lastError, hasUnsavedChanges, syncProgress, isReadOnly } = useSyncedDb(user?.id, SEED, { lastKnownUserId });
-  
-  // Sync-in-progress indicator — shows a friendly card with progress + elapsed time
-  // after a short grace period to avoid flickering on near-instant saves.
-  const {
-    shouldShowWarning: showDelayedSyncWarning,
-    elapsedMs: syncElapsedMs,
-    resetWarning: resetSyncWarning,
-  } = useSyncWarning({ syncStatus, onStall: retrySync });
-  
+
   const [active, setActive] = useState("dashboard");
   const [cmdOpen, setCmdOpen] = useState(false);
   const [quickTradeAccountId, setQuickTradeAccountId] = useState(null);
@@ -665,7 +656,27 @@ export default function JournalApp() {
   const accounts = db.accounts ?? [];
   const trades = db.trades ?? [];
   const libraries = db.libraries ?? { symbols: [], sessions: [], models: [], customTags: [] };
-  
+
+  // Memoize active/deleted partitions of the main collections so unrelated
+  // re-renders (sync ticks, focus changes, ...) don't recompute the lists and
+  // hand fresh array references to memoised children.
+  const activeTrades = useMemo(
+    () => trades.filter((t) => !isDeleted(t)),
+    [trades]
+  );
+  const deletedTrades = useMemo(
+    () => trades.filter((t) => isDeleted(t)),
+    [trades]
+  );
+  const activeAccounts = useMemo(
+    () => accounts.filter((a) => !isDeleted(a)),
+    [accounts]
+  );
+  const deletedAccounts = useMemo(
+    () => accounts.filter((a) => isDeleted(a)),
+    [accounts]
+  );
+
   // Memoize filtered library items to prevent unnecessary rerenders in Pairs/Sessions/Models pages
   const activePairs = useMemo(
     () => (libraries.symbols ?? []).filter((s) => !isDeleted(s)),
@@ -683,10 +694,18 @@ export default function JournalApp() {
     () => (libraries.customTags ?? []).filter((t) => !isDeleted(t)),
     [libraries.customTags]
   );
-  
+  const deletedCustomTags = useMemo(
+    () => (libraries.customTags ?? []).filter((t) => isDeleted(t)),
+    [libraries.customTags]
+  );
+
   const documents = db.documents ?? [];
   const docFolders = db.docFolders ?? [];
   const docShares = db.docShares ?? [];
+  const activeDocuments = useMemo(
+    () => documents.filter((d) => !d?.archivedAt),
+    [documents]
+  );
 
   // -----------------------------
   // Prop automation (evaluation + auto-progression)
@@ -1009,7 +1028,7 @@ export default function JournalApp() {
    * @param {Object} options.document - Document that was just updated (provide one of trade/document)
    * @returns {Object} Updated db state with synced links
    */
-  const syncTradeDocLinks = (db, { trade, document }) => {
+  const syncTradeDocLinks = useCallback((db, { trade, document }) => {
     let trades = [...(db.trades ?? [])];
     let documents = [...(db.documents ?? [])];
     
@@ -1072,7 +1091,7 @@ export default function JournalApp() {
     }
     
     return { ...db, trades, documents };
-  };
+  }, []);
 
   // -----------------------------
   // Trade ↔ Idea Link Sync (async - ideas are server-side)
@@ -1191,7 +1210,7 @@ export default function JournalApp() {
 // -----------------------------
   // Trades
   // -----------------------------
-  const upsertTrade = (trade) => {
+  const upsertTrade = useCallback((trade) => {
     // Capture prev ideaIds for sync (will be looked up inside setDb)
     let prevIdeaIds = [];
     
@@ -1364,9 +1383,9 @@ export default function JournalApp() {
     if (trade.id && (newIdeaIds.length > 0 || prevIdeaIds.length > 0)) {
       syncTradeIdeaLinks({ ...trade, ideaIds: newIdeaIds }, prevIdeaIds);
     }
-  };
+  }, [setDb, syncTradeDocLinks, syncTradeIdeaLinks]);
 
-  const trashTrade = (id) =>
+  const trashTrade = useCallback((id) =>
     setDb((prev) => {
       const list = prev.trades ?? [];
       const idx = list.findIndex((t) => t.id === id);
@@ -1396,16 +1415,16 @@ export default function JournalApp() {
       const now = monoNow();
       const nextTrades = list.map((t, i) => (i === idx ? { ...t, deletedAt: now, updatedAt: now } : t));
       return { ...prev, trades: nextTrades, accounts: nextAccounts };
-    });
+    }), [setDb]);
 
   /**
    * Bulk delete multiple trades at once (move to trash).
    * This function marks all selected trades as deleted and rolls back their net PnL
    * from the associated accounts to maintain accurate equity tracking.
-   * 
+   *
    * @param {string[]} ids - Array of trade IDs to delete
    */
-  const trashTradesBulk = (ids) => {
+  const trashTradesBulk = useCallback((ids) => {
     if (!Array.isArray(ids) || ids.length === 0) return;
     
     setDb((prev) => {
@@ -1445,9 +1464,9 @@ export default function JournalApp() {
       
       return { ...prev, trades: nextTrades, accounts: nextAccounts };
     });
-  };
+  }, [setDb]);
 
-  const restoreTrade = (id) =>
+  const restoreTrade = useCallback((id) =>
     setDb((prev) => {
       const list = prev.trades ?? [];
       const idx = list.findIndex((t) => t.id === id);
@@ -1476,9 +1495,9 @@ export default function JournalApp() {
 
       const nextTrades = list.map((t, i) => (i === idx ? { ...t, deletedAt: null, updatedAt: monoNow() } : t));
       return { ...prev, trades: nextTrades, accounts: nextAccounts };
-    });
+    }), [setDb]);
 
-  const deleteTradeForever = (id) =>
+  const deleteTradeForever = useCallback((id) =>
     setDb((prev) => {
       const list = prev.trades ?? [];
       const hit = list.find((t) => t.id === id);
@@ -1507,7 +1526,7 @@ export default function JournalApp() {
 
       const nextTrades = list.filter((t) => t.id !== id);
       return { ...prev, trades: nextTrades, accounts: nextAccounts };
-    });
+    }), [setDb]);
 
 
   // -----------------------------
@@ -2190,6 +2209,45 @@ export default function JournalApp() {
     setActive(key);
   }, [activeBacktestId]);
 
+  // Stable handlers for the topbar — passed through React.memo'd children, so we
+  // need referential stability or every parent render forces them to re-render.
+  const handleInboxClick = useCallback(() => handleSetActive("inbox"), [handleSetActive]);
+  const handleOpenUpdates = useCallback(() => handleSetActive("updates"), [handleSetActive]);
+  const handleOpenFeedback = useCallback((feedbackId) => {
+    handleSetActive("updates");
+    // Dispatch event to open the specific feedback ticket
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent("open-feedback", { detail: { id: feedbackId } }));
+    }, 100);
+  }, [handleSetActive]);
+
+  // Memoize the top-right slot so Shell doesn't see a new node every render.
+  const topRight = useMemo(() => (
+    <div className="flex items-center gap-2">
+      <NotificationBell
+        onInboxClick={handleInboxClick}
+        onOpenUpdates={handleOpenUpdates}
+        onOpenFeedback={handleOpenFeedback}
+      />
+      <UserMenu
+        syncStatus={syncStatus}
+        hasUnsavedChanges={hasUnsavedChanges}
+        onRetrySync={retrySync}
+        lastError={lastError}
+        syncProgress={syncProgress}
+      />
+    </div>
+  ), [
+    handleInboxClick,
+    handleOpenUpdates,
+    handleOpenFeedback,
+    syncStatus,
+    hasUnsavedChanges,
+    retrySync,
+    lastError,
+    syncProgress,
+  ]);
+
   return (
     <I18nProvider lang={lang} setLang={setLang}>
       <Shell
@@ -2206,36 +2264,18 @@ export default function JournalApp() {
         onOpenCommand={() => setCmdOpen(true)}
         onQuickTrade={() => { setOpenNewTrade(true); handleSetActive("trades"); }}
         onLogout={logout}
-        onInboxClick={() => handleSetActive("inbox")}
-        topRight={
-          <div className="flex items-center gap-2">
-            <NotificationBell 
-              onInboxClick={() => handleSetActive("inbox")} 
-              onOpenUpdates={() => handleSetActive("updates")}
-              onOpenFeedback={(feedbackId) => {
-                handleSetActive("updates");
-                // Dispatch event to open the specific feedback ticket
-                setTimeout(() => {
-                  window.dispatchEvent(new CustomEvent("open-feedback", { detail: { id: feedbackId } }));
-                }, 100);
-              }}
-            />
-            <UserMenu syncStatus={syncStatus} hasUnsavedChanges={hasUnsavedChanges} onRetrySync={retrySync} lastError={lastError} syncProgress={syncProgress} />
-          </div>
-        }
+        onInboxClick={handleInboxClick}
+        topRight={topRight}
       >
         {/* Offline/Domain Warning Banner */}
-        <OfflineBanner 
-          syncStatus={syncStatus} 
-          onRetry={retrySync} 
+        <OfflineBanner
+          syncStatus={syncStatus}
+          onRetry={retrySync}
           lastError={lastError}
           isReadOnly={isReadOnly}
           hasUnsavedChanges={hasUnsavedChanges}
           userId={user?.id}
-          showDelayedSyncWarning={showDelayedSyncWarning}
-          syncElapsedMs={syncElapsedMs}
           syncProgress={syncProgress}
-          onResetSyncWarning={resetSyncWarning}
         />
 
         {/* All routed pages below are lazy-loaded; keep one Suspense
@@ -2337,8 +2377,8 @@ export default function JournalApp() {
           />
         ) : active === "dashboard" ? (
           <DashboardPage
-            trades={(db.trades ?? []).filter((t) => !isDeleted(t))}
-            accounts={(db.accounts ?? []).filter((a) => !isDeleted(a))}
+            trades={activeTrades}
+            accounts={activeAccounts}
             libraries={libraries}
             propTemplates={db.propTemplates ?? []}
             reduceMotion={reduceMotion}
@@ -2349,8 +2389,8 @@ export default function JournalApp() {
           />
         ) : active === "analytics" ? (
           <Analytics
-            trades={(db.trades ?? []).filter((t) => !isDeleted(t))}
-            accounts={(db.accounts ?? []).filter((a) => !isDeleted(a))}
+            trades={activeTrades}
+            accounts={activeAccounts}
             libraries={libraries}
             reduceMotion={reduceMotion}
             onTradeClick={handleTradeClick}
@@ -2358,9 +2398,9 @@ export default function JournalApp() {
           />
         ) : active === "trades" ? (
           <Trades
-            trades={(db.trades ?? []).filter((t) => !isDeleted(t))}
-            accounts={(db.accounts ?? []).filter((a) => !isDeleted(a))}
-            documents={(db.documents ?? []).filter((d) => !d?.archivedAt)}
+            trades={activeTrades}
+            accounts={activeAccounts}
+            documents={activeDocuments}
             ideas={ideas}
             libraries={libraries}
             onUpsert={upsertTrade}
@@ -2387,9 +2427,9 @@ export default function JournalApp() {
           />
         ) : active === "accounts" ? (
           <Accounts
-            accounts={(db.accounts ?? []).filter((a) => !isDeleted(a))}
-            trades={(db.trades ?? []).filter((t) => !isDeleted(t))}
-            symbols={(libraries.symbols ?? []).filter((s) => !isDeleted(s))}
+            accounts={activeAccounts}
+            trades={activeTrades}
+            symbols={activePairs}
             propTemplates={db.propTemplates ?? []}
             onSetPropTemplates={setPropTemplates}
             onUpsert={upsertAccount}
@@ -2414,7 +2454,7 @@ export default function JournalApp() {
           <Documents
             documents={documents}
             docFolders={docFolders}
-            trades={(db.trades ?? []).filter((t) => !isDeleted(t))}
+            trades={activeTrades}
             libraries={libraries}
             onUpsertDocument={upsertDocument}
             onDeleteDocument={deleteDocument}
@@ -2430,7 +2470,7 @@ export default function JournalApp() {
             reduceMotion={reduceMotion}
             toast={toast}
             libraries={libraries}
-            trades={(db.trades ?? []).filter((t) => !isDeleted(t))}
+            trades={activeTrades}
             onIdeaSaved={syncIdeaTradeLinks}
             selectedIdeaId={selectedIdeaId}
             onClearSelectedIdea={() => setSelectedIdeaId(null)}
@@ -2465,13 +2505,13 @@ export default function JournalApp() {
           />
         ) : active === "trash" ? (
           <TrashPage
-            trades={(db.trades ?? []).filter((t) => isDeleted(t))}
-            accounts={(db.accounts ?? []).filter((a) => isDeleted(a))}
+            trades={deletedTrades}
+            accounts={deletedAccounts}
             documents={(db.documents ?? []).filter((d) => !!d?.archivedAt)}
             pairs={(libraries.symbols ?? []).filter((s) => isDeleted(s))}
             sessions={(libraries.sessions ?? []).filter((s) => isDeleted(s))}
             models={(libraries.models ?? []).filter((m) => isDeleted(m))}
-            customTags={(libraries.customTags ?? []).filter((t) => isDeleted(t))}
+            customTags={deletedCustomTags}
             onRestoreTrade={restoreTrade}
             onDeleteTrade={deleteTradeForever}
             onRestoreAccount={restoreAccount}
