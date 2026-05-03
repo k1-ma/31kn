@@ -28,27 +28,26 @@ const OUTCOME_ICONS = {
   Unknown: { icon: Sparkles, color: "text-slate-400" },
 };
 
-// Group updates by month
-function groupByMonth(ideas) {
+// Group updates by month, formatting the month name in the user's locale
+// (Russian "Июль 2025" vs English "July 2025") via Intl.DateTimeFormat.
+function groupByMonth(ideas, lang) {
   const groups = new Map();
-  
+  const intlLocale = lang === "ru" ? "ru-RU" : "en-US";
+  const monthFormatter = new Intl.DateTimeFormat(intlLocale, { month: "long", year: "numeric" });
+
   for (const idea of ideas) {
     const date = idea.implemented_at ? new Date(idea.implemented_at) : new Date(idea.updated_at);
     const year = date.getFullYear();
     const month = date.getMonth();
-    const monthNames = [
-      "January", "February", "March", "April", "May", "June",
-      "July", "August", "September", "October", "November", "December"
-    ];
-    const key = `${monthNames[month]} ${year}`;
+    const key = monthFormatter.format(date);
     const sortKey = `${year}-${String(month).padStart(2, "0")}`;
-    
+
     if (!groups.has(key)) {
       groups.set(key, { key, sortKey, ideas: [] });
     }
     groups.get(key).ideas.push(idea);
   }
-  
+
   return Array.from(groups.values()).sort((a, b) => b.sortKey.localeCompare(a.sortKey));
 }
 
@@ -117,7 +116,7 @@ function UpdateItem({ idea, index }) {
 }
 
 export default function Changelog({ reduceMotion }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [ideas, setIdeas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState(null);
@@ -148,7 +147,7 @@ export default function Changelog({ reduceMotion }) {
     loadData();
   }, [loadData]);
 
-  const groupedIdeas = groupByMonth(ideas);
+  const groupedIdeas = groupByMonth(ideas, lang);
 
   return (
     <div>

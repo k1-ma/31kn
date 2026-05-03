@@ -607,11 +607,14 @@ function AccountCard({ account, templates, trades, onEdit, onPayout, onArchive, 
 
         {/* Actions menu */}
         <div className="relative">
-          <Button 
-            variant="ghost" 
-            size="icon" 
+          <Button
+            variant="ghost"
+            size="icon"
             className="h-8 w-8 rounded-xl"
             onClick={() => setMenuOpen(!menuOpen)}
+            aria-label={t("common.menu") || "Menu"}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
           >
             <MoreVertical className="h-4 w-4" />
           </Button>

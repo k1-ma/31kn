@@ -228,6 +228,7 @@ function FeedbackRow({ feedback, onUpdateStatus, onDelete, onReload, onMarkRead 
                 className="rounded-xl h-8 w-8 text-blue-400 hover:text-blue-500"
                 onClick={(e) => { e.stopPropagation(); onMarkRead?.(feedback.id); }}
                 title={t("admin.feedback.markRead", null, "Mark as read")}
+                aria-label={t("admin.feedback.markRead", null, "Mark as read")}
               >
                 <Eye className="h-4 w-4" />
               </Button>
@@ -243,6 +244,7 @@ function FeedbackRow({ feedback, onUpdateStatus, onDelete, onReload, onMarkRead 
               className="rounded-xl h-8 w-8 text-rose-400 hover:text-rose-500"
               onClick={(e) => { e.stopPropagation(); onDelete(feedback); }}
               title={t("common.delete")}
+              aria-label={t("common.delete")}
             >
               <Trash2 className="h-4 w-4" />
             </Button>

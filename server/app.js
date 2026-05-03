@@ -117,6 +117,9 @@ export async function createApp() {
           connectSrc: ["'self'", "https://accounts.google.com", "https://oauth2.googleapis.com", "https://www.googleapis.com", "https://hauntedxcdn.b-cdn.net"],
           mediaSrc: ["'self'", "https://hauntedxcdn.b-cdn.net", "https://*.b-cdn.net"],
           frameSrc: ["'self'", "https://accounts.google.com", "https://hauntedxcdn.b-cdn.net", "https://iframe.mediadelivery.net"],
+          // frame-ancestors blocks clickjacking by refusing to be framed by
+          // any other site. This is the modern replacement for X-Frame-Options.
+          frameAncestors: ["'self'"],
           formAction: ["'self'"],
           baseUri: ["'self'"],
           objectSrc: ["'none'"],
