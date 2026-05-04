@@ -404,33 +404,43 @@ async function handleStateSave(req, res) {
       );
       const currentVersion = current.rows?.[0]?.version ?? 0;
       const currentState = current.rows?.[0]?.state_json;
-      
-      // If expected_version is provided, check for conflict
+
+      // Detect optimistic-concurrency conflict: another writer (typically the
+      // same user on a different tab/device) already advanced the version
+      // since this request was prepared.
+      //
+      // Previously this returned 409 with currentState in the body and let the
+      // client merge + retry. That doubled bandwidth (two PUTs per conflict)
+      // and surfaced a red "409 Conflict" in devtools, which heavy multi-device
+      // users perceived as an app error even though the merge always succeeded.
+      //
+      // Now we merge on the server using mergeStates (timestamp-by-id with
+      // tombstone preservation, same algorithm as the client's safety merge),
+      // accept the write under the new version, and return 200 with
+      // `conflict_resolved: true` and the merged state so the client can
+      // replace its local copy. Functionally equivalent to the old client-side
+      // merge+retry, but in one round-trip and with no visible 409.
+      let conflictResolved = false;
       if (typeof expected_version === "number" && currentVersion !== expected_version) {
-        await client.query("ROLLBACK");
-        
         const currentTradesCount = currentState?.trades?.length ?? 0;
-        logStateOp("put", userId, { 
-          error: "version_conflict", 
-          expected: expected_version, 
+        logStateOp("put", userId, {
+          action: "auto_merge_on_version_conflict",
+          expected: expected_version,
           actual: currentVersion,
           currentTradesCount,
-          incomingTradesCount
+          incomingTradesCount,
+          severity: "INFO"
         });
-        return res.status(409).json({ 
-          error: "Version conflict", 
-          code: "VERSION_CONFLICT",
-          expected_version,
-          current_version: currentVersion,
-          // Return current server state so client can merge
-          server_state: currentState,
-          server_trades_count: currentTradesCount
-        });
+
+        if (currentState) {
+          state = mergeStates(state, currentState);
+        }
+        conflictResolved = true;
       }
-      
-      // Determine final state: use client state directly (client already merged on GET)
-      // Server-side merge only happens on version conflict (handled above with 409)
-      // The client sends its canonical state after merging locally, so accept it as-is
+
+      // Determine final state: use client state directly (client already merged on GET).
+      // If a version conflict was detected just above, `state` has already been
+      // merged with currentState, so the safety net below sees the merged result.
       let finalState = state;
       
       // Safety net: if incoming state has fewer records than the server has,
@@ -686,7 +696,12 @@ async function handleStateSave(req, res) {
         ok: true,
         updated_at: newUpdatedAt,
         version: newVersion,
-        tradeCount
+        tradeCount,
+        // Tell the client we auto-merged a version conflict so it can replace
+        // its local state with the canonical merged result. Old clients ignore
+        // unknown fields and keep working (their next save will trigger another
+        // silent merge until they refetch via GET).
+        ...(conflictResolved ? { conflict_resolved: true, server_state: finalState } : {}),
       });
     } finally {
       // Reset statement_timeout to pool default before releasing
