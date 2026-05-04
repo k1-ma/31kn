@@ -2665,6 +2665,31 @@ export function useSyncedDb(userId, seed, options = {}) {
         }
       }
 
+      // Recover from a stale red banner: if the server is currently reachable
+      // but a previous transient ping/sync failure left lastError or syncStatus
+      // stuck in an error state, clear it.  Without this, the user sees a
+      // permanent "NETWORK_ERROR" banner even though every heartbeat ping is
+      // succeeding — recovery only happens on the next save/visibilitychange,
+      // which may not occur if the user just looks at the page.
+      // Mirrors the same recovery already done by handleHeartbeatVisibility.
+      if (reachable) {
+        setLastError(prev => {
+          if (!prev) return prev;
+          if (prev.code === "NETWORK_ERROR" || prev.code === "TIMEOUT" || prev.code === "PING_FAILED") {
+            if (IS_DEV) {
+              console.log("[syncDb] Heartbeat: clearing stale error", prev.code);
+            }
+            return null;
+          }
+          return prev;
+        });
+        const stuckStatus = syncStatusRef.current;
+        if (stuckStatus === "error" || stuckStatus === "offline") {
+          setSyncStatus(hasOutbox(userId) ? "pending" : "synced");
+          consecutiveFailures.current = 0;
+        }
+      }
+
       // Flush outbox whenever server is reachable and outbox exists.
       // Previously this only ran on unreachable→reachable transitions,
       // which missed cases where syncToServer's inline ping failed
