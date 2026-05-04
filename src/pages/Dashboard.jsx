@@ -8,7 +8,7 @@ import SmartInsights from "@/components/common/SmartInsights.jsx";
 import { clampNum, fmtMoney, fmtPct } from "@/lib/utils";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
-import { calcWinRatePct, getGlobalWinRateMode } from "@/lib/metrics/winRate.js";
+import { calcWinRatePct, getGlobalWinRateMode, classifyTradeOutcome, isTradeBreakEven } from "@/lib/metrics/winRate.js";
 
 function localeFromLang(lang) {
   if (lang === "ru") return "ru-RU";
@@ -204,22 +204,23 @@ export default function Dashboard({ trades = [], accounts = [], reduceMotion, to
         shortWins: 0,
       };
 
+      const outcome = classifyTradeOutcome({ pnl, isBreakEven: isTradeBreakEven(tr), mode: "ignore" });
       const next = { ...prev };
       next.pnl += pnl;
       next.trades += 1;
       next.riskUsd += riskUsd;
-      if (pnl > 0) next.wins += 1;
-      if (pnl < 0) next.losses += 1;
+      if (outcome === "win") next.wins += 1;
+      else if (outcome === "loss") next.losses += 1;
 
       if (dir === "long") {
         next.longTrades += 1;
         next.longPnl += pnl;
-        if (pnl > 0) next.longWins += 1;
+        if (outcome === "win") next.longWins += 1;
       }
       if (dir === "short") {
         next.shortTrades += 1;
         next.shortPnl += pnl;
-        if (pnl > 0) next.shortWins += 1;
+        if (outcome === "win") next.shortWins += 1;
       }
 
       map.set(key, next);
@@ -262,8 +263,9 @@ export default function Dashboard({ trades = [], accounts = [], reduceMotion, to
       if (key) uniqDays.add(key);
       const p = clampNum(tr?.pnl);
       pnl += p;
-      if (p > 0) wins += 1;
-      else if (p < 0) losses += 1;
+      const outcome = classifyTradeOutcome({ pnl: p, isBreakEven: isTradeBreakEven(tr), mode: "ignore" });
+      if (outcome === "win") wins += 1;
+      else if (outcome === "loss") losses += 1;
       else breakEvens += 1;
 
       if (p > biggestWin) biggestWin = p;
@@ -273,14 +275,14 @@ export default function Dashboard({ trades = [], accounts = [], reduceMotion, to
       if (dir === "long") {
         longTrades += 1;
         longPnl += p;
-        if (p > 0) longWins += 1;
-        else if (p === 0) longBreakEvens += 1;
+        if (outcome === "win") longWins += 1;
+        else if (outcome === "be") longBreakEvens += 1;
       }
       if (dir === "short") {
         shortTrades += 1;
         shortPnl += p;
-        if (p > 0) shortWins += 1;
-        else if (p === 0) shortBreakEvens += 1;
+        if (outcome === "win") shortWins += 1;
+        else if (outcome === "be") shortBreakEvens += 1;
       }
 
       const allocs = Array.isArray(tr?.allocations) ? tr.allocations : [];

@@ -33,7 +33,7 @@ import { NO_ACCOUNT_ID, tradeHasAccount, hasTradesWithoutAccount, createNoAccoun
 import { createPublicShare, createShareWithToast, sanitizeTradeForPublic, getShareUrl, compressSharePayload } from "@/lib/share.js";
 import { HOVER_GLOW } from "@/lib/ui.js";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
-import { calcWinRatePct, getGlobalWinRateMode } from "@/lib/metrics/winRate.js";
+import { calcWinRatePct, getGlobalWinRateMode, classifyTradeOutcome, isTradeBreakEven } from "@/lib/metrics/winRate.js";
 import { isDeleted, monoNow } from "@/lib/syncDb.js";
 import { setDirty } from "@/lib/navGuard.js";
 import {
@@ -2588,11 +2588,12 @@ export default function Trades({ trades, accounts, documents, ideas = [], librar
       const pnl = sumPnL(allocs);
 
       const prev = map.get(key) || { pnl: 0, trades: 0, wins: 0, losses: 0, tradeList: [] };
+      const outcome = classifyTradeOutcome({ pnl, isBreakEven: isTradeBreakEven(tr), mode: "ignore" });
       const next = { ...prev };
       next.pnl += pnl;
       next.trades += 1;
-      if (pnl > 0) next.wins += 1;
-      if (pnl < 0) next.losses += 1;
+      if (outcome === "win") next.wins += 1;
+      else if (outcome === "loss") next.losses += 1;
       next.tradeList = [...prev.tradeList, tr];
 
       map.set(key, next);
@@ -2628,8 +2629,9 @@ export default function Trades({ trades, accounts, documents, ideas = [], librar
       const allocs = asAllocations(tr, accounts).map(sanitizeAlloc);
       const p = sumPnL(allocs);
       pnl += p;
-      if (p > 0) wins += 1;
-      else if (p < 0) losses += 1;
+      const outcome = classifyTradeOutcome({ pnl: p, isBreakEven: isTradeBreakEven(tr), mode: "ignore" });
+      if (outcome === "win") wins += 1;
+      else if (outcome === "loss") losses += 1;
       else breakEvens += 1;
       if (p > biggestWin) biggestWin = p;
       if (p < biggestLoss) biggestLoss = p;
@@ -3861,8 +3863,9 @@ export default function Trades({ trades, accounts, documents, ideas = [], librar
                   const allocs = asAllocations(tr, accounts).map(sanitizeAlloc);
                   const pnl = sumPnL(allocs);
                   const sym = symById.get(tr.symbolId);
-                  const isWin = pnl > 0;
-                  const isLoss = pnl < 0;
+                  const outcome = classifyTradeOutcome({ pnl, isBreakEven: isTradeBreakEven(tr), mode: "ignore" });
+                  const isWin = outcome === "win";
+                  const isLoss = outcome === "loss";
                   
                   return (
                     <div
