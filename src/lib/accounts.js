@@ -201,7 +201,8 @@ export function calcAccountStats(db, accountId, winRateMode = "ignore", avgRRMod
         totalPnL += netPnl;
         
         // Classify outcome — honor user-marked break-even flag on the allocation
-        const isBreakEven = Boolean(alloc?.isBreakEven);
+        // and the trade-level "BE" outcome (handles legacy data without the flag).
+        const isBreakEven = Boolean(alloc?.isBreakEven) || trade?.isBreakEven === true || trade?.outcome === "BE";
         const outcome = classifyOutcomeByPnL({ pnl: grossPnl, isBreakEven, mode });
         if (outcome === "win") {
           wins++;

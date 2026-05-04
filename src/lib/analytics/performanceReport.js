@@ -5,7 +5,7 @@
 
 import { clampNum } from "@/lib/utils";
 import { NO_ACCOUNT_ID, getTradeAccountKey } from "@/lib/noAccount.js";
-import { calcWinRatePct, classifyTradeOutcome } from "@/lib/metrics/winRate.js";
+import { calcWinRatePct, classifyTradeOutcome, isTradeBreakEven } from "@/lib/metrics/winRate.js";
 import { getInitialBalance } from "@/lib/accountCalcs.js";
 import { isDeleted } from "@/lib/syncDb.js";
 
@@ -66,7 +66,7 @@ function getTradeRR(trade) {
  */
 function getTradeOutcome(trade, accountId = "all", winRateMode = "ignore") {
   const pnl = getTradePnL(trade, accountId);
-  const isBreakEven = Boolean(trade?.isBreakEven);
+  const isBreakEven = isTradeBreakEven(trade);
   return classifyTradeOutcome({ pnl, isBreakEven, mode: winRateMode });
 }
 
@@ -639,7 +639,7 @@ export function calcPerformanceReport(trades, accounts, libraries = {}, options 
     totalPnlSum += pnl;
 
     // Use classifyTradeOutcome for consistent classification with isBreakEven and winRateMode
-    const isBreakEven = Boolean(trade?.isBreakEven);
+    const isBreakEven = isTradeBreakEven(trade);
     const outcome = classifyTradeOutcome({ pnl, isBreakEven, mode: winRateMode });
     
     if (outcome === "win") {
@@ -777,17 +777,17 @@ export function calcPerformanceReport(trades, accounts, libraries = {}, options 
   let longWins = 0, longLosses = 0, longBreakEvens = 0;
   for (const t of longTrades) {
     const p = getTradePnL(t, accountId);
-    const isBreakEven = Boolean(t?.isBreakEven);
+    const isBreakEven = isTradeBreakEven(t);
     const outcome = classifyTradeOutcome({ pnl: p, isBreakEven, mode: winRateMode });
     if (outcome === "win") longWins++;
     else if (outcome === "loss") longLosses++;
     else longBreakEvens++;
   }
-  
+
   let shortWins = 0, shortLosses = 0, shortBreakEvens = 0;
   for (const t of shortTrades) {
     const p = getTradePnL(t, accountId);
-    const isBreakEven = Boolean(t?.isBreakEven);
+    const isBreakEven = isTradeBreakEven(t);
     const outcome = classifyTradeOutcome({ pnl: p, isBreakEven, mode: winRateMode });
     if (outcome === "win") shortWins++;
     else if (outcome === "loss") shortLosses++;

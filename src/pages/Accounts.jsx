@@ -340,7 +340,7 @@ function QuickStats({ trades, account, t, winRateMode = "ignore" }) {
       const alloc = (tr.allocations || []).find(a => a.accountId === account.id);
       if (alloc) {
         const pnl = clampNum(alloc.pnl);
-        const isBE = Boolean(alloc.isBreakEven || tr.isBreakEven);
+        const isBE = Boolean(alloc.isBreakEven || tr.isBreakEven) || tr?.outcome === "BE";
         const outcome = classifyTradeOutcome({ pnl, isBreakEven: isBE, mode: "ignore" });
         if (outcome === "win") wins++;
         else if (outcome === "loss") losses++;
@@ -2159,7 +2159,7 @@ function AccountDetailModal({ open, onClose, account, templates, trades, symbols
 
       const alloc = (tr.allocations || []).find(a => a.accountId === account.id);
       const pnl = clampNum(alloc?.pnl);
-      const isBE = Boolean(alloc?.isBreakEven || tr?.isBreakEven);
+      const isBE = Boolean(alloc?.isBreakEven || tr?.isBreakEven) || tr?.outcome === "BE";
       const outcome = classifyTradeOutcome({ pnl, isBreakEven: isBE, mode: "ignore" });
 
       const prev = map.get(key) || {
@@ -2206,7 +2206,7 @@ function AccountDetailModal({ open, onClose, account, templates, trades, symbols
       if (key) uniqDays.add(key);
       const alloc = (tr.allocations || []).find(a => a.accountId === account.id);
       const p = clampNum(alloc?.pnl);
-      const isBE = Boolean(alloc?.isBreakEven || tr?.isBreakEven);
+      const isBE = Boolean(alloc?.isBreakEven || tr?.isBreakEven) || tr?.outcome === "BE";
       const outcome = classifyTradeOutcome({ pnl: p, isBreakEven: isBE, mode: "ignore" });
       pnl += p;
       if (outcome === "win") wins += 1;
@@ -2288,7 +2288,7 @@ function AccountDetailModal({ open, onClose, account, templates, trades, symbols
       for (const a of allocs) {
         if (a.accountId !== account.id) continue;
         const pnl = clampNum(a.pnl);
-        const isBE = Boolean(a.isBreakEven || tr.isBreakEven);
+        const isBE = Boolean(a.isBreakEven || tr.isBreakEven) || tr?.outcome === "BE";
         const outcome = classifyTradeOutcome({ pnl, isBreakEven: isBE, mode: "ignore" });
         totalPnl += pnl;
         if (outcome === "win") wins++;

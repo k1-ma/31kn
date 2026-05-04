@@ -13,6 +13,7 @@ import {
   classifyOutcomeByRRAndPnL,
   classifyTradeOutcome,
   countTradeOutcomesWithPrefs,
+  isTradeBreakEven,
 } from "../metrics/winRate.js";
 
 // Simple test framework
@@ -271,6 +272,65 @@ test("user-reported scenario: BU trade with +pnl is not counted as win", () => {
   expect(counts.wins).toBe(1);
   expect(counts.losses).toBe(1);
   expect(counts.breakEvens).toBe(2);
+});
+
+// Legacy data: outcome="BE" without the isBreakEven flag (older saves)
+console.log("\n--- isTradeBreakEven recognises legacy outcome=BE ---");
+
+test("isTradeBreakEven returns true when only outcome='BE' is set", () => {
+  const trade = { outcome: "BE", pnl: -10 };
+  expect(isTradeBreakEven(trade)).toBe(true);
+});
+
+test("isTradeBreakEven returns true when isBreakEven=true (no outcome)", () => {
+  const trade = { isBreakEven: true, pnl: 50 };
+  expect(isTradeBreakEven(trade)).toBe(true);
+});
+
+test("isTradeBreakEven returns true when allocation has isBreakEven", () => {
+  const trade = { allocations: [{ pnl: -5, isBreakEven: true }] };
+  expect(isTradeBreakEven(trade)).toBe(true);
+});
+
+test("isTradeBreakEven returns false for plain Profit trade", () => {
+  const trade = { outcome: "Profit", pnl: 100 };
+  expect(isTradeBreakEven(trade)).toBe(false);
+});
+
+test("isTradeBreakEven returns false for plain Loss trade", () => {
+  const trade = { outcome: "Loss", pnl: -50 };
+  expect(isTradeBreakEven(trade)).toBe(false);
+});
+
+test("countTradeOutcomesWithPrefs respects outcome='BE' on legacy trades", () => {
+  // Mix of legacy (outcome only) and new (isBreakEven flag) trades.
+  const trades = [
+    { outcome: "BE", allocations: [{ pnl: -15 }] },          // legacy BU loss
+    { outcome: "BE", allocations: [{ pnl: 25 }] },           // legacy BU profit (commission rebate)
+    { outcome: "Profit", allocations: [{ pnl: 100 }] },      // win
+    { outcome: "Loss", allocations: [{ pnl: -75 }] },        // loss
+    { isBreakEven: true, allocations: [{ pnl: -10 }] },      // new-style BU
+  ];
+  const counts = countTradeOutcomesWithPrefs(trades, { mode: "ignore" });
+  expect(counts.wins).toBe(1);
+  expect(counts.losses).toBe(1);
+  expect(counts.breakEvens).toBe(3);
+});
+
+test("legacy BU trade with -PnL is NOT counted as loss in winrate", () => {
+  // The user-reported scenario: trade saved with outcome="BE" by old app,
+  // realized PnL = -8 from commission. Must NOT count as a loss.
+  const trades = [
+    { outcome: "BE", allocations: [{ pnl: -8, accountId: "acc1" }] },
+    { outcome: "Profit", allocations: [{ pnl: 50, accountId: "acc1" }] },
+  ];
+  const counts = countTradeOutcomesWithPrefs(trades, { accountId: "acc1", mode: "ignore" });
+  expect(counts.losses).toBe(0);
+  expect(counts.breakEvens).toBe(1);
+  expect(counts.wins).toBe(1);
+  // WR should be 100% (1 win / (1 win + 0 loss)), not 50%
+  const wr = calcWinRatePct({ wins: counts.wins, losses: counts.losses, breakEvens: counts.breakEvens, mode: "ignore" });
+  expect(wr).toBeCloseTo(100, 1);
 });
 
 // Summary
