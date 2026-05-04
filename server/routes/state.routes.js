@@ -359,7 +359,11 @@ async function handleStateSave(req, res) {
     return res.status(403).json({ error: "Read-only role" });
   }
 
-  const { state, expected_version, force } = req.body || {};
+  const { state: incomingState, expected_version, force } = req.body || {};
+  // Mutable copy: we may overwrite this with mergeStates(incomingState, currentState)
+  // below if a version conflict is detected. Keeping `incomingState` immutable
+  // makes it obvious the destructured request body isn't being mutated in place.
+  let state = incomingState;
 
   // Validate state shape: must be a plain object (or explicit null to clear).
   // Rejecting arrays/scalars prevents corrupt JSONB writes downstream.
