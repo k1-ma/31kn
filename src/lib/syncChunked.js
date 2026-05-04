@@ -1024,15 +1024,27 @@ export async function sendFullStateChunked(state, { onProgress, maxRestarts = 2,
             })
           );
 
-          // Update progress and capture last result
+          // Update progress and capture last result.
+          // IMPORTANT: when chunks are sent in parallel, the server finalizes
+          // on whichever chunk arrives last in time — that may not be the
+          // chunk we flagged isLast=true.  The "complete" response could be
+          // returned to ANY chunk in the batch.  Scan the batch for any
+          // result with status:"complete" and prefer it over the by-index
+          // last result, otherwise the outer code throws SYNC_INCOMPLETE
+          // even though the server actually saved the state.
           for (const res of batchResults) {
             completed++;
           }
-          lastResult = batchResults[batchResults.length - 1];
+          const completeInBatch = batchResults.find(r => r?.status === "complete");
+          lastResult = completeInBatch || batchResults[batchResults.length - 1];
 
           if (onProgress) {
             onProgress(calculateProgress(completed, totalChunks), completed, totalChunks);
           }
+
+          // If the server finalized mid-upload, no need to keep iterating
+          // remaining batches — the state is already saved.
+          if (completeInBatch) break;
         }
       }
     } catch (err) {
