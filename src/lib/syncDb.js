@@ -2340,7 +2340,19 @@ export function useSyncedDb(userId, seed, options = {}) {
         // (caught by the syncInFlight guard), immediately retry with the
         // latest dbRef.current so the concurrent mutation isn't stranded.
         // Capped by MAX_AUTO_RESYNC to prevent infinite loops.
-        if (pendingResyncRef.current && autoResyncCountRef.current < MAX_AUTO_RESYNC) {
+        //
+        // Skip auto-resync entirely when conflict resolution did the work:
+        // syncToServer's 409-handler does setDb(merged) inside its retry path,
+        // which trips the syncInFlight guard and sets pendingResyncRef even
+        // though the merge already incorporated the latest server state.
+        // Without this skip, every 409 → merge → retry success was followed
+        // by another forced sync that would race the next concurrent write
+        // and produce another 409, looping forever.
+        if (
+          pendingResyncRef.current &&
+          !result.conflictResolved &&
+          autoResyncCountRef.current < MAX_AUTO_RESYNC
+        ) {
           pendingResyncRef.current = false;
           autoResyncCountRef.current += 1;
           if (IS_DEV) console.log(`[syncDb] Auto-resync ${autoResyncCountRef.current}/${MAX_AUTO_RESYNC} after concurrent mutation`);
@@ -2352,7 +2364,11 @@ export function useSyncedDb(userId, seed, options = {}) {
             // via syncToServer's internal error handling.
             syncToServer(dbRef.current).then((r) => {
               if (r.success) {
-                if (pendingResyncRef.current && autoResyncCountRef.current < MAX_AUTO_RESYNC) {
+                if (
+                  pendingResyncRef.current &&
+                  !r.conflictResolved &&
+                  autoResyncCountRef.current < MAX_AUTO_RESYNC
+                ) {
                   // Yet another mutation arrived — keep status "saving"; the
                   // existing save useEffect (re-triggered by setDb) or another
                   // resync iteration will handle it.
