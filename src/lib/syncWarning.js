@@ -23,6 +23,15 @@ export const DEFAULT_SYNC_STALL_DETECT_MS = 5000;
 const WATCHDOG_INTERVAL_MS = 1000;
 
 /**
+ * Hold the indicator visible briefly after `saving` ends so a follow-up save
+ * within this window doesn't blink the indicator off→on. A 409 conflict
+ * resolves via merge+retry which can drive a saving→synced→saving cycle in
+ * under a second; without this grace the portal indicator flickers and
+ * heavy re-renders make the page appear to jump.
+ */
+const HIDE_GRACE_MS = 800;
+
+/**
  * Hook that exposes a friendly "sync in progress" indicator.
  *
  * Behaviour:
@@ -58,6 +67,7 @@ export function useSyncWarning(options = {}) {
   const tickTimerRef = useRef(null);
   const watchdogTimerRef = useRef(null);
   const stallCooldownRef = useRef(null);
+  const hideTimerRef = useRef(null);
   const startedAtRef = useRef(null);
   const lastTickAtRef = useRef(null);
   const stallTriggeredRef = useRef(false);
@@ -88,6 +98,10 @@ export function useSyncWarning(options = {}) {
     if (stallCooldownRef.current) {
       clearTimeout(stallCooldownRef.current);
       stallCooldownRef.current = null;
+    }
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
     }
   }, []);
 
@@ -162,6 +176,21 @@ export function useSyncWarning(options = {}) {
 
     if (!wasSaving && nowSaving) {
       isSavingRef.current = true;
+
+      // If we're still inside the post-save grace (indicator visible from a
+      // previous save), keep it visible — don't restart the threshold wait.
+      // Prevents saving→synced→saving flicker on 409-merge-retry cycles.
+      if (hideTimerRef.current) {
+        clearTimeout(hideTimerRef.current);
+        hideTimerRef.current = null;
+        startedAtRef.current = Date.now();
+        lastTickAtRef.current = Date.now();
+        stallTriggeredRef.current = false;
+        if (mountedRef.current) setElapsedMs(0);
+        startTicking();
+        return;
+      }
+
       startedAtRef.current = Date.now();
       lastTickAtRef.current = Date.now();
       stallTriggeredRef.current = false;
@@ -182,13 +211,42 @@ export function useSyncWarning(options = {}) {
       startedAtRef.current = null;
       lastTickAtRef.current = null;
       stallTriggeredRef.current = false;
-      clearTimers();
-      if (mountedRef.current) {
-        setShouldShowWarning(false);
+
+      // Stop the threshold/tick/watchdog timers. The indicator-hide is
+      // deferred via hideTimerRef so a follow-up save within HIDE_GRACE_MS
+      // can keep the indicator continuously visible instead of flickering.
+      if (warningTimerRef.current) {
+        clearTimeout(warningTimerRef.current);
+        warningTimerRef.current = null;
+      }
+      if (tickTimerRef.current) {
+        clearInterval(tickTimerRef.current);
+        tickTimerRef.current = null;
+      }
+      if (watchdogTimerRef.current) {
+        clearInterval(watchdogTimerRef.current);
+        watchdogTimerRef.current = null;
+      }
+      if (stallCooldownRef.current) {
+        clearTimeout(stallCooldownRef.current);
+        stallCooldownRef.current = null;
+      }
+
+      if (!mountedRef.current) return;
+
+      if (shouldShowWarning) {
+        if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+        hideTimerRef.current = setTimeout(() => {
+          hideTimerRef.current = null;
+          if (!mountedRef.current || isSavingRef.current) return;
+          setShouldShowWarning(false);
+          setElapsedMs(0);
+        }, HIDE_GRACE_MS);
+      } else {
         setElapsedMs(0);
       }
     }
-  }, [syncStatus, thresholdMs, clearTimers, startTicking]);
+  }, [syncStatus, thresholdMs, clearTimers, startTicking, shouldShowWarning]);
 
   /**
    * Reset the indicator (e.g. user clicked "retry").

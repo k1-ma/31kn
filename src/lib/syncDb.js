@@ -2113,6 +2113,12 @@ export function useSyncedDb(userId, seed, options = {}) {
           const serverVersion = e.data.current_version ?? 0;
           // Merge server state with local state
           const merged = mergeStates(stateToSync, serverState, false, true);
+          // Suppress the save-effect's redundant sync-back for the merged
+          // state — we sync it inline below via apiJson. Without this, the
+          // setDb(merged) below would queue a debounced save that fires
+          // after the inline retry, producing a saving→synced→saving→synced
+          // status cycle that flickers the OfflineBanner sync indicator.
+          justLoadedFromServerRef.current = true;
           // Update local state with merged result
           dbRef.current = merged;
           setDb(merged);
