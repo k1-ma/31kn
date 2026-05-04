@@ -1,18 +1,22 @@
 /**
  * @file Win Rate Calculation Helper
- * 
+ *
  * Centralized functions for calculating Win Rate (WR) with configurable
  * break-even handling mode.
- * 
+ *
  * Mode options:
  * - "ignore": BE trades don't affect WR. WR = wins / (wins + losses) * 100
  * - "loss": BE trades count as losses. WR = wins / (wins + losses + breakEvens) * 100
- * 
- * IMPORTANT: PnL ALWAYS determines win/loss classification:
- * - pnl > 0 → always "win"
- * - pnl < 0 → always "loss"
- * - pnl === 0 → "be" (break-even)
- * 
+ *
+ * Classification priority:
+ * 1. isBreakEven flag is the SOURCE OF TRUTH — when set, the trade is "be"
+ *    regardless of PnL sign (a BU trade stays BU even if commissions/swaps
+ *    push the realized PnL above or below zero).
+ * 2. Otherwise, PnL determines outcome:
+ *    - pnl > 0 → "win"
+ *    - pnl < 0 → "loss"
+ *    - pnl === 0 → "be"
+ *
  * The winRateMode is a GLOBAL journal setting (ui.winRateMode), not per-account.
  */
 
@@ -180,13 +184,7 @@ export function getWinRatePrefs(account, fallbackMode = "ignore") {
 /**
  * Classify a trade outcome based on PnL, with optional isBreakEven override.
  *
- * Classification logic:
- * 1. If pnl > 0 → "win" (ALWAYS, regardless of isBreakEven)
- * 2. If pnl < 0 AND isBreakEven === true:
- *    - mode === "loss" → "loss"
- *    - otherwise → "be" (user marked it as break-even)
- * 3. If pnl < 0 AND isBreakEven !== true → "loss"
- * 4. If pnl === 0 → "be"
+ * See {@link classifyTradeOutcome} for the full ruleset.
  *
  * @param {Object} params - Parameters
  * @param {number} params.pnl - Profit/Loss value
@@ -200,27 +198,22 @@ export function classifyOutcomeByPnL({ pnl, isBreakEven = false, mode = "ignore"
 
 /**
  * Classify a trade outcome based on PnL and optional isBreakEven flag.
- * 
+ *
  * This is the unified classifier for trade outcomes. It handles:
- * - Standard PnL-based classification
- * - isBreakEven flag for manually marked break-even trades
+ * - The user-set isBreakEven flag (highest priority)
+ * - PnL-based classification when not flagged as break-even
  * - Mode-based treatment of break-evens
- * 
- * Classification rules (IMPORTANT):
- * 1. If pnl > 0 → "win" (ALWAYS, regardless of isBreakEven)
- * 2. If pnl < 0 AND isBreakEven === true:
- *    - mode === "loss" → "loss"  
- *    - mode === "ignore" → "be" (treat as neutral)
- * 3. If pnl < 0 AND isBreakEven === false → "loss"
- * 4. If pnl === 0 → "be" (break-even)
- * 
- * Note: isBreakEven flag only affects negative PnL trades because:
- * - Positive PnL is always a win (profit is profit)
- * - Zero PnL is always break-even by definition
- * - Only negative PnL can be marked as "manual break-even" (e.g., closed at slight loss but intended as BE)
- * 
+ *
+ * Classification rules (IMPORTANT — isBreakEven is the source of truth):
+ * 1. If isBreakEven === true → "be" (or "loss" when mode === "loss"),
+ *    regardless of PnL sign. A trade the user marked as BU stays BU even if
+ *    commissions/swaps/execution errors push realized PnL above or below zero.
+ * 2. If pnl > 0 → "win"
+ * 3. If pnl < 0 → "loss"
+ * 4. If pnl === 0 → "be" (break-even by definition)
+ *
  * Note: RR thresholds do NOT override win/loss based on PnL.
- * 
+ *
  * @param {Object} params - Parameters
  * @param {number} params.pnl - Profit/Loss value
  * @param {boolean} [params.isBreakEven=false] - Whether trade is manually marked as break-even
@@ -230,20 +223,14 @@ export function classifyOutcomeByPnL({ pnl, isBreakEven = false, mode = "ignore"
 export function classifyTradeOutcome({ pnl, isBreakEven = false, mode = "ignore" }) {
   const pnlVal = clampNum(pnl);
   const m = mode === "loss" ? "loss" : "ignore";
-  
-  // Rule 1: PnL > 0 is always win (profit is profit, regardless of isBreakEven flag)
-  if (pnlVal > 0) return "win";
-  
-  // Rule 2 & 3: Negative PnL handling
-  if (pnlVal < 0) {
-    // If manually marked as break-even (small loss treated as BE)
-    if (isBreakEven) {
-      return m === "loss" ? "loss" : "be";
-    }
-    return "loss";
+
+  // Rule 1: explicit BE flag wins over PnL sign in either direction.
+  if (isBreakEven) {
+    return m === "loss" ? "loss" : "be";
   }
-  
-  // Rule 4: PnL === 0 is break-even
+
+  if (pnlVal > 0) return "win";
+  if (pnlVal < 0) return "loss";
   return "be";
 }
 

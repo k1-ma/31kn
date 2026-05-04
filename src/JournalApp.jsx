@@ -301,11 +301,12 @@ export default function JournalApp() {
     };
 
     const applyOutcome = (outcome, a) => {
-      // BE: allow user-entered PnL (+/-) for commissions/swaps/execution errors
-      if (outcome === "BE") return { ...a, pnl: clampNum(a?.pnl) };
+      // BE: allow user-entered PnL (+/-) for commissions/swaps/execution errors,
+      // and tag the allocation so statistics treat it as break-even regardless of sign.
+      if (outcome === "BE") return { ...a, pnl: clampNum(a?.pnl), isBreakEven: true };
       const pnlAbs = Math.abs(clampNum(a?.pnl));
       const sign = outcome === "Loss" ? -1 : 1;
-      return { ...a, pnl: sign * pnlAbs };
+      return { ...a, pnl: sign * pnlAbs, isBreakEven: false };
     };
 
     const trades = tradesIn.map((t) => {
@@ -352,6 +353,8 @@ export default function JournalApp() {
         rr = rrValues.length ? rrValues.reduce((s, r) => s + r, 0) / rrValues.length : 0;
       }
 
+      const isBreakEven = outcome === "BE";
+
       const next = {
         ...t,
         allocations: allocs,
@@ -360,6 +363,7 @@ export default function JournalApp() {
         pnl,
         rr,
         outcome,
+        isBreakEven,
         deletedAt: typeof t?.deletedAt === "number" ? t.deletedAt : null,
       };
 
@@ -369,6 +373,7 @@ export default function JournalApp() {
         next.pnl !== t.pnl ||
         next.rr !== t.rr ||
         next.outcome !== t.outcome ||
+        next.isBreakEven !== !!t?.isBreakEven ||
         next.deletedAt !== (typeof t?.deletedAt === "number" ? t.deletedAt : null)
       ) {
         changed = true;
@@ -1264,11 +1269,12 @@ export default function JournalApp() {
 
     // Apply outcome sign normalization: BE allows +/- PnL; Loss forces negative; Profit forces positive
     allocs = allocs.map((a) => {
-      // BE: allow user-entered PnL (+/-) for commissions/swaps/execution errors
-      if (outcome === "BE") return { ...a, pnl: clampNum(a.pnl) };
+      // BE: allow user-entered PnL (+/-) for commissions/swaps/execution errors,
+      // and tag the allocation so statistics treat it as break-even regardless of sign.
+      if (outcome === "BE") return { ...a, pnl: clampNum(a.pnl), isBreakEven: true };
       const pnlAbs = Math.abs(clampNum(a.pnl));
       const sign = outcome === "Loss" ? -1 : 1;
-      return { ...a, pnl: sign * pnlAbs };
+      return { ...a, pnl: sign * pnlAbs, isBreakEven: false };
     });
 
     // Compute trade.pnl as NET (gross - abs(commission)) so commission is reflected
@@ -1292,6 +1298,7 @@ export default function JournalApp() {
       accountId: allocs[0]?.accountId ?? "",
       riskPctOverride: allocs[0]?.riskPctOverride ?? null,
       outcome,
+      isBreakEven: outcome === "BE",
       pnl,
       rr,
     };

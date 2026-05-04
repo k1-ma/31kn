@@ -11,6 +11,7 @@ import {
   getWinRatePrefs,
   getGlobalWinRateMode,
   classifyOutcomeByRRAndPnL,
+  classifyTradeOutcome,
   countTradeOutcomesWithPrefs,
 } from "../metrics/winRate.js";
 
@@ -224,6 +225,52 @@ test("PnL ALWAYS determines win/loss, neutralRR does NOT override", () => {
   // WR in loss mode: 2/(2+2+1) = 40%
   const wrLoss = calcWinRatePct({ wins, losses, breakEvens: bes, mode: "loss" });
   expect(wrLoss).toBeCloseTo(40, 1);
+});
+
+// isBreakEven flag is the source of truth — BU stays BU regardless of PnL sign
+console.log("\n--- isBreakEven flag overrides PnL sign ---");
+
+test("isBreakEven=true with positive pnl → 'be' (ignore mode)", () => {
+  expect(classifyTradeOutcome({ pnl: 50, isBreakEven: true })).toBe("be");
+});
+
+test("isBreakEven=true with negative pnl → 'be' (ignore mode)", () => {
+  expect(classifyTradeOutcome({ pnl: -25, isBreakEven: true })).toBe("be");
+});
+
+test("isBreakEven=true with zero pnl → 'be'", () => {
+  expect(classifyTradeOutcome({ pnl: 0, isBreakEven: true })).toBe("be");
+});
+
+test("isBreakEven=true with positive pnl in loss mode → 'loss'", () => {
+  expect(classifyTradeOutcome({ pnl: 50, isBreakEven: true, mode: "loss" })).toBe("loss");
+});
+
+test("isBreakEven=true with negative pnl in loss mode → 'loss'", () => {
+  expect(classifyTradeOutcome({ pnl: -25, isBreakEven: true, mode: "loss" })).toBe("loss");
+});
+
+test("isBreakEven=false with positive pnl → 'win'", () => {
+  expect(classifyTradeOutcome({ pnl: 50, isBreakEven: false })).toBe("win");
+});
+
+test("isBreakEven=false with negative pnl → 'loss'", () => {
+  expect(classifyTradeOutcome({ pnl: -25, isBreakEven: false })).toBe("loss");
+});
+
+test("user-reported scenario: BU trade with +pnl is not counted as win", () => {
+  // Trader marked outcome=BE (BU) but pnl > 0 due to swap/commission rebate.
+  // Bug behavior was: counted as win. Fixed behavior: counted as BE.
+  const trades = [
+    { allocations: [{ pnl: 30, isBreakEven: true }] },  // BU with positive
+    { allocations: [{ pnl: -10, isBreakEven: true }] }, // BU with negative
+    { allocations: [{ pnl: 100, isBreakEven: false }] }, // real win
+    { allocations: [{ pnl: -50, isBreakEven: false }] }, // real loss
+  ];
+  const counts = countTradeOutcomesWithPrefs(trades, { mode: "ignore" });
+  expect(counts.wins).toBe(1);
+  expect(counts.losses).toBe(1);
+  expect(counts.breakEvens).toBe(2);
 });
 
 // Summary
