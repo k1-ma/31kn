@@ -1,8 +1,13 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Button from "@/components/ui/Button.jsx";
 import Badge from "@/components/ui/Badge.jsx";
 import { useAuth } from "@/auth/AuthProvider.jsx";
 import { LogOut, Shield, Cloud, CloudOff, User, AlertTriangle, RefreshCw, Save, Check, Upload } from "lucide-react";
+
+// Grace period after a save completes before the badge can show "synced"
+// or "pending" again. Eliminates blue→green→blue flicker during rapid
+// add/delete bursts on slower networks (notably visible on Windows).
+const STATUS_SMOOTH_GRACE_MS = 1500;
 
 function statusBadge(syncStatus, hasUnsavedChanges, syncProgress) {
   // Show chunk progress during chunked sync
@@ -38,6 +43,29 @@ function UserMenu({
   const roleColor = user?.role_color || null;
   const displayName = (user?.display_name || user?.nickname || user?.username || "").trim();
   const [retrying, setRetrying] = useState(false);
+
+  // Smooth out rapid "saving → synced → saving" transitions so the badge
+  // doesn't flicker on bursts of mutations.  Real syncStatus is still used
+  // for the retry button and tooltip — only the visible badge is smoothed.
+  const [smoothedStatus, setSmoothedStatus] = useState(syncStatus);
+  const smoothedStatusRef = useRef(smoothedStatus);
+  smoothedStatusRef.current = smoothedStatus;
+  useEffect(() => {
+    if (syncStatus === "saving") {
+      setSmoothedStatus("saving");
+      return;
+    }
+    // If we were just in "saving" and now moved to a benign state, hold the
+    // "saving" appearance for a short grace period to absorb a follow-up save.
+    if (
+      smoothedStatusRef.current === "saving" &&
+      (syncStatus === "synced" || syncStatus === "pending")
+    ) {
+      const t = setTimeout(() => setSmoothedStatus(syncStatus), STATUS_SMOOTH_GRACE_MS);
+      return () => clearTimeout(t);
+    }
+    setSmoothedStatus(syncStatus);
+  }, [syncStatus]);
 
   const handleRetry = async () => {
     if (!onRetrySync || retrying) return;
@@ -96,9 +124,12 @@ function UserMenu({
     return { label: rr, icon: baseIcon, className: palette[h % palette.length] };
   };
 
-  const s = statusBadge(syncStatus, hasUnsavedChanges, syncProgress);
+  // Visible badge uses smoothedStatus so it doesn't flip green/blue on bursts.
+  const s = statusBadge(smoothedStatus, hasUnsavedChanges, syncProgress);
   const r = roleStyle(role, roleColor);
   const showRole = (role && role !== "user") || !!roleColor;
+  // Retry button keys off the REAL syncStatus so it appears immediately on
+  // a real failure, without waiting for the smoothing grace period.
   const showRetry = onRetrySync && (syncStatus === "error" || syncStatus === "offline" || hasUnsavedChanges);
   
   // Build tooltip with error info

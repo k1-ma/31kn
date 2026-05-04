@@ -1233,6 +1233,12 @@ export function useSyncedDb(userId, seed, options = {}) {
   const lastSuccessfulSync = useRef(null); // Timestamp of last successful sync
   const consecutiveFailures = useRef(0); // Count of consecutive sync failures
   const syncInFlight = useRef(false); // Guard against concurrent syncs
+  // Set when a mutation arrives while syncInFlight is true. After the current
+  // sync completes successfully, we trigger one more save with the latest
+  // dbRef.current to avoid losing the concurrent mutation.
+  // Bounded by autoResyncCountRef so a buggy state can't loop forever.
+  const pendingResyncRef = useRef(false);
+  const autoResyncCountRef = useRef(0);
   const shareInFlightRef = useRef(false); // Guard: block visibility-change fetchState during share operations
   const justLoadedFromServerRef = useRef(false); // Skip sync-back after fetchState
   const isResettingRef = useRef(false); // Guard: skip save effect during userId-change reset
@@ -1243,6 +1249,7 @@ export function useSyncedDb(userId, seed, options = {}) {
   syncStatusRef.current = syncStatus;
   const MAX_RETRIES = 3;
   const RETRY_DELAY = 2000; // 2 seconds
+  const MAX_AUTO_RESYNC = 3; // Cap on auto-resync after concurrent-mutation skips
   const DEBOUNCE_FAST_MS = 800; // When user stops typing after a single change
   const DEBOUNCE_SLOW_MS = 1500; // When user is actively making changes
   // Debounce for userId change effect — VPN reconnections can cause rapid
@@ -1775,7 +1782,12 @@ export function useSyncedDb(userId, seed, options = {}) {
 
     // Prevent concurrent sync requests
     if (syncInFlight.current) {
-      if (IS_DEV) console.log("[syncDb] Sync already in flight, skipping");
+      // Remember that a mutation arrived during an in-flight sync.  The
+      // current sync's success-handler will pick this up and trigger one
+      // more save with the latest dbRef.current so the concurrent mutation
+      // doesn't get stranded until the next heartbeat.
+      pendingResyncRef.current = true;
+      if (IS_DEV) console.log("[syncDb] Sync already in flight, marking for resync");
       return { success: false, skipped: true };
     }
 
@@ -2324,6 +2336,40 @@ export function useSyncedDb(userId, seed, options = {}) {
       const result = await syncToServer(db);
 
       if (result.success) {
+        // Auto-resync: if a concurrent mutation got skipped during this sync
+        // (caught by the syncInFlight guard), immediately retry with the
+        // latest dbRef.current so the concurrent mutation isn't stranded.
+        // Capped by MAX_AUTO_RESYNC to prevent infinite loops.
+        if (pendingResyncRef.current && autoResyncCountRef.current < MAX_AUTO_RESYNC) {
+          pendingResyncRef.current = false;
+          autoResyncCountRef.current += 1;
+          if (IS_DEV) console.log(`[syncDb] Auto-resync ${autoResyncCountRef.current}/${MAX_AUTO_RESYNC} after concurrent mutation`);
+          // Status remains "saving" — don't flip to synced between rapid mutations.
+          setSyncStatus("saving");
+          if (saveTimer.current) clearTimeout(saveTimer.current);
+          saveTimer.current = setTimeout(() => {
+            // Fire-and-forget; failures fall through to existing outbox flow
+            // via syncToServer's internal error handling.
+            syncToServer(dbRef.current).then((r) => {
+              if (r.success) {
+                if (pendingResyncRef.current && autoResyncCountRef.current < MAX_AUTO_RESYNC) {
+                  // Yet another mutation arrived — keep status "saving"; the
+                  // existing save useEffect (re-triggered by setDb) or another
+                  // resync iteration will handle it.
+                  setSyncStatus("saving");
+                } else {
+                  pendingResyncRef.current = false;
+                  autoResyncCountRef.current = 0;
+                  setSyncStatus("synced");
+                  changeCount.current = 0;
+                }
+              }
+            });
+          }, 50);
+          return;
+        }
+        pendingResyncRef.current = false;
+        autoResyncCountRef.current = 0;
         setSyncStatus("synced");
         changeCount.current = 0;
       } else if (result.skipped) {
