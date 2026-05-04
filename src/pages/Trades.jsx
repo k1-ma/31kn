@@ -306,12 +306,14 @@ function inferOutcomeFromTotals(pnl) {
 
 function applyOutcomeToAllocs(outcome, allocs) {
   return (allocs || []).map((a) => {
-    // BE: allow user-entered PnL (+/-) for commissions/swaps/execution errors
-    if (outcome === "BE") return { ...a, pnl: clampNum(a.pnl) };
-    // Loss: force negative, Profit: force positive
+    // BE: allow user-entered PnL (+/-) for commissions/swaps/execution errors,
+    // and tag the allocation so statistics treat it as break-even.
+    if (outcome === "BE") return { ...a, pnl: clampNum(a.pnl), isBreakEven: true };
+    // Loss: force negative, Profit: force positive. Clear the BE flag so a
+    // previously-BE allocation switched to Profit/Loss is no longer counted as BE.
     const pnlAbs = Math.abs(clampNum(a.pnl));
     const sign = outcome === "Loss" ? -1 : 1;
-    return { ...a, pnl: sign * pnlAbs };
+    return { ...a, pnl: sign * pnlAbs, isBreakEven: false };
   });
 }
 
@@ -685,10 +687,11 @@ function TradeEditor({ initial, accounts, documents, ideas = [], libraries, onSa
       const allocId = sanitizedAlloc.id || rawAlloc.id || uid();
       
       // BE: allow user-entered PnL (+/-); Loss: force negative; Profit: force positive
-      const normalizedPnl = t.outcome === "BE" 
-        ? pnlVal 
+      const normalizedPnl = t.outcome === "BE"
+        ? pnlVal
         : (t.outcome === "Loss" ? -Math.abs(pnlVal) : Math.abs(pnlVal));
-      
+      const isBreakEvenFlag = t.outcome === "BE";
+
       const allocsWithoutAccount = [{
         id: allocId,
         accountId: "",
@@ -697,6 +700,7 @@ function TradeEditor({ initial, accounts, documents, ideas = [], libraries, onSa
         riskUsd: riskUsdVal,
         pnl: normalizedPnl,
         commission: commissionVal,
+        isBreakEven: isBreakEvenFlag,
       }];
       
       // Clean up links and images
@@ -720,6 +724,7 @@ function TradeEditor({ initial, accounts, documents, ideas = [], libraries, onSa
         rr: rrVal,
         pnl: normalizedPnl,
         outcome: t.outcome || inferOutcomeFromTotals(pnlVal),
+        isBreakEven: isBreakEvenFlag,
         links: cleanedLinks,
         images: cleanedImages,
         tradeLink: cleanedLinks.length > 0 ? cleanedLinks[0].url : (t.tradeLink || ""),
@@ -776,6 +781,7 @@ function TradeEditor({ initial, accounts, documents, ideas = [], libraries, onSa
       rr: totalR,
       pnl: totalPnl,  // Always save actual PnL, even for BE (outcome is a label, pnl is money)
       outcome: t.outcome || inferOutcomeFromTotals(totalPnl),
+      isBreakEven: t.outcome === "BE",
       links: cleanedLinks,
       images: cleanedImages,
       // Keep tradeLink for backward compatibility (use first link if exists)
