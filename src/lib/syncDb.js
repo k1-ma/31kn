@@ -115,6 +115,25 @@ function classifySyncError(err) {
   return "unknown";
 }
 
+// Error codes that represent transient/recoverable failures.  Once the
+// heartbeat ping confirms the server is reachable again, these can be
+// safely cleared from `lastError` so the red badge / error tooltip don't
+// stay stuck after the underlying problem has resolved.
+//
+// Codes intentionally NOT in this set require explicit user action or a
+// fresh server response to clear (UNAUTHORIZED → refetch, PAYLOAD_TOO_LARGE
+// → user removes data, *_BLOCKED → manual investigation, etc).
+const TRANSIENT_ERROR_CODES = new Set([
+  "NETWORK_ERROR",
+  "TIMEOUT",
+  "PING_FAILED",
+  "SERVER_ERROR",
+  "SYNC_ERROR",
+  "LOAD_ERROR",
+  "SYNC_INCOMPLETE",
+  "VERSION_CONFLICT",
+]);
+
 // State size threshold for performance warnings (in KB)
 const STATE_SIZE_WARNING_KB = 900;
 
@@ -2628,9 +2647,13 @@ export function useSyncedDb(userId, seed, options = {}) {
   // ─────────────────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!userId) return;
-    
+
     let lastReachable = true;
-    
+    // Cancellation token shared by any heartbeat-triggered refetch so that
+    // unmounting (e.g. userId change) prevents stale state from being
+    // applied after the effect tears down.
+    const heartbeatCancelled = { value: false };
+
     const checkServerReachability = async () => {
       // Skip while the tab is hidden — background-tab throttling can cause
       // pingServer's AbortController timer to fire before the throttled
@@ -2665,17 +2688,17 @@ export function useSyncedDb(userId, seed, options = {}) {
         }
       }
 
-      // Recover from a stale red banner: if the server is currently reachable
-      // but a previous transient ping/sync failure left lastError or syncStatus
-      // stuck in an error state, clear it.  Without this, the user sees a
-      // permanent "NETWORK_ERROR" banner even though every heartbeat ping is
-      // succeeding — recovery only happens on the next save/visibilitychange,
-      // which may not occur if the user just looks at the page.
+      // Recover from a stale red badge / banner: if the server is currently
+      // reachable but a previous transient ping/sync failure left lastError
+      // or syncStatus stuck in an error state, clear it. Without this, the
+      // user sees a permanent red CloudOff badge even though every heartbeat
+      // ping is succeeding — recovery would otherwise only happen on the
+      // next save, which may never come if the user just looks at the page.
       // Mirrors the same recovery already done by handleHeartbeatVisibility.
       if (reachable) {
         setLastError(prev => {
           if (!prev) return prev;
-          if (prev.code === "NETWORK_ERROR" || prev.code === "TIMEOUT" || prev.code === "PING_FAILED") {
+          if (TRANSIENT_ERROR_CODES.has(prev.code)) {
             if (IS_DEV) {
               console.log("[syncDb] Heartbeat: clearing stale error", prev.code);
             }
@@ -2687,6 +2710,18 @@ export function useSyncedDb(userId, seed, options = {}) {
         if (stuckStatus === "error" || stuckStatus === "offline") {
           setSyncStatus(hasOutbox(userId) ? "pending" : "synced");
           consecutiveFailures.current = 0;
+        } else if (stuckStatus === "unauthorized") {
+          // Ping succeeded — auth may have recovered (cookie refreshed in
+          // another tab, session re-established, transient 401 race). The
+          // ping endpoint itself doesn't verify auth, so we trigger a real
+          // refetch — it will set the correct status: "synced"/"pending"
+          // if auth is now valid, or back to "unauthorized" if it isn't.
+          // Without this, the badge stays red forever after a one-off 401.
+          if (IS_DEV) {
+            console.log("[syncDb] Heartbeat: probing auth recovery via refetch");
+          }
+          retryCount.current = 0;
+          fetchState(heartbeatCancelled);
         }
       }
 
@@ -2730,7 +2765,7 @@ export function useSyncedDb(userId, seed, options = {}) {
       consecutiveFailures.current = 0;
       setLastError(prev => {
         if (!prev) return prev;
-        if (prev.code === "NETWORK_ERROR" || prev.code === "TIMEOUT" || prev.code === "PING_FAILED") {
+        if (TRANSIENT_ERROR_CODES.has(prev.code)) {
           return null;
         }
         return prev;
@@ -2740,6 +2775,13 @@ export function useSyncedDb(userId, seed, options = {}) {
       // will refine this once the ping returns.
       if (syncStatusRef.current === "error") {
         setSyncStatus(hasOutbox(userId) ? "pending" : "synced");
+      } else if (syncStatusRef.current === "unauthorized") {
+        // Returning to a tab that's been showing "unauthorized" — probe
+        // auth via refetch. fetchState will reinstate "unauthorized" if
+        // the session is still bad, otherwise transition to a healthy
+        // status. Mirrors the periodic-heartbeat recovery above.
+        retryCount.current = 0;
+        fetchState(heartbeatCancelled);
       }
       // Force a fresh ping so the badge updates without waiting up to 30s.
       lastReachable = false; // ensure the result is treated as a transition
@@ -2755,10 +2797,13 @@ export function useSyncedDb(userId, seed, options = {}) {
     heartbeatTimer.current = setInterval(checkServerReachability, HEARTBEAT_INTERVAL_MS);
 
     return () => {
+      // Cancel any in-flight heartbeat-triggered refetch so its setState
+      // calls don't run after this effect has torn down.
+      heartbeatCancelled.value = true;
       document.removeEventListener("visibilitychange", handleHeartbeatVisibility);
       if (heartbeatTimer.current) clearInterval(heartbeatTimer.current);
     };
-  }, [userId, retryOutbox]);
+  }, [userId, retryOutbox, fetchState]);
 
   // ─────────────────────────────────────────────────────────────────────────────
   // ONLINE/AUTH RECOVERY - Auto-retry outbox when connectivity or auth restored
