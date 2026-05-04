@@ -33,7 +33,7 @@ import { NO_ACCOUNT_ID, tradeHasAccount, hasTradesWithoutAccount, createNoAccoun
 import { createPublicShare, createShareWithToast, sanitizeTradeForPublic, getShareUrl, compressSharePayload } from "@/lib/share.js";
 import { HOVER_GLOW } from "@/lib/ui.js";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
-import { calcWinRatePct, getGlobalWinRateMode } from "@/lib/metrics/winRate.js";
+import { calcWinRatePct, getGlobalWinRateMode, classifyTradeOutcome, isTradeBreakEven } from "@/lib/metrics/winRate.js";
 import { isDeleted, monoNow } from "@/lib/syncDb.js";
 import { setDirty } from "@/lib/navGuard.js";
 import {
@@ -306,12 +306,14 @@ function inferOutcomeFromTotals(pnl) {
 
 function applyOutcomeToAllocs(outcome, allocs) {
   return (allocs || []).map((a) => {
-    // BE: allow user-entered PnL (+/-) for commissions/swaps/execution errors
-    if (outcome === "BE") return { ...a, pnl: clampNum(a.pnl) };
-    // Loss: force negative, Profit: force positive
+    // BE: allow user-entered PnL (+/-) for commissions/swaps/execution errors,
+    // and tag the allocation so statistics treat it as break-even.
+    if (outcome === "BE") return { ...a, pnl: clampNum(a.pnl), isBreakEven: true };
+    // Loss: force negative, Profit: force positive. Clear the BE flag so a
+    // previously-BE allocation switched to Profit/Loss is no longer counted as BE.
     const pnlAbs = Math.abs(clampNum(a.pnl));
     const sign = outcome === "Loss" ? -1 : 1;
-    return { ...a, pnl: sign * pnlAbs };
+    return { ...a, pnl: sign * pnlAbs, isBreakEven: false };
   });
 }
 
@@ -685,10 +687,11 @@ function TradeEditor({ initial, accounts, documents, ideas = [], libraries, onSa
       const allocId = sanitizedAlloc.id || rawAlloc.id || uid();
       
       // BE: allow user-entered PnL (+/-); Loss: force negative; Profit: force positive
-      const normalizedPnl = t.outcome === "BE" 
-        ? pnlVal 
+      const normalizedPnl = t.outcome === "BE"
+        ? pnlVal
         : (t.outcome === "Loss" ? -Math.abs(pnlVal) : Math.abs(pnlVal));
-      
+      const isBreakEvenFlag = t.outcome === "BE";
+
       const allocsWithoutAccount = [{
         id: allocId,
         accountId: "",
@@ -697,6 +700,7 @@ function TradeEditor({ initial, accounts, documents, ideas = [], libraries, onSa
         riskUsd: riskUsdVal,
         pnl: normalizedPnl,
         commission: commissionVal,
+        isBreakEven: isBreakEvenFlag,
       }];
       
       // Clean up links and images
@@ -720,6 +724,7 @@ function TradeEditor({ initial, accounts, documents, ideas = [], libraries, onSa
         rr: rrVal,
         pnl: normalizedPnl,
         outcome: t.outcome || inferOutcomeFromTotals(pnlVal),
+        isBreakEven: isBreakEvenFlag,
         links: cleanedLinks,
         images: cleanedImages,
         tradeLink: cleanedLinks.length > 0 ? cleanedLinks[0].url : (t.tradeLink || ""),
@@ -776,6 +781,7 @@ function TradeEditor({ initial, accounts, documents, ideas = [], libraries, onSa
       rr: totalR,
       pnl: totalPnl,  // Always save actual PnL, even for BE (outcome is a label, pnl is money)
       outcome: t.outcome || inferOutcomeFromTotals(totalPnl),
+      isBreakEven: t.outcome === "BE",
       links: cleanedLinks,
       images: cleanedImages,
       // Keep tradeLink for backward compatibility (use first link if exists)
@@ -2588,11 +2594,12 @@ export default function Trades({ trades, accounts, documents, ideas = [], librar
       const pnl = sumPnL(allocs);
 
       const prev = map.get(key) || { pnl: 0, trades: 0, wins: 0, losses: 0, tradeList: [] };
+      const outcome = classifyTradeOutcome({ pnl, isBreakEven: isTradeBreakEven(tr), mode: "ignore" });
       const next = { ...prev };
       next.pnl += pnl;
       next.trades += 1;
-      if (pnl > 0) next.wins += 1;
-      if (pnl < 0) next.losses += 1;
+      if (outcome === "win") next.wins += 1;
+      else if (outcome === "loss") next.losses += 1;
       next.tradeList = [...prev.tradeList, tr];
 
       map.set(key, next);
@@ -2628,8 +2635,9 @@ export default function Trades({ trades, accounts, documents, ideas = [], librar
       const allocs = asAllocations(tr, accounts).map(sanitizeAlloc);
       const p = sumPnL(allocs);
       pnl += p;
-      if (p > 0) wins += 1;
-      else if (p < 0) losses += 1;
+      const outcome = classifyTradeOutcome({ pnl: p, isBreakEven: isTradeBreakEven(tr), mode: "ignore" });
+      if (outcome === "win") wins += 1;
+      else if (outcome === "loss") losses += 1;
       else breakEvens += 1;
       if (p > biggestWin) biggestWin = p;
       if (p < biggestLoss) biggestLoss = p;
@@ -3362,7 +3370,7 @@ export default function Trades({ trades, accounts, documents, ideas = [], librar
                             initial={reduceMotion ? false : { opacity: 0, y: 6 }}
                             animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
                             exit={reduceMotion ? { opacity: 1 } : { opacity: 0, y: 6 }}
-                            transition={reduceMotion ? { duration: 0 } : { duration: 0.16, delay: Math.min(idx * 0.02, 0.12) }}
+                            transition={reduceMotion ? { duration: 0 } : { duration: 0.16 }}
                             className={`border-t border-accent/15 hover:bg-white/30 dark:hover:bg-slate-900/30 cursor-pointer ${isSelected ? "bg-accent/10" : ""}`}
                             style={trade.highlightColor ? { borderLeft: `3px solid ${trade.highlightColor}`, backgroundColor: trade.highlightColor + "0a" } : undefined}
                             onClick={() => handleTradeRowClick(trade)}
@@ -3861,8 +3869,9 @@ export default function Trades({ trades, accounts, documents, ideas = [], librar
                   const allocs = asAllocations(tr, accounts).map(sanitizeAlloc);
                   const pnl = sumPnL(allocs);
                   const sym = symById.get(tr.symbolId);
-                  const isWin = pnl > 0;
-                  const isLoss = pnl < 0;
+                  const outcome = classifyTradeOutcome({ pnl, isBreakEven: isTradeBreakEven(tr), mode: "ignore" });
+                  const isWin = outcome === "win";
+                  const isLoss = outcome === "loss";
                   
                   return (
                     <div

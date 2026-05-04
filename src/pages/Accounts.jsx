@@ -24,7 +24,7 @@ import { HOVER_GLOW } from "@/lib/ui.js";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { isDeleted } from "@/lib/syncDb.js";
 
-import { calcWinRatePct, getGlobalWinRateMode } from "@/lib/metrics/winRate.js";
+import { calcWinRatePct, getGlobalWinRateMode, classifyTradeOutcome } from "@/lib/metrics/winRate.js";
 import {
   mergePropTemplates,
   getTemplate,
@@ -340,8 +340,10 @@ function QuickStats({ trades, account, t, winRateMode = "ignore" }) {
       const alloc = (tr.allocations || []).find(a => a.accountId === account.id);
       if (alloc) {
         const pnl = clampNum(alloc.pnl);
-        if (pnl > 0) wins++;
-        else if (pnl < 0) losses++;
+        const isBE = Boolean(alloc.isBreakEven || tr.isBreakEven);
+        const outcome = classifyTradeOutcome({ pnl, isBreakEven: isBE, mode: "ignore" });
+        if (outcome === "win") wins++;
+        else if (outcome === "loss") losses++;
         else breakEvens++;
       }
     }
@@ -2157,6 +2159,8 @@ function AccountDetailModal({ open, onClose, account, templates, trades, symbols
 
       const alloc = (tr.allocations || []).find(a => a.accountId === account.id);
       const pnl = clampNum(alloc?.pnl);
+      const isBE = Boolean(alloc?.isBreakEven || tr?.isBreakEven);
+      const outcome = classifyTradeOutcome({ pnl, isBreakEven: isBE, mode: "ignore" });
 
       const prev = map.get(key) || {
         pnl: 0,
@@ -2168,8 +2172,8 @@ function AccountDetailModal({ open, onClose, account, templates, trades, symbols
       const next = { ...prev };
       next.pnl += pnl;
       next.trades += 1;
-      if (pnl > 0) next.wins += 1;
-      if (pnl < 0) next.losses += 1;
+      if (outcome === "win") next.wins += 1;
+      else if (outcome === "loss") next.losses += 1;
 
       map.set(key, next);
     }
@@ -2202,9 +2206,11 @@ function AccountDetailModal({ open, onClose, account, templates, trades, symbols
       if (key) uniqDays.add(key);
       const alloc = (tr.allocations || []).find(a => a.accountId === account.id);
       const p = clampNum(alloc?.pnl);
+      const isBE = Boolean(alloc?.isBreakEven || tr?.isBreakEven);
+      const outcome = classifyTradeOutcome({ pnl: p, isBreakEven: isBE, mode: "ignore" });
       pnl += p;
-      if (p > 0) wins += 1;
-      else if (p < 0) losses += 1;
+      if (outcome === "win") wins += 1;
+      else if (outcome === "loss") losses += 1;
       else breakEvens += 1;
 
       if (p > biggestWin) biggestWin = p;
@@ -2282,9 +2288,11 @@ function AccountDetailModal({ open, onClose, account, templates, trades, symbols
       for (const a of allocs) {
         if (a.accountId !== account.id) continue;
         const pnl = clampNum(a.pnl);
+        const isBE = Boolean(a.isBreakEven || tr.isBreakEven);
+        const outcome = classifyTradeOutcome({ pnl, isBreakEven: isBE, mode: "ignore" });
         totalPnl += pnl;
-        if (pnl > 0) wins++;
-        else if (pnl < 0) losses++;
+        if (outcome === "win") wins++;
+        else if (outcome === "loss") losses++;
         else breakEvens++;
         if (tr.date) days.add(tr.date.slice(0, 10));
       }
