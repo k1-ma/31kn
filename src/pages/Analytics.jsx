@@ -18,7 +18,7 @@ import TradePreviewDrawer from "@/components/analytics/TradePreviewDrawer.jsx";
 import FilteredTradesTable from "@/components/analytics/FilteredTradesTable.jsx";
 import { calcPerformanceReport } from "@/lib/analytics/performanceReport.js";
 import { NO_ACCOUNT_ID, getTradeAccountKey, tradeHasAccount, hasTradesWithoutAccount, createNoAccountOption } from "@/lib/noAccount.js";
-import { calcWinRatePct, getGlobalWinRateMode, getGlobalAvgRRMode, classifyTradeOutcome } from "@/lib/metrics/winRate.js";
+import { calcWinRatePct, getGlobalWinRateMode, getGlobalAvgRRMode, classifyTradeOutcome, isTradeBreakEven } from "@/lib/metrics/winRate.js";
 import { isDeleted } from "@/lib/syncDb.js";
 import { 
   KpiGrid, 
@@ -1022,8 +1022,8 @@ export default function Analytics({ trades, accounts, libraries, reduceMotion, o
     const pnlFor = (tr) => (accountId === "all" ? clampNum(tr.pnl) : accPnL(tr, accountId));
     const rrFor = (t) => (accountId === "all" ? clampNum(t.rr) : accRR(t, accountId));
 
-    const wins = list.filter((t) => classifyTradeOutcome({ pnl: pnlFor(t), isBreakEven: Boolean(t?.isBreakEven), mode: winRateMode }) === "win");
-    const losses = list.filter((t) => classifyTradeOutcome({ pnl: pnlFor(t), isBreakEven: Boolean(t?.isBreakEven), mode: winRateMode }) === "loss");
+    const wins = list.filter((t) => classifyTradeOutcome({ pnl: pnlFor(t), isBreakEven: isTradeBreakEven(t), mode: winRateMode }) === "win");
+    const losses = list.filter((t) => classifyTradeOutcome({ pnl: pnlFor(t), isBreakEven: isTradeBreakEven(t), mode: winRateMode }) === "loss");
     const breakEvensCount = total - wins.length - losses.length;
     const winRate = calcWinRatePct({ wins: wins.length, losses: losses.length, breakEvens: breakEvensCount, mode: winRateMode });
     const net = list.reduce((s, t) => s + pnlFor(t), 0);
@@ -1156,7 +1156,7 @@ export default function Analytics({ trades, accounts, libraries, reduceMotion, o
         
         const prev = m.get(key) ?? { net: 0, total: 0, wins: 0, losses: 0, breakEvens: 0 };
         const pnl = clampNum(a?.pnl);
-        const outcome = classifyTradeOutcome({ pnl, isBreakEven: Boolean(tr?.isBreakEven), mode: winRateMode });
+        const outcome = classifyTradeOutcome({ pnl, isBreakEven: isTradeBreakEven(tr), mode: winRateMode });
         prev.net += pnl;
         prev.total += 1;
         if (outcome === "win") prev.wins += 1;
@@ -1195,7 +1195,7 @@ export default function Analytics({ trades, accounts, libraries, reduceMotion, o
       let wins = 0, losses = 0, breakEvens = 0;
       for (const tr of list) {
         const p = pnlFor(tr);
-        const outcome = classifyTradeOutcome({ pnl: p, isBreakEven: Boolean(tr?.isBreakEven), mode: winRateMode });
+        const outcome = classifyTradeOutcome({ pnl: p, isBreakEven: isTradeBreakEven(tr), mode: winRateMode });
         if (outcome === "win") wins++;
         else if (outcome === "loss") losses++;
         else breakEvens++;
@@ -1226,7 +1226,7 @@ export default function Analytics({ trades, accounts, libraries, reduceMotion, o
       let wins = 0, losses = 0, breakEvens = 0;
       for (const tr of list) {
         const p = pnlFor(tr);
-        const outcome = classifyTradeOutcome({ pnl: p, isBreakEven: Boolean(tr?.isBreakEven), mode: winRateMode });
+        const outcome = classifyTradeOutcome({ pnl: p, isBreakEven: isTradeBreakEven(tr), mode: winRateMode });
         if (outcome === "win") wins++;
         else if (outcome === "loss") losses++;
         else breakEvens++;
@@ -1255,7 +1255,7 @@ export default function Analytics({ trades, accounts, libraries, reduceMotion, o
       let wins = 0, losses = 0, breakEvens = 0;
       for (const tr of list) {
         const p = pnlFor(tr);
-        const outcome = classifyTradeOutcome({ pnl: p, isBreakEven: Boolean(tr?.isBreakEven), mode: winRateMode });
+        const outcome = classifyTradeOutcome({ pnl: p, isBreakEven: isTradeBreakEven(tr), mode: winRateMode });
         if (outcome === "win") wins++;
         else if (outcome === "loss") losses++;
         else breakEvens++;

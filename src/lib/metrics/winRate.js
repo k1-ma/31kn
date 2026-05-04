@@ -102,8 +102,12 @@ export function countTradeOutcomes(trades, getPnL = null, mode = "ignore") {
 }
 
 /**
- * Returns true if the trade or any of its allocations is user-marked as
- * break-even.
+ * Returns true if the trade is user-marked as break-even (БУ).
+ *
+ * BU is recognised from any of these signals (legacy data may have only one):
+ * - trade.isBreakEven === true
+ * - trade.outcome === "BE" (the UI button selection — set on every saved trade)
+ * - any allocation has isBreakEven === true
  *
  * @param {Object} trade - Trade object
  * @returns {boolean}
@@ -111,6 +115,7 @@ export function countTradeOutcomes(trades, getPnL = null, mode = "ignore") {
 export function isTradeBreakEven(trade) {
   if (!trade) return false;
   if (trade.isBreakEven === true) return true;
+  if (trade.outcome === "BE") return true;
   const allocs = Array.isArray(trade?.allocations) ? trade.allocations : [];
   for (const a of allocs) {
     if (a?.isBreakEven === true) return true;
@@ -252,11 +257,14 @@ export function countOutcomes(trades, mode = "ignore", options = {}) {
   let breakEvens = 0;
   
   for (const trade of activeTrades) {
+    // BU is a trade-level concept — propagate it to every allocation so
+    // statistics treat per-account splits of a BU trade as BU too.
+    const tradeIsBE = trade?.outcome === "BE" || trade?.isBreakEven === true;
     // Handle allocation-based trades
     const allocs = Array.isArray(trade?.allocations) && trade.allocations.length > 0
       ? trade.allocations
       : [{ accountId: trade?.accountId, pnl: trade?.pnl, isBreakEven: trade?.isBreakEven }];
-    
+
     for (const alloc of allocs) {
       // Filter by accountId if specified
       if (accountId !== "all") {
@@ -267,11 +275,11 @@ export function countOutcomes(trades, mode = "ignore", options = {}) {
           if (allocAccId !== accountId) continue;
         }
       }
-      
+
       const pnl = clampNum(alloc?.pnl);
-      const isBreakEven = Boolean(alloc?.isBreakEven);
+      const isBreakEven = tradeIsBE || Boolean(alloc?.isBreakEven);
       const outcome = classifyTradeOutcome({ pnl, isBreakEven, mode });
-      
+
       if (outcome === "win") wins++;
       else if (outcome === "loss") losses++;
       else breakEvens++;
@@ -327,6 +335,8 @@ export function countTradeOutcomesWithPrefs(trades, { accountId = "all", prefs =
   let breakEvens = 0;
 
   for (const trade of activeTrades) {
+    // BU is a trade-level concept — propagate it to every allocation.
+    const tradeIsBE = trade?.outcome === "BE" || trade?.isBreakEven === true;
     const allocs = Array.isArray(trade?.allocations) && trade.allocations.length > 0
       ? trade.allocations
       : [{ accountId: trade?.accountId, pnl: trade?.pnl, rr: trade?.rr, isBreakEven: trade?.isBreakEven }];
@@ -344,7 +354,7 @@ export function countTradeOutcomesWithPrefs(trades, { accountId = "all", prefs =
       }
 
       const pnl = clampNum(alloc?.pnl);
-      const isBreakEven = Boolean(alloc?.isBreakEven);
+      const isBreakEven = tradeIsBE || Boolean(alloc?.isBreakEven);
       const outcome = classifyTradeOutcome({ pnl, isBreakEven, mode });
 
       if (outcome === "win") wins++;

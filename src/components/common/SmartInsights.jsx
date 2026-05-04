@@ -25,9 +25,12 @@ function generateInsights(trades, accounts, winRateMode = "ignore") {
     return allocs.reduce((sum, a) => sum + clampNum(a?.pnl), 0);
   };
 
-  // Returns true if any allocation (or the trade itself) is user-marked as break-even
+  // Returns true if the trade or any allocation is user-marked as break-even.
+  // Recognises BU from either the isBreakEven flag or the outcome === "BE"
+  // UI label (handles legacy data without the flag).
   const getIsBreakEven = (trade) => {
     if (trade?.isBreakEven === true) return true;
+    if (trade?.outcome === "BE") return true;
     const allocs = Array.isArray(trade?.allocations) ? trade.allocations : [];
     return allocs.some((a) => a?.isBreakEven === true);
   };
@@ -294,13 +297,16 @@ function generateInsights(trades, accounts, winRateMode = "ignore") {
   // 6. Risk:Reward insight
   const rrValues = [];
   for (const trade of trades) {
+    // Trade-level BU is global — propagate to every allocation so a BU trade
+    // is never counted as a "win" here even if the alloc has positive PnL.
+    const tradeIsBE = trade?.outcome === "BE" || trade?.isBreakEven === true;
     const allocs = Array.isArray(trade?.allocations) ? trade.allocations : [];
     if (allocs.length > 0) {
       // For trades with allocations, check each allocation
       for (const a of allocs) {
         const pnl = clampNum(a?.pnl);
         const rr = clampNum(a?.rr);
-        const isBreakEven = Boolean(a?.isBreakEven);
+        const isBreakEven = tradeIsBE || Boolean(a?.isBreakEven);
         // Use classification function for consistency
         const outcome = classifyOutcomeByRRAndPnL({ pnl, rr, neutralRR: 0, isBreakEven });
         // Only include winning trades with positive RR
@@ -312,7 +318,7 @@ function generateInsights(trades, accounts, winRateMode = "ignore") {
       // For trades without allocations, check the trade itself
       const pnl = clampNum(trade?.pnl);
       const rr = clampNum(trade?.rr);
-      const isBreakEven = Boolean(trade?.isBreakEven);
+      const isBreakEven = tradeIsBE;
       // Use classification function for consistency
       const outcome = classifyOutcomeByRRAndPnL({ pnl, rr, neutralRR: 0, isBreakEven });
       // Only include winning trades with positive RR

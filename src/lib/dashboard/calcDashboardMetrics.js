@@ -105,12 +105,14 @@ function getTradeRR(trade) {
 
 /**
  * Get the user-marked break-even flag for a trade, scoped to an accountId.
- * Returns true if the trade itself is marked break-even, or if any
- * matching allocation is marked break-even.
+ * Returns true if the trade itself is marked break-even (via isBreakEven OR
+ * outcome === "BE" — the latter handles legacy data without the flag), or if
+ * any matching allocation is marked break-even.
  */
 function getTradeIsBreakEven(trade, accountId = "all") {
   if (!trade) return false;
-  if (trade.isBreakEven === true) return true;
+  // Trade-level BU is global — applies to every allocation regardless of accountId.
+  if (trade.isBreakEven === true || trade.outcome === "BE") return true;
   const allocs = Array.isArray(trade?.allocations) ? trade.allocations : [];
   if (allocs.length === 0) {
     if (accountId === "all") return false;
