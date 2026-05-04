@@ -2069,7 +2069,31 @@ export function useSyncedDb(userId, seed, options = {}) {
       
       // Success - update last synced state and version
       const newVersion = result?.version ?? 1;
-      setLastSyncedState(userId, stateToSync);
+
+      // Server-side auto-merge: when another writer advanced the version
+      // between our GET and PUT, the server now merges and returns 200 with
+      // the canonical merged state instead of the old 409 + client retry.
+      // Replace local state with the server's merged result so all devices
+      // converge without an extra round-trip and without surfacing a 409.
+      // Falls through to the legacy 409 handler in the catch block when
+      // talking to an older server.
+      const serverAutoMerged = result?.conflict_resolved && result?.server_state;
+      if (serverAutoMerged) {
+        const serverMerged = result.server_state;
+        // Suppress the save-effect's redundant sync-back: we just persisted
+        // serverMerged on the server, so the next setDb shouldn't queue
+        // another PUT. Mirrors the legacy 409 path's behavior.
+        justLoadedFromServerRef.current = true;
+        dbRef.current = serverMerged;
+        setDb(serverMerged);
+        saveToLocalStorageSync(userId, serverMerged);
+        setLastSyncedState(userId, serverMerged);
+        if (IS_DEV) {
+          console.log("[syncDb] Server auto-merged version conflict — local state replaced with merged result");
+        }
+      } else {
+        setLastSyncedState(userId, stateToSync);
+      }
       setServerVersion(userId, newVersion);
       clearOutbox(userId);
       setHasUnsavedChanges(false);
@@ -2077,20 +2101,21 @@ export function useSyncedDb(userId, seed, options = {}) {
       setIsServerReachable(true); // Server is reachable
       lastSuccessfulSync.current = Date.now();
       consecutiveFailures.current = 0;
-      
+
       perfMark("syncDb:apiSave:end");
       const duration = perfMeasure("syncDb:apiSave", "syncDb:apiSave:start", "syncDb:apiSave:end");
-      
+
       if (IS_DEV) {
-        console.log("[syncDb] Server sync success:", { 
+        console.log("[syncDb] Server sync success:", {
           tradesCount: stateToSync?.trades?.length ?? 0,
           newVersion,
           durationMs: duration.toFixed(0),
-          wasChunked: payloadSize > MAX_SINGLE_REQUEST_SIZE_BYTES
+          wasChunked: payloadSize > MAX_SINGLE_REQUEST_SIZE_BYTES,
+          conflictAutoMerged: !!serverAutoMerged,
         });
       }
-      
-      return { success: true };
+
+      return { success: true, conflictResolved: !!serverAutoMerged };
     } catch (e) {
       const status = e?.status;
       const code = e?.code || e?.data?.code;
