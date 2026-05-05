@@ -1,5 +1,5 @@
-import React, { useRef, useState } from "react";
-import { LogOut, Globe, Coins, Sun, Moon, Laptop, Upload, Download } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import { LogOut, Globe, Coins, Sun, Moon, Laptop, Upload, Download, Lock } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader.jsx";
 import { Card } from "@/components/ui/Card.jsx";
 import Button from "@/components/ui/Button.jsx";
@@ -9,6 +9,8 @@ import { useAuth } from "@/auth/AuthProvider.jsx";
 import { SUPPORTED_LANGS } from "@/i18n/translations.js";
 import { SUPPORTED_CURRENCIES } from "@/lib/money.js";
 import { csvToTransactions } from "@/lib/finance/csv.js";
+import Input from "@/components/ui/Input.jsx";
+import { isPinEnabled, setPin, clearPin } from "@/components/common/PinLock.jsx";
 
 const THEMES = [
   { id: "light", icon: Sun, key: "settings.themes.light" },
@@ -34,6 +36,10 @@ export default function Settings() {
   const prefs = state.prefs || {};
   const fileInputRef = useRef(null);
   const [importStatus, setImportStatus] = useState(null);
+  const [pinOn, setPinOn] = useState(false);
+  const [pinDraft, setPinDraft] = useState("");
+  const [pinErr, setPinErr] = useState("");
+  useEffect(() => { setPinOn(isPinEnabled()); }, []);
 
   React.useEffect(() => {
     applyTheme(prefs.theme || "system");
@@ -63,7 +69,7 @@ export default function Settings() {
   };
 
   const exportCsv = () => {
-    const rows = [["date", "type", "amount", "currency", "wallet", "category", "note"]];
+    const rows = [["date", "type", "amount", "currency", "wallet", "category", "note", "tags"]];
     const wals = new Map(state.wallets.map((w) => [w.id, w.name]));
     const cats = new Map(state.categories.map((c) => [c.id, c.name]));
     for (const tx of state.transactions) {
@@ -76,6 +82,7 @@ export default function Settings() {
         wals.get(tx.walletId) || "",
         cats.get(tx.categoryId) || "",
         (tx.note || "").replace(/[\r\n]/g, " "),
+        Array.isArray(tx.tags) ? tx.tags.join("|") : "",
       ]);
     }
     const csv = rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
@@ -185,6 +192,55 @@ export default function Settings() {
               ? `+${importStatus.added}${importStatus.skipped ? ` (${importStatus.skipped} skipped)` : ""}`
               : importStatus.error}
           </div>
+        )}
+      </Card>
+
+      <Card className="p-5 space-y-3">
+        <div className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
+          <Lock className="w-4 h-4" /> {t("settings.security")}
+        </div>
+        {pinOn ? (
+          <Button
+            variant="secondary"
+            className="w-full"
+            onClick={() => {
+              clearPin();
+              setPinOn(false);
+              setPinErr("");
+              setPinDraft("");
+            }}
+          >
+            {t("common.delete")} PIN
+          </Button>
+        ) : (
+          <>
+            <Input
+              type="password"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={6}
+              placeholder="••••"
+              value={pinDraft}
+              onChange={(e) => setPinDraft(e.target.value.replace(/[^0-9]/g, ""))}
+            />
+            {pinErr && <div className="text-sm text-red-600">{pinErr}</div>}
+            <Button
+              className="w-full"
+              onClick={async () => {
+                try {
+                  await setPin(pinDraft);
+                  setPinOn(true);
+                  setPinDraft("");
+                  setPinErr("");
+                } catch (e) {
+                  setPinErr(e?.message || t("errors.generic"));
+                }
+              }}
+              disabled={pinDraft.length < 4}
+            >
+              {t("common.save")} PIN
+            </Button>
+          </>
         )}
       </Card>
 

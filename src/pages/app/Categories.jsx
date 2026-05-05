@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { Tags, Trash2 } from "lucide-react";
+import { Tags, Trash2, ChevronUp, ChevronDown } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader.jsx";
 import { Card } from "@/components/ui/Card.jsx";
 import Button from "@/components/ui/Button.jsx";
@@ -8,6 +8,7 @@ import BottomSheet from "@/components/ui/BottomSheet.jsx";
 import EmptyState from "@/components/common/EmptyState.jsx";
 import { useFinance, active } from "@/lib/finance/store.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
+import { reorderSiblings } from "@/lib/finance/reorder.js";
 
 const ICONS = ["🍔", "🏠", "🚗", "👕", "💊", "🎬", "📚", "✈️", "🎁", "💼", "🐾", "📱", "🏦", "❓", "💻", "🔄", "📈", "🎉"];
 
@@ -90,20 +91,30 @@ function CategoryForm({ open, onClose, initial }) {
 
 export default function Categories() {
   const { t } = useI18n();
-  const { state, remove } = useFinance();
+  const { state, upsert, remove } = useFinance();
   const [editing, setEditing] = useState(null);
   const [open, setOpen] = useState(false);
 
-  const cats = useMemo(() => active(state.categories), [state.categories]);
+  const cats = useMemo(() => {
+    return active(state.categories)
+      .slice()
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || String(a.id).localeCompare(String(b.id)));
+  }, [state.categories]);
   const expense = cats.filter((c) => c.kind === "expense");
   const income = cats.filter((c) => c.kind === "income");
 
+  const move = (cat, dir) => {
+    const swap = reorderSiblings(state.categories, cat, dir, (x) => x.kind === cat.kind);
+    if (!swap) return;
+    swap.forEach((x) => upsert("categories", x));
+  };
+
   const renderList = (list) => (
     <Card className="overflow-hidden">
-      {list.map((c) => (
+      {list.map((c, idx) => (
         <div
           key={c.id}
-          className="flex items-center gap-3 px-5 py-3 border-b border-slate-100 dark:border-slate-800 last:border-b-0"
+          className="flex items-center gap-2 px-5 py-3 border-b border-slate-100 dark:border-slate-800 last:border-b-0"
         >
           <span className="text-2xl">{c.icon}</span>
           <button
@@ -111,6 +122,22 @@ export default function Categories() {
             onClick={() => { setEditing(c); setOpen(true); }}
           >
             {c.name}
+          </button>
+          <button
+            disabled={idx === 0}
+            onClick={() => move(c, -1)}
+            className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30"
+            aria-label="Move up"
+          >
+            <ChevronUp className="w-4 h-4" />
+          </button>
+          <button
+            disabled={idx === list.length - 1}
+            onClick={() => move(c, 1)}
+            className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30"
+            aria-label="Move down"
+          >
+            <ChevronDown className="w-4 h-4" />
           </button>
           <button
             onClick={() => remove("categories", c.id)}

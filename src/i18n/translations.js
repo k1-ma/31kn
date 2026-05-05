@@ -213,6 +213,18 @@ const UK = {
     restore: "Відновити",
     purge: "Очистити кошик",
   },
+  ranges: {
+    today: "Сьогодні",
+    week: "Тиждень",
+    month: "Місяць",
+    quarter: "Квартал",
+    year: "Рік",
+    all: "Усі",
+  },
+  tagsInput: {
+    placeholder: "Додай тег і Enter",
+    add: "Додати",
+  },
   landing: {
     heroTitle: "Твої фінанси під контролем",
     heroSub:
@@ -473,6 +485,18 @@ const EN = {
     emptyHint: "Deleted items stay here for 30 days",
     restore: "Restore",
     purge: "Empty trash",
+  },
+  ranges: {
+    today: "Today",
+    week: "Week",
+    month: "Month",
+    quarter: "Quarter",
+    year: "Year",
+    all: "All",
+  },
+  tagsInput: {
+    placeholder: "Add a tag and press Enter",
+    add: "Add",
   },
   landing: {
     heroTitle: "Your finances, under control",

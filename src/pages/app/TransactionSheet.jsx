@@ -3,6 +3,7 @@ import BottomSheet from "@/components/ui/BottomSheet.jsx";
 import Button from "@/components/ui/Button.jsx";
 import NumPad from "@/components/ui/NumPad.jsx";
 import Input from "@/components/ui/Input.jsx";
+import TagsInput from "@/components/ui/TagsInput.jsx";
 import { useFinance, active } from "@/lib/finance/store.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { toCents } from "@/lib/money.js";
@@ -23,9 +24,22 @@ export default function TransactionSheet({ open, onClose, initial = null }) {
   const [toWalletId, setToWalletId] = useState(initial?.toWalletId || "");
   const [categoryId, setCategoryId] = useState(initial?.categoryId || "");
   const [note, setNote] = useState(initial?.note || "");
+  const [tags, setTags] = useState(Array.isArray(initial?.tags) ? initial.tags : []);
   const [date, setDate] = useState(
     initial?.date ? initial.date.slice(0, 10) : new Date().toISOString().slice(0, 10)
   );
+
+  const tagSuggestions = useMemo(() => {
+    const counts = new Map();
+    for (const tx of state.transactions || []) {
+      if (tx.deletedAt) continue;
+      for (const tag of tx.tags || []) counts.set(tag, (counts.get(tag) || 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([tag]) => tag)
+      .slice(0, 12);
+  }, [state.transactions]);
 
   const wallets = useMemo(() => active(state.wallets).filter((w) => !w.isArchived), [state.wallets]);
   const categories = useMemo(
@@ -46,6 +60,7 @@ export default function TransactionSheet({ open, onClose, initial = null }) {
   const reset = () => {
     setAmount("0");
     setNote("");
+    setTags([]);
     setType("expense");
     setDate(new Date().toISOString().slice(0, 10));
   };
@@ -65,6 +80,7 @@ export default function TransactionSheet({ open, onClose, initial = null }) {
       categoryId: type === "transfer" ? null : categoryId,
       date: new Date(date).toISOString(),
       note: note.trim(),
+      tags,
     });
     reset();
     onClose?.();
@@ -168,6 +184,11 @@ export default function TransactionSheet({ open, onClose, initial = null }) {
             <label className="text-xs text-slate-500 mb-1 inline-block">{t("tx.note")}</label>
             <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="—" />
           </div>
+        </div>
+
+        <div>
+          <label className="text-xs text-slate-500 mb-1 inline-block">{t("tx.tags")}</label>
+          <TagsInput value={tags} onChange={setTags} suggestions={tagSuggestions} />
         </div>
 
         <div className="flex gap-2 pt-2">

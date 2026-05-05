@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Wallet as WalletIcon, Trash2, Pencil } from "lucide-react";
+import { Wallet as WalletIcon, Trash2, Pencil, ChevronUp, ChevronDown } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader.jsx";
 import { Card } from "@/components/ui/Card.jsx";
 import Button from "@/components/ui/Button.jsx";
@@ -9,6 +9,7 @@ import BottomSheet from "@/components/ui/BottomSheet.jsx";
 import EmptyState from "@/components/common/EmptyState.jsx";
 import { useFinance, active } from "@/lib/finance/store.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
+import { reorderSiblings } from "@/lib/finance/reorder.js";
 import { walletBalance } from "@/lib/finance/calc.js";
 import { formatMoney, SUPPORTED_CURRENCIES, toCents } from "@/lib/money.js";
 
@@ -135,11 +136,23 @@ function WalletForm({ open, onClose, initial }) {
 
 export default function Wallets() {
   const { t, lang } = useI18n();
-  const { state, remove } = useFinance();
+  const { state, upsert, remove } = useFinance();
   const [editing, setEditing] = useState(null);
   const [open, setOpen] = useState(false);
 
-  const wallets = useMemo(() => active(state.wallets), [state.wallets]);
+  const wallets = useMemo(
+    () =>
+      active(state.wallets)
+        .slice()
+        .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || String(a.id).localeCompare(String(b.id))),
+    [state.wallets]
+  );
+
+  const move = (w, dir) => {
+    const swap = reorderSiblings(state.wallets, w, dir);
+    if (!swap) return;
+    swap.forEach((x) => upsert("wallets", x));
+  };
 
   return (
     <div className="page-enter space-y-4">
@@ -155,7 +168,7 @@ export default function Wallets() {
         <EmptyState icon={WalletIcon} title={t("wallets.empty")} />
       ) : (
         <div className="grid sm:grid-cols-2 gap-3">
-          {wallets.map((w) => {
+          {wallets.map((w, idx) => {
             const balance = walletBalance(w, state.transactions);
             return (
               <Card
@@ -172,7 +185,23 @@ export default function Wallets() {
                     </div>
                     <div className="text-xs text-slate-400 mt-1">{t(`wallets.types.${w.type}`)}</div>
                   </Link>
-                  <div className="flex gap-1">
+                  <div className="flex flex-col gap-1">
+                    <button
+                      disabled={idx === 0}
+                      onClick={() => move(w, -1)}
+                      className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30"
+                      aria-label="Move up"
+                    >
+                      <ChevronUp className="w-4 h-4" />
+                    </button>
+                    <button
+                      disabled={idx === wallets.length - 1}
+                      onClick={() => move(w, 1)}
+                      className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30"
+                      aria-label="Move down"
+                    >
+                      <ChevronDown className="w-4 h-4" />
+                    </button>
                     <button
                       onClick={() => { setEditing(w); setOpen(true); }}
                       className="p-2 text-slate-400 hover:text-slate-600"

@@ -58,6 +58,7 @@ export function csvToTransactions(text, { wallets = [], categories = [] } = {}) 
   const iWallet = idx("wallet");
   const iCategory = idx("category");
   const iNote = idx("note");
+  const iTags = idx("tags");
   const walMap = new Map(wallets.map((w) => [String(w.name || "").toLowerCase(), w]));
   const catMap = new Map(categories.map((c) => [`${c.kind}|${String(c.name || "").toLowerCase()}`, c]));
 
@@ -72,6 +73,10 @@ export function csvToTransactions(text, { wallets = [], categories = [] } = {}) 
     const catKey = `${type === "income" ? "income" : "expense"}|${String(row[iCategory] || "").toLowerCase()}`;
     const category = catMap.get(catKey);
     const date = row[iDate] ? new Date(row[iDate]) : new Date();
+    const rawTags = iTags >= 0 ? String(row[iTags] || "") : "";
+    const tags = rawTags
+      ? rawTags.split(/[|,]/).map((s) => s.trim().toLowerCase().replace(/^#+/, "")).filter(Boolean)
+      : [];
     out.push({
       type,
       amount_cents: amountCents,
@@ -80,6 +85,7 @@ export function csvToTransactions(text, { wallets = [], categories = [] } = {}) 
       categoryId: category?.id || null,
       date: isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString(),
       note: row[iNote] || "",
+      tags,
     });
   }
   return out;

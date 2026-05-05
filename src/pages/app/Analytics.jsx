@@ -1,27 +1,39 @@
-import React, { useMemo } from "react";
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, PieChart, Pie, Cell } from "recharts";
+import React, { useMemo, useState } from "react";
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+  PieChart,
+  Pie,
+  Cell,
+} from "recharts";
 import { BarChart3 } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader.jsx";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card.jsx";
 import EmptyState from "@/components/common/EmptyState.jsx";
 import { useFinance, active } from "@/lib/finance/store.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
-import { monthlyCashflow, expenseByCategory } from "@/lib/finance/calc.js";
-import { fromCents } from "@/lib/money.js";
+import { monthlyCashflow, expenseByCategory, rangeSummary } from "@/lib/finance/calc.js";
+import { fromCents, formatMoney } from "@/lib/money.js";
+import { rangeFromPreset, RANGE_PRESETS } from "@/lib/finance/range.js";
 
 export default function Analytics() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { state } = useFinance();
+  const [preset, setPreset] = useState("month");
   const baseCurrency = state.prefs?.baseCurrency || "UAH";
   const txns = state.transactions;
 
+  const range = useMemo(() => rangeFromPreset(preset), [preset]);
+  const summary = useMemo(() => rangeSummary(txns, range.start, range.end), [txns, range]);
   const cashflow = useMemo(() => monthlyCashflow(txns, 6), [txns]);
-  const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
   const byCategory = useMemo(
-    () => expenseByCategory(txns, state.categories, startOfMonth, endOfMonth),
-    [txns, state.categories, startOfMonth, endOfMonth]
+    () => expenseByCategory(txns, state.categories, range.start, range.end),
+    [txns, state.categories, range]
   );
 
   const hasData = active(txns).length > 0;
@@ -50,6 +62,49 @@ export default function Analytics() {
   return (
     <div className="page-enter space-y-4">
       <PageHeader title={t("nav.analytics")} subtitle={baseCurrency} />
+
+      <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4">
+        {RANGE_PRESETS.map((p) => (
+          <button
+            key={p}
+            type="button"
+            onClick={() => setPreset(p)}
+            className={`shrink-0 h-9 px-3 rounded-full text-xs font-semibold border transition ${
+              preset === p
+                ? "bg-emerald-500 text-white border-emerald-500"
+                : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"
+            }`}
+          >
+            {t(`ranges.${p}`)}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-3 gap-2">
+        <Card className="p-3">
+          <div className="text-[10px] uppercase tracking-wider text-slate-500">{t("tx.income")}</div>
+          <div className="text-sm font-semibold tabular-nums text-emerald-600 mt-1">
+            {formatMoney(summary.income, baseCurrency, lang)}
+          </div>
+        </Card>
+        <Card className="p-3">
+          <div className="text-[10px] uppercase tracking-wider text-slate-500">{t("tx.expense")}</div>
+          <div className="text-sm font-semibold tabular-nums text-red-600 mt-1">
+            {formatMoney(summary.expense, baseCurrency, lang)}
+          </div>
+        </Card>
+        <Card className="p-3">
+          <div className="text-[10px] uppercase tracking-wider text-slate-500">Net</div>
+          <div
+            className={`text-sm font-semibold tabular-nums mt-1 ${
+              summary.net >= 0 ? "text-emerald-600" : "text-red-600"
+            }`}
+          >
+            {formatMoney(summary.net, baseCurrency, lang)}
+          </div>
+        </Card>
+      </div>
+
       <Card>
         <CardHeader>
           <CardTitle>{t("analytics.incomeVsExpense")}</CardTitle>
