@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { Wallet as WalletIcon, Trash2, Pencil } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader.jsx";
 import { Card } from "@/components/ui/Card.jsx";
@@ -163,14 +164,14 @@ export default function Wallets() {
                 style={{ background: w.color ? `linear-gradient(135deg, ${w.color}15, ${w.color}05)` : undefined }}
               >
                 <div className="flex items-start justify-between">
-                  <div>
+                  <Link to={`/app/wallets/${w.id}`} className="flex-1 min-w-0">
                     <div className="text-2xl">{w.icon}</div>
                     <div className="text-sm text-slate-500 mt-2">{w.name}</div>
                     <div className="text-2xl font-bold tabular-nums mt-1">
                       {formatMoney(balance, w.currency, lang)}
                     </div>
                     <div className="text-xs text-slate-400 mt-1">{t(`wallets.types.${w.type}`)}</div>
-                  </div>
+                  </Link>
                   <div className="flex gap-1">
                     <button
                       onClick={() => { setEditing(w); setOpen(true); }}

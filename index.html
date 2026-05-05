@@ -18,38 +18,19 @@
     <meta name="description" content="Koshyk — простий особистий фінансовий трекер. Доходи, витрати, бюджети, цілі. Працює офлайн.">
     <title>Koshyk · Особистий фінансовий трекер</title>
     <script>
-      // Prevent theme flash (FOUC) by applying theme before React renders
+      // Apply theme before React mounts to avoid a flash of wrong-mode UI.
+      // Source of truth: localStorage["koshyk:theme"] = "light" | "dark" | "system".
+      // Default: system preference.
       (function() {
         try {
-          // Check all localStorage keys that match the pattern koshyk:user:*
-          var theme = null;
-
-          // Iterate through localStorage to find user state
-          for (var i = 0; i < localStorage.length; i++) {
-            var key = localStorage.key(i);
-            if (key && key.startsWith('koshyk:user:')) {
-              try {
-                var userState = JSON.parse(localStorage.getItem(key));
-                if (userState && userState.ui && userState.ui.theme) {
-                  theme = userState.ui.theme;
-                  break;
-                }
-              } catch(e) {}
-            }
-          }
-
-          // Apply the theme class
-          if (theme === 'dark') {
-            document.documentElement.classList.add('dark');
-          } else if (theme === 'light') {
-            document.documentElement.classList.remove('dark');
-          } else {
-            // If no theme is stored, default to dark (matches app default)
-            document.documentElement.classList.add('dark');
-          }
+          var theme = localStorage.getItem('koshyk:theme') || 'system';
+          var prefersDark = window.matchMedia &&
+            window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var dark = theme === 'dark' || (theme === 'system' && prefersDark);
+          if (dark) document.documentElement.classList.add('dark');
+          else document.documentElement.classList.remove('dark');
         } catch (e) {
-          // Fallback: apply default dark theme
-          document.documentElement.classList.add('dark');
+          // ignore - leave default light theme
         }
       })();
     </script>
@@ -68,6 +49,10 @@
         gap: 16px;
         background: #F7F8FA;
         color: #0F172A;
+      }
+      html.dark #boot-screen {
+        background: #0B1220;
+        color: #F1F5F9;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         font-size: 13px;
         letter-spacing: 0.04em;

@@ -1,13 +1,14 @@
-import React from "react";
-import { LogOut, Globe, Coins, Sun, Moon, Laptop } from "lucide-react";
+import React, { useRef, useState } from "react";
+import { LogOut, Globe, Coins, Sun, Moon, Laptop, Upload, Download } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader.jsx";
 import { Card } from "@/components/ui/Card.jsx";
 import Button from "@/components/ui/Button.jsx";
-import { useFinance } from "@/lib/finance/store.jsx";
+import { useFinance, active } from "@/lib/finance/store.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { useAuth } from "@/auth/AuthProvider.jsx";
 import { SUPPORTED_LANGS } from "@/i18n/translations.js";
 import { SUPPORTED_CURRENCIES } from "@/lib/money.js";
+import { csvToTransactions } from "@/lib/finance/csv.js";
 
 const THEMES = [
   { id: "light", icon: Sun, key: "settings.themes.light" },
@@ -17,6 +18,7 @@ const THEMES = [
 
 function applyTheme(theme) {
   const root = document.documentElement;
+  try { localStorage.setItem("koshyk:theme", theme); } catch {}
   if (theme === "dark") root.classList.add("dark");
   else if (theme === "light") root.classList.remove("dark");
   else {
@@ -28,12 +30,37 @@ function applyTheme(theme) {
 export default function Settings() {
   const { t, lang, setLang } = useI18n();
   const { user, logout } = useAuth();
-  const { state, setPrefs } = useFinance();
+  const { state, setPrefs, upsert } = useFinance();
   const prefs = state.prefs || {};
+  const fileInputRef = useRef(null);
+  const [importStatus, setImportStatus] = useState(null);
 
   React.useEffect(() => {
     applyTheme(prefs.theme || "system");
   }, [prefs.theme]);
+
+  const onImportFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportStatus(null);
+    try {
+      const text = await file.text();
+      const wallets = active(state.wallets);
+      const categories = active(state.categories);
+      const txns = csvToTransactions(text, { wallets, categories });
+      let added = 0;
+      for (const tx of txns) {
+        if (!tx.walletId) continue;
+        upsert("transactions", tx);
+        added++;
+      }
+      setImportStatus({ ok: true, added, skipped: txns.length - added });
+    } catch (err) {
+      setImportStatus({ ok: false, error: err?.message || "Failed to import" });
+    } finally {
+      e.target.value = "";
+    }
+  };
 
   const exportCsv = () => {
     const rows = [["date", "type", "amount", "currency", "wallet", "category", "note"]];
@@ -130,8 +157,35 @@ export default function Settings() {
           {t("settings.data")}
         </div>
         <Button variant="secondary" onClick={exportCsv} className="w-full">
-          {t("settings.exportCsv")}
+          <Download className="w-4 h-4" /> {t("settings.exportCsv")}
         </Button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".csv,text/csv"
+          onChange={onImportFile}
+          className="hidden"
+        />
+        <Button
+          variant="secondary"
+          onClick={() => fileInputRef.current?.click()}
+          className="w-full"
+        >
+          <Upload className="w-4 h-4" /> {t("settings.importCsv")}
+        </Button>
+        {importStatus && (
+          <div
+            className={`text-sm rounded-xl px-3 py-2 ${
+              importStatus.ok
+                ? "text-emerald-700 bg-emerald-50 dark:bg-emerald-950 dark:text-emerald-300"
+                : "text-red-700 bg-red-50 dark:bg-red-950 dark:text-red-300"
+            }`}
+          >
+            {importStatus.ok
+              ? `+${importStatus.added}${importStatus.skipped ? ` (${importStatus.skipped} skipped)` : ""}`
+              : importStatus.error}
+          </div>
+        )}
       </Card>
 
       <Card className="p-5">

@@ -9,6 +9,7 @@ import { useI18n } from "@/i18n/I18nProvider.jsx";
 const Dashboard = lazy(() => import("@/pages/app/Dashboard.jsx"));
 const Transactions = lazy(() => import("@/pages/app/Transactions.jsx"));
 const Wallets = lazy(() => import("@/pages/app/Wallets.jsx"));
+const WalletDetail = lazy(() => import("@/pages/app/WalletDetail.jsx"));
 const Categories = lazy(() => import("@/pages/app/Categories.jsx"));
 const Budgets = lazy(() => import("@/pages/app/Budgets.jsx"));
 const Goals = lazy(() => import("@/pages/app/Goals.jsx"));
@@ -37,6 +38,7 @@ export default function KoshykApp() {
                 <Route path="transactions" element={<Transactions onAdd={() => setAddOpen(true)} />} />
                 <Route path="transactions/new" element={<Transactions onAdd={() => setAddOpen(true)} autoOpen />} />
                 <Route path="wallets" element={<Wallets />} />
+                <Route path="wallets/:id" element={<WalletDetail />} />
                 <Route path="categories" element={<Categories />} />
                 <Route path="budgets" element={<Budgets />} />
                 <Route path="goals" element={<Goals />} />
