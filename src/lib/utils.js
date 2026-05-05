@@ -210,6 +210,12 @@ export const resizeImageFileToDataUrl = (file, opts = {}) =>
     try {
       const maxSize = Number(opts.maxSize ?? 160);
       const quality = Number(opts.quality ?? 0.82);
+      // Optional upper bound on encoded payload size. When set, if the encoded
+      // output exceeds maxBytes we re-encode at progressively lower quality
+      // (down to minQuality) before giving up. Protects state-sync from
+      // runaway sizes when callers raise default quality/maxSize.
+      const maxBytes = Number(opts.maxBytes ?? 0);
+      const minQuality = Number(opts.minQuality ?? 0.78);
 
       if (!file) return resolve("");
       const reader = new FileReader();
@@ -263,13 +269,31 @@ export const resizeImageFileToDataUrl = (file, opts = {}) =>
           // Output format: caller can request "jpeg" or "webp"; default is "webp".
           // Fall back to png when the requested format is unsupported by the browser.
           const fmt = opts.format === "jpeg" ? "image/jpeg" : "image/webp";
-          let out = "";
-          try {
-            out = canvas.toDataURL(fmt, quality);
-            // Some browsers may return 'data:,' on unsupported mime.
-            if (!out || out.startsWith("data:,")) throw new Error(`${fmt} unsupported`);
-          } catch {
-            out = canvas.toDataURL("image/png");
+          const encode = (q) => {
+            try {
+              const r = canvas.toDataURL(fmt, q);
+              // Some browsers may return 'data:,' on unsupported mime.
+              if (!r || r.startsWith("data:,")) throw new Error(`${fmt} unsupported`);
+              return r;
+            } catch {
+              return canvas.toDataURL("image/png");
+            }
+          };
+          const approxBytes = (s) => {
+            if (!s) return 0;
+            const i = s.indexOf(",");
+            const body = i >= 0 ? s.length - i - 1 : s.length;
+            return Math.floor((body * 3) / 4);
+          };
+
+          let out = encode(quality);
+          if (maxBytes > 0 && approxBytes(out) > maxBytes && quality > minQuality) {
+            for (let q = quality - 0.07; q >= minQuality - 1e-6; q -= 0.07) {
+              const clamped = Math.max(minQuality, Number(q.toFixed(2)));
+              const next = encode(clamped);
+              out = next;
+              if (approxBytes(next) <= maxBytes) break;
+            }
           }
           resolve(out);
         };
