@@ -6,30 +6,23 @@ import { ensurePool, getPool, dbUnavailableResponse, queryWithRecovery } from ".
 import { sign, parseCookiesAll, getCookieDomainFromHost } from "./utils/cookies.js";
 import { banGuard } from "./middleware/banGuard.js";
 import { metricsMiddleware } from "./middleware/metrics.js";
-import { rateLimitDbMiddleware, writeRateLimit, shareRateLimit } from "./middleware/rateLimitDb.js";
+import { rateLimitDbMiddleware, writeRateLimit } from "./middleware/rateLimitDb.js";
 import { ensureDb } from "./middleware/ensureDb.js";
-import { runSeedUpdates } from "./scripts/seedUpdates.js";
 
 // Routes
 import authRoutes from "./routes/auth.routes.js";
 import stateRoutes from "./routes/state.routes.js";
-import syncRoutes, { runOrphanedSyncChunkCleanup } from "./routes/sync.routes.js";
+import syncRoutes from "./routes/sync.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import healthRoutes from "./routes/health.routes.js";
-import ideasRoutes from "./routes/ideas.routes.js";
-import publicShareRoutes from "./routes/publicShare.routes.js";
-import updatesRoutes from "./routes/updates.routes.js";
 import notificationsRoutes from "./routes/notifications.routes.js";
 import pingRoutes from "./routes/ping.routes.js";
-import educationRoutes from "./routes/education.routes.js";
-import { adminRouter as tournamentAdminRoutes, publicRouter as tournamentPublicRoutes, userRouter as tournamentUserRoutes } from "./routes/tournaments.routes.js";
-import { processAllTimedVoteDays } from "./services/tournamentVoting.service.js";
 
 dotenv.config();
 
 const NODE_ENV = process.env.NODE_ENV || "development";
 const IS_PROD = NODE_ENV === "production";
-const COOKIE_NAME = "tradecrm.sid";
+const COOKIE_NAME = "koshyk.sid";
 const AUTH_DEBUG = process.env.AUTH_DEBUG === "true";
 
 // CORS whitelist configuration
@@ -93,52 +86,27 @@ export async function createApp() {
     console.warn("[db] init skipped:", err?.message || err);
   }
 
-  // Auto-seed updates if RUN_SEED_UPDATES environment variable is set.
-  // Useful for one-shot seeding on either Railway or a Vercel deploy.
-  if (["1", "true"].includes(process.env.RUN_SEED_UPDATES)) {
-    try {
-      const pool = getPool();
-      if (pool) {
-        // eslint-disable-next-line no-console
-        console.log("[app] RUN_SEED_UPDATES is enabled, running seed...");
-        await runSeedUpdates({ existingPool: pool });
-      } else {
-        // eslint-disable-next-line no-console
-        console.warn("[app] Cannot run seed: database pool not available");
-      }
-    } catch (err) {
-      // Log but don't fail the app startup
-      // eslint-disable-next-line no-console
-      console.error("[app] Seed updates failed:", err?.message || err);
-    }
-  }
-
   const app = express();
   app.set("trust proxy", 1);
 
   // Security headers (Helmet)
   app.use(
     helmet({
-      // Configure CSP to work with React SPA while providing security
       contentSecurityPolicy: IS_PROD ? {
         directives: {
           defaultSrc: ["'self'"],
-          scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://hauntedxcdn.b-cdn.net"], // 'unsafe-inline': Vite/React, 'unsafe-eval': Bunny CDN preview player
-          styleSrc: ["'self'", "'unsafe-inline'", "https://hauntedxcdn.b-cdn.net"], // Required for styled-components/CSS-in-JS
-          imgSrc: ["'self'", "data:", "https:", "https://hauntedxcdn.b-cdn.net", "https://*.b-cdn.net"],
-          fontSrc: ["'self'", "data:", "https://hauntedxcdn.b-cdn.net"],
-          connectSrc: ["'self'", "https://accounts.google.com", "https://oauth2.googleapis.com", "https://www.googleapis.com", "https://hauntedxcdn.b-cdn.net"],
-          mediaSrc: ["'self'", "https://hauntedxcdn.b-cdn.net", "https://*.b-cdn.net"],
-          frameSrc: ["'self'", "https://accounts.google.com", "https://hauntedxcdn.b-cdn.net", "https://iframe.mediadelivery.net"],
-          // frame-ancestors blocks clickjacking by refusing to be framed by
-          // any other site. This is the modern replacement for X-Frame-Options.
+          scriptSrc: ["'self'", "'unsafe-inline'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", "data:", "https:"],
+          fontSrc: ["'self'", "data:"],
+          connectSrc: ["'self'", "https://api.exchangerate.host"],
           frameAncestors: ["'self'"],
           formAction: ["'self'"],
           baseUri: ["'self'"],
           objectSrc: ["'none'"],
           workerSrc: ["'self'"],
         },
-      } : false, // Disable in development for easier debugging
+      } : false,
       crossOriginEmbedderPolicy: false, // Disable COEP for compatibility
     })
   );
@@ -157,7 +125,7 @@ export async function createApp() {
   app.use(express.json({ limit: STATE_BODY_LIMIT }));
 
   // Session middleware - attach minimal session-like object
-  // Handles duplicate cookies: when the browser sends several tradecrm.sid
+  // Handles duplicate cookies: when the browser sends several koshyk.sid
   // values (from different Domain scopes) we try each one until we find
   // a valid, non-revoked, non-expired session.
   app.use(async (req, res, next) => {
@@ -199,7 +167,7 @@ export async function createApp() {
       }
 
       // Collect ALL values of the session cookie (handles duplicate cookies
-      // from different Domain scopes, e.g. host-only vs .hauntedx.trade)
+      // from different Domain scopes, e.g. host-only vs apex.example).
       const allCookies = parseCookiesAll(req);
       const rawValues = allCookies[COOKIE_NAME];
       if (!rawValues || rawValues.length === 0) {
@@ -332,14 +300,7 @@ export async function createApp() {
   app.use("/api/sync", writeRateLimit, syncRoutes);
   app.use("/api/admin", adminRoutes);
   app.use("/api/health", healthRoutes);
-  app.use("/api/ideas", ideasRoutes);
-  app.use("/api/public-share", shareRateLimit, publicShareRoutes);
-  app.use("/api/updates", updatesRoutes);
   app.use("/api/notifications", notificationsRoutes);
-  app.use("/api/education", educationRoutes);
-  app.use("/api/admin/tournaments", tournamentAdminRoutes);
-  app.use("/api/tournaments", tournamentUserRoutes);
-  app.use("/api/tournament", tournamentPublicRoutes);
 
   // ─────────────────────────────────────────────────────────────────────────────
   // 404 HANDLER for API routes - Return JSON instead of HTML
@@ -388,26 +349,6 @@ export async function createApp() {
       code: "INTERNAL_ERROR",
     });
   });
-
-  // Background job: auto-transition timed vote days every 30 seconds
-  setInterval(() => {
-    processAllTimedVoteDays().catch((err) => {
-      // eslint-disable-next-line no-console
-      console.warn("[voting-timer] background process error:", err?.message || err);
-    });
-  }, 30_000);
-
-  // Background job: GC orphaned chunked-sync rows every 5 minutes.
-  // Per-request cleanup runs only on chunk 0, so a client that drops
-  // mid-upload leaves chunks until another client starts a new session.
-  // This timer ensures expired chunks/sessions are reclaimed on long-lived
-  // (non-serverless) deployments.
-  setInterval(() => {
-    runOrphanedSyncChunkCleanup(getPool()).catch((err) => {
-      // eslint-disable-next-line no-console
-      console.warn("[sync-cleanup] background error:", err?.message || err);
-    });
-  }, 5 * 60_000);
 
   return app;
 }

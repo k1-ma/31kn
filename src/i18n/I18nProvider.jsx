@@ -2,18 +2,18 @@ import React, { createContext, useContext, useMemo } from "react";
 import { TRANSLATIONS } from "./translations";
 
 const I18nCtx = createContext({
-  lang: "ru",
+  lang: "uk",
   setLang: () => {},
   t: (k) => k,
   plural: (count) => String(count),
 });
 
 // Map a count to a CLDR plural category for the supported languages.
-// Russian/Ukrainian use the Slavic 1/few/many rules; English (and others)
-// fall back to the binary one/other rule.
+// Ukrainian uses the Slavic 1/few/many rules; English falls back to the
+// binary one/other rule.
 function pluralCategory(lang, count) {
   const n = Math.abs(Number(count) || 0);
-  if (lang === "ru" || lang === "uk") {
+  if (lang === "uk") {
     const mod10 = n % 10;
     const mod100 = n % 100;
     if (mod10 === 1 && mod100 !== 11) return "one";
@@ -51,10 +51,10 @@ function get(obj, path) {
 
 export default function I18nProvider({ lang, setLang, children }) {
   const value = useMemo(() => {
-    // Normalize lang: "default" is no longer supported, fallback to "ru"
-    const effectiveLang = lang === "default" || !lang ? "ru" : lang;
-    const dict = TRANSLATIONS[effectiveLang] || TRANSLATIONS.ru;
-    const fallback = TRANSLATIONS.ru;
+    // Normalize lang: default to "uk" if absent or unsupported.
+    const effectiveLang = TRANSLATIONS[lang] ? lang : "uk";
+    const dict = TRANSLATIONS[effectiveLang] || TRANSLATIONS.uk;
+    const fallback = TRANSLATIONS.en;
     const t = (key, vars = null, fallbackText = "") => {
       const dictVal = get(dict, key);
       const fallbackVal = get(fallback, key);

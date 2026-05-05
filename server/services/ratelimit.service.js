@@ -2,8 +2,7 @@ import { getPool } from "./db.service.js";
 
 // Rate limit configurations
 const RATE_LIMITS = {
-  trades: { maxCount: 10, windowMinutes: 10 },
-  accounts: { maxCount: 10, windowMinutes: 20 },
+  transactions: { maxCount: 60, windowMinutes: 10 },
 };
 
 // Cleanup interval for old rate limit entries (in minutes)
@@ -12,7 +11,7 @@ const CLEANUP_INTERVAL_MINUTES = 60;
 /**
  * Check and increment rate limit for an action
  * @param {string} key - User ID (u:123) or IP (ip:1.2.3.4)
- * @param {string} action - Action type: "trades" | "accounts"
+ * @param {string} action - Action type: "transactions"
  * @returns {Promise<{allowed: boolean, remaining: number, resetAt: Date}>}
  */
 export async function checkRateLimit(key, action) {

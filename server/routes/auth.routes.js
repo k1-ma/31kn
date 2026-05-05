@@ -119,7 +119,7 @@ function clearSessionCookie(res, req = null) {
     secure: IS_PROD,
     maxAge: 0,
   };
-  // Clear the domain-scoped cookie (e.g. .hauntedx.trade)
+  // Clear the domain-scoped cookie 
   if (domain) {
     appendSetCookie(res, makeCookie(COOKIE_NAME, "", { ...opts, domain }));
   }

@@ -54,13 +54,9 @@ export function sign(value) {
 }
 
 /**
- * Return the cookie Domain attribute value from the COOKIE_DOMAIN env var.
- * When set (e.g. ".hauntedx.trade"), cookies are shared across apex and www,
- * which is required when the public site sits behind a CDN / reverse-proxy
- * that serves both hauntedx.trade and www.hauntedx.trade.
- *
- * Returns undefined when not configured (default: cookie is bound to the
- * exact hostname — fine for single-domain or local dev).
+ * Return the cookie Domain attribute from the COOKIE_DOMAIN env var.
+ * When set (e.g. ".example.com"), cookies are shared across apex and www.
+ * Otherwise undefined → cookie is bound to the exact hostname.
  */
 export function getCookieDomain() {
   if (process.env.COOKIE_DOMAIN) return process.env.COOKIE_DOMAIN;
@@ -69,32 +65,14 @@ export function getCookieDomain() {
 
 /**
  * Derive the cookie domain from the incoming request Host header.
- * Used as a safe fallback when COOKIE_DOMAIN is not explicitly set in
- * production: for hosts matching *.hauntedx.trade (apex, www, origin)
- * we return ".hauntedx.trade" so the session cookie is shared across all
- * subdomains. For localhost or unknown hosts we return undefined (no Domain
- * attribute — cookie bound to exact hostname).
+ * Honours COOKIE_DOMAIN if set; otherwise returns undefined so the cookie
+ * is bound to the exact hostname (safe default for any deployment).
  */
 export function getCookieDomainFromHost(host) {
-  // Explicit env takes precedence
   if (process.env.COOKIE_DOMAIN) return process.env.COOKIE_DOMAIN;
-
   if (!host) return undefined;
-
-  // Strip port if present
   const hostname = host.split(":")[0];
-
-  // Never set domain for localhost
   if (hostname === "localhost" || hostname === "127.0.0.1") return undefined;
-
-  // Production fallback: share cookie across *.hauntedx.trade
-  if (
-    hostname === "hauntedx.trade" ||
-    hostname.endsWith(".hauntedx.trade")
-  ) {
-    return ".hauntedx.trade";
-  }
-
   return undefined;
 }
 
@@ -142,8 +120,7 @@ export function parseCookies(req) {
 /**
  * Parse ALL values for every cookie name.
  * Returns { name: [val1, val2, …] }.
- * Useful when the browser sends duplicate cookies from different
- * Domain scopes (e.g. host-only vs .hauntedx.trade).
+ * Useful when the browser sends duplicate cookies from different domain scopes.
  */
 export function parseCookiesAll(req) {
   const header = req.headers?.cookie;

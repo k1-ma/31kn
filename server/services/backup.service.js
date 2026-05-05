@@ -19,11 +19,11 @@ function getBackupKeepCount() {
 
 /**
  * Generate a backup name based on current timestamp
- * Format: tradecrm_backup_2026-01-27T12-30-45Z.json.gz
+ * Format: koshyk_backup_2026-01-27T12-30-45Z.json.gz
  */
 export function generateBackupName() {
   const now = new Date().toISOString().replace(/:/g, "-").replace(/\.\d{3}Z$/, "Z");
-  return `tradecrm_backup_${now}.json.gz`;
+  return `koshyk_backup_${now}.json.gz`;
 }
 
 /**
@@ -36,7 +36,7 @@ export async function generateBackupPayload(pool) {
     meta: {
       version: 1,
       created_at: new Date().toISOString(),
-      app: "tradecrm",
+      app: "koshyk",
       db: "postgres",
     },
     tables: {},
@@ -51,12 +51,14 @@ export async function generateBackupPayload(pool) {
     { name: "sessions", orderBy: "sid" },
     { name: "admin_logs", orderBy: "id" },
     { name: "ip_bans", orderBy: "id" },
-    { name: "usage_daily", orderBy: "day, user_id, ip" },
+    { name: "usage_daily", orderBy: "day, user_id" },
     { name: "rate_limits", orderBy: "key, action, window_start" },
-    { name: "ideas", orderBy: "id" },
-    { name: "trading_ideas", orderBy: "id" },
-    { name: "public_shares", orderBy: "created_at" },
-    { name: "admin_backups", orderBy: "created_at" },
+    { name: "wallets", orderBy: "id" },
+    { name: "categories", orderBy: "id" },
+    { name: "transactions", orderBy: "id" },
+    { name: "budgets", orderBy: "id" },
+    { name: "goals", orderBy: "id" },
+    { name: "recurring_rules", orderBy: "id" },
   ];
 
   // Defense in depth: even though `tables` is a hardcoded literal above, run

@@ -3,7 +3,7 @@ import { sign, makeCookie, appendSetCookie, getCookieDomain } from "../utils/coo
 
 const NODE_ENV = process.env.NODE_ENV || "development";
 const IS_PROD = NODE_ENV === "production";
-const COOKIE_NAME = "tradecrm.sid";
+const COOKIE_NAME = "koshyk.sid";
 
 /**
  * Clear the session cookie for both domain-scoped and host-only variants

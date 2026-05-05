@@ -353,7 +353,7 @@ router.get("/backups/:name", requireAdmin, async (req, res) => {
   // Reject anything outside the canonical backup name format produced by
   // generateBackupName(). This blocks header injection (CR/LF, quotes) into
   // Content-Disposition and rejects bogus DB lookups in one check.
-  if (!name || !/^tradecrm_backup_[\w\-]+\.json\.gz$/.test(name) || name.length > 128) {
+  if (!name || !/^koshyk_backup_[\w\-]+\.json\.gz$/.test(name) || name.length > 128) {
     return res.status(400).json({ error: "Invalid backup name" });
   }
 
@@ -458,14 +458,14 @@ router.put("/users/:id/state", requireAdmin, async (req, res) => {
     );
 
     const newVersion = result.rows?.[0]?.version ?? 1;
-    const tradeCount = state?.trades?.length ?? 0;
+    const txCount = Array.isArray(state?.transactions) ? state.transactions.length : 0;
 
     await logAdmin(req.adminUser?.id, "user.state_restore", id, {
-      tradeCount,
+      txCount,
       version: newVersion,
     });
 
-    return res.json({ ok: true, version: newVersion, tradeCount });
+    return res.json({ ok: true, version: newVersion, txCount });
   } catch (err) {
     console.error("[admin] restore state error:", err?.message || err);
     return res.status(500).json({ error: "Failed to restore state" });

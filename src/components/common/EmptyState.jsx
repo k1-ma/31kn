@@ -1,34 +1,22 @@
 import React from "react";
-import { Card, CardContent } from "@/components/ui/Card.jsx";
-import { HOVER_GLOW } from "@/lib/ui.js";
 
-/**
- * Haunted empty state - mystical, dark premium feel
- */
-export default function EmptyState({
-  title,
-  description,
-  icon: Icon,
-  actions,
-  className = "",
-}) {
+export default function EmptyState({ title, description, icon: Icon, actions, className = "" }) {
   return (
-    <Card className={`rounded-xl ${HOVER_GLOW} ${className}`.trim()}>
-      <CardContent className="p-10 min-h-[220px] flex flex-col items-center justify-center text-center relative">
-        {/* Haunted glow backdrop */}
-        <div className="absolute inset-0 bg-gradient-to-b from-[#3B82F6]/5 to-transparent rounded-xl" />
-        
-        {Icon ? (
-          <div className="relative mb-3 h-12 w-12 rounded-xl border border-accent/25 bg-[#0B1220]/60 glass flex items-center justify-center shadow-[0_0_15px_rgba(59,130,246,0.15)]">
-            <Icon className="h-6 w-6 text-emerald-500" />
-          </div>
-        ) : null}
-        {title ? <div className="relative text-sm font-semibold uppercase tracking-wider">{title}</div> : null}
-        {description ? (
-          <div className="relative mt-2 text-sm text-muted-foreground max-w-[52ch]">{description}</div>
-        ) : null}
-        {actions ? <div className="relative mt-5 flex flex-wrap items-center justify-center gap-2">{actions}</div> : null}
-      </CardContent>
-    </Card>
+    <div
+      className={`rounded-3xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 px-6 py-10 flex flex-col items-center justify-center text-center ${className}`}
+    >
+      {Icon && (
+        <div className="mb-4 h-14 w-14 rounded-2xl bg-emerald-50 dark:bg-emerald-950 flex items-center justify-center">
+          <Icon className="h-7 w-7 text-emerald-600 dark:text-emerald-400" />
+        </div>
+      )}
+      {title && (
+        <div className="text-base font-semibold text-slate-900 dark:text-slate-100">{title}</div>
+      )}
+      {description && (
+        <div className="mt-2 text-sm text-slate-500 dark:text-slate-400 max-w-md">{description}</div>
+      )}
+      {actions && <div className="mt-5 flex flex-wrap items-center justify-center gap-2">{actions}</div>}
+    </div>
   );
 }
