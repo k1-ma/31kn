@@ -215,37 +215,72 @@ export async function deletePublicShare(shareId) {
 // IMAGE COMPRESSION FOR SHARE PAYLOADS
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Max image dimension for share payloads (pixels)
-const SHARE_IMAGE_MAX_SINGLE = 1200;
-const SHARE_IMAGE_MAX_MULTI = 800;
-// JPEG quality for share payloads
-const SHARE_IMAGE_QUALITY_SINGLE = 0.75;
-const SHARE_IMAGE_QUALITY_MULTI = 0.65;
+// Max image dimension for share payloads (pixels).
+// Server allows assembled payload up to 50 MB (publicShare.routes.js:16) and
+// chunked upload handles >3 MB transparently — so we don't need the aggressive
+// downscale that earlier values used. We still cap multi-trade shares more
+// tightly because they multiply across many trades.
+const SHARE_IMAGE_MAX_SINGLE = 2560;
+const SHARE_IMAGE_MAX_MULTI = 1600;
+// Encoder quality for share payloads (webp; falls back to jpeg/png).
+const SHARE_IMAGE_QUALITY_SINGLE = 0.92;
+const SHARE_IMAGE_QUALITY_MULTI = 0.85;
+// Per-image byte cap. If a recompressed image exceeds this, quality is
+// stepped down toward minQuality before giving up. Keeps a worst-case
+// multi-trade share (~10 trades × 3 images) comfortably under 50 MB.
+const SHARE_IMAGE_MAX_BYTES_SINGLE = 1_200_000;
+const SHARE_IMAGE_MAX_BYTES_MULTI = 500_000;
+const SHARE_IMAGE_MIN_QUALITY = 0.7;
 // Max images per trade in multi-trade shares
 const SHARE_MAX_IMAGES_PER_TRADE_MULTI = 3;
 // Max images per idea in multi-trade shares
 const SHARE_MAX_IMAGES_PER_IDEA_MULTI = 1;
 
 /**
- * Resize a data URL image to smaller dimensions using canvas.
- * Returns the original string if not a valid image data URL or if in a non-browser environment.
+ * Resize a data URL image for share payloads.
+ *
+ * Behavior:
+ *  - If the source already fits both maxSize and (when set) maxBytes, returns
+ *    it unchanged. This avoids a lossy re-encode for already-compressed
+ *    uploads coming straight from the editor.
+ *  - Otherwise, step-down resizes to maxSize and encodes as webp (falling back
+ *    to jpeg, then png). When maxBytes is provided and the encoded result
+ *    exceeds it, quality is stepped down toward minQuality before giving up.
+ *
+ * Returns the original string when not a valid image data URL or when no
+ * browser canvas is available (e.g. Node tests).
+ *
  * @param {string} dataUrl - Base64 data URL string
  * @param {number} maxSize - Max dimension in pixels
- * @param {number} quality - JPEG quality 0-1
- * @returns {Promise<string>} - Compressed data URL
+ * @param {number} quality - Encoder quality 0-1 (webp/jpeg)
+ * @param {number} [maxBytes=0] - Optional payload byte cap; 0 disables.
+ * @param {number} [minQuality=SHARE_IMAGE_MIN_QUALITY] - Floor for fallback re-encode.
+ * @returns {Promise<string>} - Resulting data URL (compressed or original)
  */
-export function resizeDataUrl(dataUrl, maxSize = SHARE_IMAGE_MAX_SINGLE, quality = SHARE_IMAGE_QUALITY_SINGLE) {
+export function resizeDataUrl(
+  dataUrl,
+  maxSize = SHARE_IMAGE_MAX_SINGLE,
+  quality = SHARE_IMAGE_QUALITY_SINGLE,
+  maxBytes = 0,
+  minQuality = SHARE_IMAGE_MIN_QUALITY,
+) {
   return new Promise((resolve) => {
-    // Skip non-image or empty data URLs
     if (!dataUrl || typeof dataUrl !== "string" || !dataUrl.startsWith("data:image")) {
       return resolve(dataUrl || "");
     }
-    // Skip if no browser canvas available (e.g., Node.js tests)
     if (typeof document === "undefined" || typeof Image === "undefined") {
       return resolve(dataUrl);
     }
+
+    const approxBytes = (s) => {
+      if (!s) return 0;
+      const i = s.indexOf(",");
+      const body = i >= 0 ? s.length - i - 1 : s.length;
+      return Math.floor((body * 3) / 4);
+    };
+
     const img = new Image();
-    img.onerror = () => resolve(dataUrl); // fallback to original on error
+    img.onerror = () => resolve(dataUrl);
     img.onload = () => {
       try {
         const w = img.naturalWidth || img.width || 0;
@@ -253,6 +288,10 @@ export function resizeDataUrl(dataUrl, maxSize = SHARE_IMAGE_MAX_SINGLE, quality
         if (!w || !h) return resolve(dataUrl);
 
         const maxDim = Math.max(w, h);
+        const fitsSize = maxDim <= maxSize;
+        const fitsBytes = maxBytes <= 0 || approxBytes(dataUrl) <= maxBytes;
+        if (fitsSize && fitsBytes) return resolve(dataUrl);
+
         const scale = Math.min(1, maxSize / maxDim);
         const tw = Math.max(1, Math.round(w * scale));
         const th = Math.max(1, Math.round(h * scale));
@@ -288,12 +327,24 @@ export function resizeDataUrl(dataUrl, maxSize = SHARE_IMAGE_MAX_SINGLE, quality
         ctx.imageSmoothingQuality = "high";
         ctx.drawImage(source, 0, 0, tw, th);
 
-        let result = "";
-        try {
-          result = canvas.toDataURL("image/jpeg", quality);
-          if (!result || result === "data:,") throw new Error("Canvas JPEG encoding failed");
-        } catch {
-          result = canvas.toDataURL("image/png");
+        const encode = (q) => {
+          // Try webp first, then jpeg, then png (some older Safaris reject webp).
+          for (const fmt of ["image/webp", "image/jpeg"]) {
+            try {
+              const r = canvas.toDataURL(fmt, q);
+              if (r && !r.startsWith("data:,")) return r;
+            } catch { /* try next */ }
+          }
+          return canvas.toDataURL("image/png");
+        };
+
+        let result = encode(quality);
+        if (maxBytes > 0 && approxBytes(result) > maxBytes && quality > minQuality) {
+          for (let q = quality - 0.07; q >= minQuality - 1e-6; q -= 0.07) {
+            const clamped = Math.max(minQuality, Number(q.toFixed(2)));
+            result = encode(clamped);
+            if (approxBytes(result) <= maxBytes) break;
+          }
         }
         resolve(result || dataUrl);
       } catch {
@@ -316,6 +367,7 @@ export async function compressSharePayload(payload, isMultiTrade = false) {
 
   const maxSize = isMultiTrade ? SHARE_IMAGE_MAX_MULTI : SHARE_IMAGE_MAX_SINGLE;
   const quality = isMultiTrade ? SHARE_IMAGE_QUALITY_MULTI : SHARE_IMAGE_QUALITY_SINGLE;
+  const maxBytes = isMultiTrade ? SHARE_IMAGE_MAX_BYTES_MULTI : SHARE_IMAGE_MAX_BYTES_SINGLE;
   const maxImagesPerTrade = isMultiTrade ? SHARE_MAX_IMAGES_PER_TRADE_MULTI : Infinity;
   const maxImagesPerIdea = isMultiTrade ? SHARE_MAX_IMAGES_PER_IDEA_MULTI : Infinity;
 
@@ -326,7 +378,7 @@ export async function compressSharePayload(payload, isMultiTrade = false) {
       const compressedImages = await Promise.all(
         tradeImages.map(async (img) => ({
           ...img,
-          dataUrl: await resizeDataUrl(img.dataUrl, maxSize, quality),
+          dataUrl: await resizeDataUrl(img.dataUrl, maxSize, quality, maxBytes),
         }))
       );
 
@@ -337,7 +389,7 @@ export async function compressSharePayload(payload, isMultiTrade = false) {
           const compressedIdeaImages = await Promise.all(
             ideaImages.map(async (img) => ({
               ...img,
-              dataUrl: await resizeDataUrl(img.dataUrl, maxSize, quality),
+              dataUrl: await resizeDataUrl(img.dataUrl, maxSize, quality, maxBytes),
             }))
           );
           return { ...idea, images: compressedIdeaImages };
