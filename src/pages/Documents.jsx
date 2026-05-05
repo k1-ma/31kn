@@ -684,7 +684,7 @@ function DocumentEditor({ doc, open, onClose, onSave, onDelete, trades, librarie
 
     for (const file of imageFiles) {
       try {
-        const dataUrl = await resizeImageFileToDataUrl(file, { maxSize: 1920, quality: 0.92 });
+        const dataUrl = await resizeImageFileToDataUrl(file, { maxSize: 2560, quality: 0.95, maxBytes: 1_500_000 });
         setEditDoc(prev => ({
           ...prev,
           images: [...(prev.images || []), { id: uid(), title: t("documents.pastedImage") || "Pasted image", dataUrl }]

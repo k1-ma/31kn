@@ -1289,7 +1289,7 @@ function TradeEditor({ initial, accounts, documents, ideas = [], libraries, onSa
             
             for (const file of imageFiles) {
               try {
-                const dataUrl = await resizeImageFileToDataUrl(file, { maxSize: 1920, quality: 0.92 });
+                const dataUrl = await resizeImageFileToDataUrl(file, { maxSize: 2560, quality: 0.95, maxBytes: 1_500_000 });
                 setT(p => ({
                   ...p,
                   images: [...(p.images || []), { id: uid(), title: file.name?.trim() || tx("pages.trades.editor.images.pastedImage"), dataUrl }]
@@ -1324,7 +1324,7 @@ function TradeEditor({ initial, accounts, documents, ideas = [], libraries, onSa
                   
                   for (const file of files) {
                     try {
-                      const dataUrl = await resizeImageFileToDataUrl(file, { maxSize: 1920, quality: 0.92 });
+                      const dataUrl = await resizeImageFileToDataUrl(file, { maxSize: 2560, quality: 0.95, maxBytes: 1_500_000 });
                       setT(p => ({
                         ...p,
                         images: [...(p.images || []), { id: uid(), title: file.name, dataUrl }]

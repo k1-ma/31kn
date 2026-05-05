@@ -251,7 +251,7 @@ export default function IdeaDetailPanel({
       }
       
       try {
-        const dataUrl = await resizeImageFileToDataUrl(file, { maxSize: 1920, quality: 0.92 });
+        const dataUrl = await resizeImageFileToDataUrl(file, { maxSize: 2560, quality: 0.95, maxBytes: 1_500_000 });
         setEditIdea(prev => ({
           ...prev,
           images: [...(prev.images || []), { id: uid(), title: file.name, dataUrl }]
@@ -282,7 +282,7 @@ export default function IdeaDetailPanel({
     
     for (const file of imageFiles) {
       try {
-        const dataUrl = await resizeImageFileToDataUrl(file, { maxSize: 1920, quality: 0.92 });
+        const dataUrl = await resizeImageFileToDataUrl(file, { maxSize: 2560, quality: 0.95, maxBytes: 1_500_000 });
         const imageName = t?.("tradingIdeas.pastedImage") || "Pasted image";
         setEditIdea(prev => ({
           ...prev,
