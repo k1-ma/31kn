@@ -48,7 +48,7 @@ function DebtForm({ open, onClose, initial }) {
               onClick={() => setDirection(d.id)}
               className={`h-11 rounded-xl text-sm font-medium border ${
                 direction === d.id
-                  ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                  ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300"
                   : "border-slate-200 dark:border-slate-700"
               }`}
             >
@@ -155,7 +155,7 @@ function SettleSheet({ open, onClose, debt, onConfirm }) {
             type="checkbox"
             checked={createTx}
             onChange={(e) => setCreateTx(e.target.checked)}
-            className="w-4 h-4 accent-emerald-500"
+            className="w-4 h-4 accent-indigo-500"
           />
           {t("debts.createTx")}
         </label>
@@ -258,7 +258,7 @@ export default function Debts() {
         </div>
         <div
           className={`text-sm font-semibold tabular-nums ${
-            d.direction === "owe" ? "text-red-600" : "text-emerald-600"
+            d.direction === "owe" ? "text-red-600" : "text-indigo-600"
           }`}
         >
           {d.direction === "owe" ? "-" : "+"} {formatMoney(d.amount_cents, d.currency, lang)}
@@ -271,7 +271,7 @@ export default function Debts() {
               setSettling(d);
             }
           }}
-          className="p-2 text-slate-400 hover:text-emerald-600"
+          className="p-2 text-slate-400 hover:text-indigo-600"
           aria-label={d.is_settled ? t("common.restore") : t("debts.settle")}
         >
           {d.is_settled ? <RotateCcw className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
@@ -313,7 +313,7 @@ export default function Debts() {
           </Card>
           <Card className="p-4">
             <div className="text-xs text-slate-500">{t("debts.totalOwed")}</div>
-            <div className="text-lg font-semibold tabular-nums text-emerald-600 mt-1">
+            <div className="text-lg font-semibold tabular-nums text-indigo-600 mt-1">
               {formatMoney(owed, baseCurrency, lang)}
             </div>
           </Card>

@@ -79,7 +79,7 @@ function RecurringForm({ open, onClose, initial }) {
               onClick={() => setType(tp.id)}
               className={`h-10 rounded-xl text-sm font-medium border ${
                 type === tp.id
-                  ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                  ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300"
                   : "border-slate-200 dark:border-slate-700"
               }`}
             >
@@ -240,11 +240,11 @@ export default function Recurring() {
       />
 
       {due.length > 0 && (
-        <Card className="p-4 border-emerald-200 bg-emerald-50 dark:bg-emerald-950 dark:border-emerald-900">
+        <Card className="p-4 border-indigo-200 bg-indigo-50 dark:bg-indigo-950 dark:border-indigo-900">
           <div className="flex items-start gap-3">
-            <Bell className="w-5 h-5 text-emerald-600 mt-0.5 shrink-0" />
+            <Bell className="w-5 h-5 text-indigo-600 mt-0.5 shrink-0" />
             <div className="flex-1">
-              <div className="text-sm font-semibold text-emerald-800 dark:text-emerald-200">
+              <div className="text-sm font-semibold text-indigo-800 dark:text-indigo-200">
                 {t("recurring.confirmRun")}
               </div>
               <div className="mt-3 space-y-2">

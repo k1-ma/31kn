@@ -30,7 +30,7 @@ export default function WalletDetail() {
     return (
       <div className="page-enter space-y-4">
         <PageHeader title={t("errors.notFound")} />
-        <Link to="/app/wallets" className="text-emerald-600 inline-flex items-center gap-1">
+        <Link to="/app/wallets" className="text-indigo-600 inline-flex items-center gap-1">
           <ArrowLeft className="w-4 h-4" /> {t("nav.wallets")}
         </Link>
       </div>
@@ -114,7 +114,7 @@ export default function WalletDetail() {
         </Card>
         <Card className="p-4">
           <div className="text-xs text-slate-500">{t("dashboard.earnedMonth")}</div>
-          <div className="text-lg font-semibold tabular-nums text-emerald-600 mt-1">
+          <div className="text-lg font-semibold tabular-nums text-indigo-600 mt-1">
             {formatMoney(monthIncome, wallet.currency, lang)}
           </div>
         </Card>
@@ -132,7 +132,7 @@ export default function WalletDetail() {
               const cat = cats.get(tx.categoryId);
               const isOutgoing =
                 tx.type === "expense" || (tx.type === "transfer" && tx.walletId === wallet.id);
-              const cls = isOutgoing ? "text-red-600" : "text-emerald-600";
+              const cls = isOutgoing ? "text-red-600" : "text-indigo-600";
               const sign = isOutgoing ? "-" : "+";
               return (
                 <div

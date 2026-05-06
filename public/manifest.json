@@ -7,7 +7,7 @@
   "scope": "/",
   "display": "standalone",
   "background_color": "#F7F8FA",
-  "theme_color": "#10B981",
+  "theme_color": "#6366F1",
   "categories": ["finance", "productivity", "lifestyle"],
   "prefer_related_applications": false,
   "icons": [

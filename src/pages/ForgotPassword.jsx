@@ -31,9 +31,9 @@ export default function ForgotPassword() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-emerald-50/40 dark:from-slate-950 dark:to-slate-900 flex flex-col px-5 py-8">
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-indigo-50/40 dark:from-slate-950 dark:to-slate-900 flex flex-col px-5 py-8">
       <div className="flex justify-between items-center max-w-md w-full mx-auto">
-        <Link to="/" className="text-xl font-bold text-emerald-600">Koshyk</Link>
+        <Link to="/" className="text-xl font-bold text-indigo-600">Koshyk</Link>
         <LanguageSwitcher />
       </div>
       <div className="flex-1 flex items-center justify-center">
@@ -41,7 +41,7 @@ export default function ForgotPassword() {
           <h1 className="text-2xl font-bold tracking-tight">{t("auth.forgotTitle")}</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t("auth.forgotSub")}</p>
           {sent ? (
-            <div className="mt-6 text-emerald-700 bg-emerald-50 dark:bg-emerald-950 dark:text-emerald-300 px-4 py-3 rounded-xl text-sm">
+            <div className="mt-6 text-indigo-700 bg-indigo-50 dark:bg-indigo-950 dark:text-indigo-300 px-4 py-3 rounded-xl text-sm">
               {t("toasts.exporting")}
             </div>
           ) : (

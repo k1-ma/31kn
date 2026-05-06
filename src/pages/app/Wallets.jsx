@@ -52,7 +52,7 @@ function WalletForm({ open, onClose, initial }) {
                 onClick={() => setType(tp)}
                 className={`h-10 rounded-xl text-xs font-medium border ${
                   type === tp
-                    ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                    ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300"
                     : "border-slate-200 dark:border-slate-700"
                 }`}
               >
@@ -95,7 +95,7 @@ function WalletForm({ open, onClose, initial }) {
                 type="button"
                 onClick={() => setIcon(ic)}
                 className={`h-10 rounded-xl text-xl border ${
-                  icon === ic ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950" : "border-slate-200 dark:border-slate-700"
+                  icon === ic ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-950" : "border-slate-200 dark:border-slate-700"
                 }`}
               >
                 {ic}

@@ -6,18 +6,16 @@ export default function Switch({ checked, onCheckedChange, ...rest }) {
       onClick={() => onCheckedChange?.(!checked)}
       className={
         "relative inline-flex h-[26px] w-12 items-center rounded-full border transition-all duration-200 " +
-        (checked 
-          ? "bg-accent border-accent/40 shadow-sm" 
-          : "bg-muted dark:bg-[#0B1220] border-border/50 dark:border-white/[0.12] hover:border-border dark:hover:border-white/[0.2]")
+        (checked
+          ? "bg-indigo-500 border-indigo-500/40 shadow-sm"
+          : "bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-600")
       }
       aria-pressed={!!checked}
       {...rest}
     >
       <span className={
-        "inline-block h-[20px] w-[20px] transform rounded-full transition-all duration-200 " + 
-        (checked 
-          ? "translate-x-[23px] bg-white shadow-sm" 
-          : "translate-x-[3px] bg-muted-foreground/50 dark:bg-[#5A6B8A] shadow-sm")
+        "inline-block h-[20px] w-[20px] transform rounded-full transition-all duration-200 bg-white shadow-sm " +
+        (checked ? "translate-x-[23px]" : "translate-x-[3px]")
       } />
     </button>
   );

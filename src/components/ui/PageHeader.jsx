@@ -4,7 +4,7 @@ export default function PageHeader({ title, subtitle, right, className = "" }) {
   return (
     <header className={`flex items-end justify-between gap-3 mb-5 ${className}`}>
       <div className="min-w-0">
-        <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100 font-[Space_Grotesk]">
+        <h1 className="font-display text-2xl md:text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
           {title}
         </h1>
         {subtitle && (

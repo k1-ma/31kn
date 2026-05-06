@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/Card.jsx";
 import AmountDisplay from "@/components/ui/AmountDisplay.jsx";
 import EmptyState from "@/components/common/EmptyState.jsx";
 import Skeleton, { SkeletonCard } from "@/components/ui/Skeleton.jsx";
+import ProgressRing from "@/components/ui/ProgressRing.jsx";
 import { useFinance, active } from "@/lib/finance/store.jsx";
 import { useAuth } from "@/auth/AuthProvider.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
@@ -83,50 +84,61 @@ export default function Dashboard() {
     <div className="page-enter space-y-5">
       <PageHeader title={greeting} subtitle={new Date().toLocaleDateString(lang === "uk" ? "uk-UA" : "en-US", { weekday: "long", day: "numeric", month: "long" })} />
 
-      <Card className="p-5">
-        <div className="text-sm text-slate-500">{t("dashboard.netWorth")}</div>
-        <div className="mt-1">
-          {baseTotal != null && otherCurrencies.length > 0 ? (
-            <>
-              <AmountDisplay cents={baseTotal} currency={baseCurrency} size="xl" />
-              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-slate-500">
-                {Object.entries(totals).map(([currency, cents]) => (
+      {/* Hero balance card with brand gradient — net worth front and center. */}
+      <div className="relative overflow-hidden rounded-3xl bg-brand-gradient text-white p-6 shadow-brand">
+        <div
+          aria-hidden
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            backgroundImage:
+              "radial-gradient(circle at 100% 0%, rgba(255,255,255,0.2), transparent 50%)",
+          }}
+        />
+        <div className="relative">
+          <div className="text-xs uppercase tracking-wider opacity-85 font-mono">
+            {t("dashboard.netWorth")}
+          </div>
+          <div className="mt-1.5 font-display font-mono-tabular text-4xl md:text-5xl font-bold tracking-tight">
+            {baseTotal != null && otherCurrencies.length > 0
+              ? formatMoney(baseTotal, baseCurrency, lang)
+              : Object.keys(totals).length === 0
+                ? formatMoney(0, baseCurrency, lang)
+                : formatMoney(totals[baseCurrency] ?? Object.values(totals)[0], baseCurrency, lang)}
+          </div>
+          {otherCurrencies.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-0.5 text-xs opacity-85">
+              {Object.entries(totals)
+                .filter(([c]) => c !== baseCurrency)
+                .map(([currency, cents]) => (
                   <span key={currency} className="tabular-nums">
                     {formatMoney(cents, currency, lang)}
                   </span>
                 ))}
-              </div>
-            </>
-          ) : (
-            <div className="space-y-0.5">
-              {Object.entries(totals).map(([currency, cents]) => (
-                <div key={currency}>
-                  <AmountDisplay cents={cents} currency={currency} size="xl" />
-                </div>
-              ))}
-              {Object.keys(totals).length === 0 && (
-                <AmountDisplay cents={0} currency={baseCurrency} size="xl" />
-              )}
             </div>
           )}
+          <div className="mt-3 flex gap-3 text-xs opacity-85">
+            <span>{wallets.length} {t("nav.wallets").toLowerCase()}</span>
+          </div>
         </div>
-      </Card>
+      </div>
 
       <div className="grid grid-cols-2 gap-3">
         <Card className="p-4">
-          <div className="flex items-center gap-2 text-sm text-slate-500">
-            <TrendingDown className="w-4 h-4 text-red-500" /> {t("dashboard.spentMonth")}
+          <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-slate-500 font-mono">
+            <TrendingDown className="w-3.5 h-3.5 text-red-500" /> {t("dashboard.spentMonth")}
           </div>
           <div className="mt-2">
             <AmountDisplay cents={summary.expense} currency={baseCurrency} size="lg" />
           </div>
         </Card>
         <Card className="p-4">
-          <div className="flex items-center gap-2 text-sm text-slate-500">
-            <TrendingUp className="w-4 h-4 text-emerald-500" /> {t("dashboard.earnedMonth")}
+          <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-slate-500 font-mono">
+            <TrendingUp className="w-3.5 h-3.5 text-emerald-500" /> {t("dashboard.earnedMonth")}
           </div>
           <div className="mt-2">
-            <AmountDisplay cents={summary.income} currency={baseCurrency} size="lg" />
+            <span className="font-mono-tabular text-2xl font-semibold text-emerald-600 dark:text-emerald-400">
+              +{formatMoney(summary.income, baseCurrency, lang)}
+            </span>
           </div>
         </Card>
       </div>
@@ -135,7 +147,7 @@ export default function Dashboard() {
       <div>
         <div className="flex items-center justify-between mb-2">
           <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">{t("nav.wallets")}</div>
-          <Link to="/app/wallets" className="text-xs text-emerald-600 inline-flex items-center gap-1">
+          <Link to="/app/wallets" className="text-xs text-indigo-600 inline-flex items-center gap-1">
             {t("dashboard.seeAll")} <ArrowRight className="w-3 h-3" />
           </Link>
         </div>
@@ -164,36 +176,42 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Active budgets */}
+      {/* Active budgets — horizontal ring strip */}
       {budgets.length > 0 && (
         <div>
           <div className="flex items-center justify-between mb-2">
-            <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+            <div className="font-display text-base font-semibold text-slate-900 dark:text-slate-100">
               {t("dashboard.activeBudgets")}
             </div>
-            <Link to="/app/budgets" className="text-xs text-emerald-600 inline-flex items-center gap-1">
+            <Link to="/app/budgets" className="text-xs text-indigo-600 inline-flex items-center gap-1 font-medium">
               {t("dashboard.seeAll")} <ArrowRight className="w-3 h-3" />
             </Link>
           </div>
-          <div className="space-y-2">
-            {budgets.slice(0, 3).map((b) => {
-              const pct = Math.min(1, budgetProgress(b, transactions));
-              const over = budgetProgress(b, transactions) > 1;
+          <div className="flex gap-2.5 overflow-x-auto no-scrollbar -mx-4 px-4">
+            {budgets.slice(0, 8).map((b) => {
+              const raw = budgetProgress(b, transactions);
+              const pct = Math.round(Math.max(0, Math.min(raw, 1.5)) * 100);
+              const color = raw > 1 ? "var(--danger)" : raw > 0.8 ? "var(--warning)" : "var(--brand)";
               return (
-                <Card key={b.id} className="p-4">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium">{b.name}</span>
-                    <span className={`tabular-nums ${over ? "text-red-600" : "text-slate-500"}`}>
-                      {Math.round(pct * 100)}%
-                    </span>
+                <Link
+                  key={b.id}
+                  to="/app/budgets"
+                  className="shrink-0 w-28 flex flex-col items-center gap-1.5 p-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800"
+                >
+                  <ProgressRing
+                    pct={pct}
+                    size={56}
+                    stroke={5}
+                    color={color}
+                    label={<span className="text-base">{b.icon || "💰"}</span>}
+                  />
+                  <div className="text-[11px] font-medium truncate max-w-full text-slate-900 dark:text-slate-100">
+                    {b.name}
                   </div>
-                  <div className="mt-2 h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full ${over ? "bg-red-500" : "bg-emerald-500"}`}
-                      style={{ width: `${Math.round(pct * 100)}%` }}
-                    />
+                  <div className="font-mono text-[10px]" style={{ color }}>
+                    {pct}%
                   </div>
-                </Card>
+                </Link>
               );
             })}
           </div>
@@ -204,7 +222,7 @@ export default function Dashboard() {
       <div>
         <div className="flex items-center justify-between mb-2">
           <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">{t("dashboard.recent")}</div>
-          <Link to="/app/transactions" className="text-xs text-emerald-600 inline-flex items-center gap-1">
+          <Link to="/app/transactions" className="text-xs text-indigo-600 inline-flex items-center gap-1">
             {t("dashboard.seeAll")} <ArrowRight className="w-3 h-3" />
           </Link>
         </div>
@@ -217,7 +235,7 @@ export default function Dashboard() {
               const wal = walMap.get(tx.walletId);
               const sign = tx.type === "income" ? "+" : tx.type === "expense" ? "-" : "↔";
               const cls =
-                tx.type === "income" ? "text-emerald-600" : tx.type === "expense" ? "text-red-600" : "text-slate-500";
+                tx.type === "income" ? "text-emerald-600 dark:text-emerald-400" : tx.type === "expense" ? "text-slate-900 dark:text-slate-100" : "text-slate-500";
               return (
                 <div key={tx.id} className="flex items-center gap-3 px-5 py-3 border-b border-slate-100 dark:border-slate-800 last:border-b-0">
                   <span className="text-2xl">{cat?.icon || "💸"}</span>

@@ -27,7 +27,7 @@ export default function LanguageSwitcher({ className = "" }) {
       <button
         type="button"
         onClick={() => setOpen((p) => !p)}
-        className="flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900/80 hover:border-emerald-300 transition text-sm text-slate-700 dark:text-slate-200"
+        className="flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900/80 hover:border-indigo-300 transition text-sm text-slate-700 dark:text-slate-200"
         aria-label="Change language"
         aria-expanded={open}
         aria-haspopup="listbox"
@@ -51,7 +51,7 @@ export default function LanguageSwitcher({ className = "" }) {
               }}
               className={`w-full flex items-center justify-between px-4 py-2.5 text-sm transition ${
                 lang === l.id
-                  ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 font-medium"
+                  ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 font-medium"
                   : "text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
               }`}
               role="option"

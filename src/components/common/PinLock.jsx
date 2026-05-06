@@ -91,15 +91,15 @@ export default function PinLock({ children }) {
     <span
       key={i}
       className={`w-3 h-3 rounded-full ${
-        i < pin.length ? "bg-emerald-500" : "bg-slate-200 dark:bg-slate-700"
+        i < pin.length ? "bg-indigo-500" : "bg-slate-200 dark:bg-slate-700"
       }`}
     />
   ));
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center px-6">
-      <div className="w-14 h-14 rounded-2xl bg-emerald-50 dark:bg-emerald-950 flex items-center justify-center mb-5">
-        <Lock className="w-7 h-7 text-emerald-600 dark:text-emerald-400" />
+      <div className="w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-indigo-950 flex items-center justify-center mb-5">
+        <Lock className="w-7 h-7 text-indigo-600 dark:text-indigo-400" />
       </div>
       <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Koshyk</h1>
       <p className="text-sm text-slate-500 mt-1">{t("auth.welcomeSub")}</p>

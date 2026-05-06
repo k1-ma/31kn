@@ -44,7 +44,7 @@ export default function TagsInput({ value = [], onChange, suggestions = [] }) {
         {value.map((tag) => (
           <span
             key={tag}
-            className="inline-flex items-center gap-1 h-7 px-2 rounded-full bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 text-xs font-medium"
+            className="inline-flex items-center gap-1 h-7 px-2 rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 text-xs font-medium"
           >
             #{tag}
             <button
