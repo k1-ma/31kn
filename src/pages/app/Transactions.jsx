@@ -9,7 +9,8 @@ import TransactionSheet from "@/pages/app/TransactionSheet.jsx";
 import { useFinance, active } from "@/lib/finance/store.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { formatMoney } from "@/lib/money.js";
-import { rangeFromPreset, RANGE_PRESETS } from "@/lib/finance/range.js";
+import { rangeFromPreset } from "@/lib/finance/range.js";
+import RangeBar from "@/components/ui/RangeBar.jsx";
 
 const TYPE_OPTIONS = ["all", "income", "expense", "transfer"];
 
@@ -32,7 +33,10 @@ export default function Transactions({ autoOpen = false }) {
 
   const cats = useMemo(() => new Map(active(state.categories).map((c) => [c.id, c])), [state.categories]);
   const wals = useMemo(() => new Map(active(state.wallets).map((w) => [w.id, w])), [state.wallets]);
-  const range = useMemo(() => rangeFromPreset(preset), [preset]);
+  const range = useMemo(
+    () => (typeof preset === "object" ? preset : rangeFromPreset(preset)),
+    [preset]
+  );
 
   const list = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -78,7 +82,7 @@ export default function Transactions({ autoOpen = false }) {
 
   const baseCurrency = state.prefs?.baseCurrency || "UAH";
   const filtersActive =
-    type !== "all" || walletId !== "all" || categoryId !== "all" || preset !== "month";
+    type !== "all" || walletId !== "all" || categoryId !== "all" || preset !== "month" || typeof preset === "object";
 
   return (
     <div className="page-enter space-y-4">
@@ -97,21 +101,10 @@ export default function Transactions({ autoOpen = false }) {
         onChange={(e) => setSearch(e.target.value)}
       />
 
-      <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4">
-        {RANGE_PRESETS.map((p) => (
-          <button
-            key={p}
-            type="button"
-            onClick={() => setPreset(p)}
-            className={`shrink-0 h-9 px-3 rounded-full text-xs font-semibold border transition ${
-              preset === p
-                ? "bg-emerald-500 text-white border-emerald-500"
-                : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"
-            }`}
-          >
-            {t(`ranges.${p}`)}
-          </button>
-        ))}
+      <div className="flex items-center gap-2">
+        <div className="flex-1 min-w-0">
+          <RangeBar value={preset} onChange={setPreset} />
+        </div>
         <button
           type="button"
           onClick={() => setShowFilters((v) => !v)}

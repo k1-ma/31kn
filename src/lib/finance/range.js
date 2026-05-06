@@ -5,6 +5,16 @@
 
 export const RANGE_PRESETS = ["today", "week", "month", "quarter", "year", "all"];
 
+/** Build a {start, end} range from inclusive YYYY-MM-DD strings (end exclusive of next day). */
+export function customRange(startDate, endDate) {
+  const start = new Date(startDate);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(endDate);
+  end.setHours(0, 0, 0, 0);
+  end.setDate(end.getDate() + 1);
+  return { start: start.toISOString(), end: end.toISOString() };
+}
+
 export function rangeFromPreset(preset, anchor = new Date()) {
   const a = new Date(anchor);
   if (preset === "today") {

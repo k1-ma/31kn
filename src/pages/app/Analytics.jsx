@@ -19,7 +19,8 @@ import { useFinance, active } from "@/lib/finance/store.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { monthlyCashflow, expenseByCategory, rangeSummary } from "@/lib/finance/calc.js";
 import { fromCents, formatMoney } from "@/lib/money.js";
-import { rangeFromPreset, RANGE_PRESETS } from "@/lib/finance/range.js";
+import { rangeFromPreset } from "@/lib/finance/range.js";
+import RangeBar from "@/components/ui/RangeBar.jsx";
 
 export default function Analytics() {
   const { t, lang } = useI18n();
@@ -28,7 +29,10 @@ export default function Analytics() {
   const baseCurrency = state.prefs?.baseCurrency || "UAH";
   const txns = state.transactions;
 
-  const range = useMemo(() => rangeFromPreset(preset), [preset]);
+  const range = useMemo(
+    () => (typeof preset === "object" ? preset : rangeFromPreset(preset)),
+    [preset]
+  );
   const summary = useMemo(() => rangeSummary(txns, range.start, range.end), [txns, range]);
   const cashflow = useMemo(() => monthlyCashflow(txns, 6), [txns]);
   const byCategory = useMemo(
@@ -63,22 +67,7 @@ export default function Analytics() {
     <div className="page-enter space-y-4">
       <PageHeader title={t("nav.analytics")} subtitle={baseCurrency} />
 
-      <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4">
-        {RANGE_PRESETS.map((p) => (
-          <button
-            key={p}
-            type="button"
-            onClick={() => setPreset(p)}
-            className={`shrink-0 h-9 px-3 rounded-full text-xs font-semibold border transition ${
-              preset === p
-                ? "bg-emerald-500 text-white border-emerald-500"
-                : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"
-            }`}
-          >
-            {t(`ranges.${p}`)}
-          </button>
-        ))}
-      </div>
+      <RangeBar value={preset} onChange={setPreset} />
 
       <div className="grid grid-cols-3 gap-2">
         <Card className="p-3">

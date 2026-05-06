@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from "react";
-import { Target, Trash2, Plus } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { Target, Trash2, Plus, Pencil } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader.jsx";
 import { Card } from "@/components/ui/Card.jsx";
 import Button from "@/components/ui/Button.jsx";
@@ -10,6 +10,8 @@ import { useFinance, active } from "@/lib/finance/store.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { goalProgress } from "@/lib/finance/calc.js";
 import { formatMoney, toCents, SUPPORTED_CURRENCIES } from "@/lib/money.js";
+
+const ICONS = ["🎯", "🏠", "🚗", "✈️", "🎓", "💍", "👶", "💻", "🎁", "💰"];
 
 function GoalForm({ open, onClose, initial }) {
   const { t } = useI18n();
@@ -23,7 +25,7 @@ function GoalForm({ open, onClose, initial }) {
   );
   const [icon, setIcon] = useState(initial?.icon || "🎯");
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (open) {
       setName(initial?.name || "");
       setTarget(initial ? String((initial.target_cents || 0) / 100) : "0");
@@ -66,6 +68,25 @@ function GoalForm({ open, onClose, initial }) {
             <Input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
           </div>
         </div>
+        <div>
+          <label className="text-xs text-slate-500 mb-1 inline-block">{t("wallets.icon")}</label>
+          <div className="grid grid-cols-10 gap-2">
+            {ICONS.map((ic) => (
+              <button
+                key={ic}
+                type="button"
+                onClick={() => setIcon(ic)}
+                className={`h-10 rounded-xl text-xl border ${
+                  icon === ic
+                    ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950"
+                    : "border-slate-200 dark:border-slate-700"
+                }`}
+              >
+                {ic}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="flex gap-2 pt-2">
           <Button variant="secondary" size="lg" className="flex-1" onClick={onClose}>
             {t("common.cancel")}
@@ -96,20 +117,89 @@ function GoalForm({ open, onClose, initial }) {
   );
 }
 
+function ContributeSheet({ open, onClose, goal, onContribute }) {
+  const { t, lang } = useI18n();
+  const [amount, setAmount] = useState("");
+  useEffect(() => {
+    if (open) setAmount("");
+  }, [open]);
+
+  if (!goal) return null;
+
+  const cents = toCents(amount);
+  const newCurrent = (goal.current_cents || 0) + cents;
+  const remaining = Math.max(0, (goal.target_cents || 0) - (goal.current_cents || 0));
+
+  return (
+    <BottomSheet open={open} onClose={onClose} title={`${t("goals.contribute")} · ${goal.name}`}>
+      <div className="space-y-4">
+        <div className="text-center">
+          <div className="text-sm text-slate-500">{t("goals.progress")}</div>
+          <div className="text-3xl font-bold tabular-nums mt-1">
+            {formatMoney(goal.current_cents || 0, goal.currency, lang)}
+            <span className="text-base text-slate-400 ml-2">
+              / {formatMoney(goal.target_cents || 0, goal.currency, lang)}
+            </span>
+          </div>
+        </div>
+        <div>
+          <label className="text-xs text-slate-500 mb-1 inline-block">
+            {t("tx.amount")} ({goal.currency})
+          </label>
+          <Input
+            type="number"
+            step="0.01"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            autoFocus
+            placeholder="0"
+          />
+        </div>
+        {remaining > 0 && (
+          <button
+            type="button"
+            onClick={() => setAmount(String(remaining / 100))}
+            className="text-sm text-emerald-600 hover:text-emerald-700"
+          >
+            {t("budgets.remaining")}: {formatMoney(remaining, goal.currency, lang)}
+          </button>
+        )}
+        {cents > 0 && (
+          <div className="text-sm text-slate-500 text-center">
+            →{" "}
+            <span className="font-semibold text-slate-900 dark:text-slate-100 tabular-nums">
+              {formatMoney(newCurrent, goal.currency, lang)}
+            </span>
+          </div>
+        )}
+        <div className="flex gap-2 pt-2">
+          <Button variant="secondary" size="lg" className="flex-1" onClick={onClose}>
+            {t("common.cancel")}
+          </Button>
+          <Button
+            size="lg"
+            className="flex-1"
+            disabled={cents <= 0}
+            onClick={() => {
+              onContribute(cents);
+              onClose();
+            }}
+          >
+            {t("common.save")}
+          </Button>
+        </div>
+      </div>
+    </BottomSheet>
+  );
+}
+
 export default function Goals() {
   const { t, lang } = useI18n();
   const { state, upsert, remove } = useFinance();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [contributingGoal, setContributingGoal] = useState(null);
   const goals = useMemo(() => active(state.goals), [state.goals]);
-
-  const contribute = (g) => {
-    const raw = window.prompt(`${t("goals.contribute")} (${g.currency})`, "0");
-    if (!raw) return;
-    const cents = toCents(raw);
-    if (!cents) return;
-    upsert("goals", { ...g, current_cents: (g.current_cents || 0) + cents });
-  };
 
   return (
     <div className="page-enter space-y-4">
@@ -127,13 +217,14 @@ export default function Goals() {
         <div className="grid sm:grid-cols-2 gap-3">
           {goals.map((g) => {
             const pct = goalProgress(g);
+            const completed = pct >= 1;
             return (
               <Card key={g.id} className="p-5">
                 <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
                     <span className="text-2xl">{g.icon}</span>
-                    <div>
-                      <div className="font-semibold">{g.name}</div>
+                    <div className="min-w-0">
+                      <div className="font-semibold truncate">{g.name}</div>
                       {g.target_date && (
                         <div className="text-xs text-slate-500">
                           {new Date(g.target_date).toLocaleDateString(lang === "uk" ? "uk-UA" : "en-US")}
@@ -141,13 +232,22 @@ export default function Goals() {
                       )}
                     </div>
                   </div>
-                  <button
-                    onClick={() => remove("goals", g.id)}
-                    className="p-2 text-slate-400 hover:text-red-500"
-                    aria-label={t("common.delete")}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex gap-1 shrink-0">
+                    <button
+                      onClick={() => { setEditing(g); setOpen(true); }}
+                      className="p-2 text-slate-400 hover:text-slate-600"
+                      aria-label={t("common.edit")}
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => remove("goals", g.id)}
+                      className="p-2 text-slate-400 hover:text-red-500"
+                      aria-label={t("common.delete")}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
                 <div className="mt-3 text-sm text-slate-500">
                   {t("goals.contributedOf", {
@@ -157,15 +257,16 @@ export default function Goals() {
                 </div>
                 <div className="mt-2 h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-emerald-500"
+                    className={`h-full ${completed ? "bg-amber-400" : "bg-emerald-500"}`}
                     style={{ width: `${Math.round(pct * 100)}%` }}
                   />
                 </div>
                 <div className="mt-3 flex justify-between items-center">
                   <span className="text-sm font-semibold tabular-nums">
                     {Math.round(pct * 100)}%
+                    {completed && <span className="ml-2">🎉</span>}
                   </span>
-                  <Button size="sm" variant="secondary" onClick={() => contribute(g)}>
+                  <Button size="sm" variant="secondary" onClick={() => setContributingGoal(g)}>
                     <Plus className="w-3.5 h-3.5" /> {t("goals.contribute")}
                   </Button>
                 </div>
@@ -179,6 +280,18 @@ export default function Goals() {
         open={open}
         onClose={() => { setOpen(false); setEditing(null); }}
         initial={editing}
+      />
+      <ContributeSheet
+        open={!!contributingGoal}
+        goal={contributingGoal}
+        onClose={() => setContributingGoal(null)}
+        onContribute={(cents) => {
+          if (!contributingGoal) return;
+          upsert("goals", {
+            ...contributingGoal,
+            current_cents: (contributingGoal.current_cents || 0) + cents,
+          });
+        }}
       />
     </div>
   );

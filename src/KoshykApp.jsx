@@ -21,6 +21,8 @@ const Recurring = lazy(() => import("@/pages/app/Recurring.jsx"));
 const Analytics = lazy(() => import("@/pages/app/Analytics.jsx"));
 const Settings = lazy(() => import("@/pages/app/Settings.jsx"));
 const Trash = lazy(() => import("@/pages/app/Trash.jsx"));
+const UiPlayground = lazy(() => import("@/pages/app/UiPlayground.jsx"));
+const IS_DEV = import.meta.env?.DEV;
 
 function PageFallback() {
   const { t } = useI18n();
@@ -88,6 +90,7 @@ function AppShell() {
                   <Route path="analytics" element={<Analytics />} />
                   <Route path="settings" element={<Settings />} />
                   <Route path="trash" element={<Trash />} />
+                  {IS_DEV && <Route path="_ui" element={<UiPlayground />} />}
                   <Route path="*" element={<Navigate to="dashboard" replace />} />
                 </Routes>
               </Suspense>

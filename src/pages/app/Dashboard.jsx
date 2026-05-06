@@ -9,7 +9,8 @@ import { useFinance, active } from "@/lib/finance/store.jsx";
 import { useAuth } from "@/auth/AuthProvider.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { walletBalance, rangeSummary, budgetProgress } from "@/lib/finance/calc.js";
-import { formatMoney } from "@/lib/money.js";
+import { formatMoney, totalInBase } from "@/lib/money.js";
+import { useFxRates } from "@/lib/finance/useFxRates.js";
 
 function monthRange() {
   const now = new Date();
@@ -36,6 +37,13 @@ export default function Dashboard() {
     return acc;
   }, [wallets, transactions]);
 
+  const rates = useFxRates(baseCurrency);
+  const otherCurrencies = Object.keys(totals).filter((c) => c !== baseCurrency);
+  const baseTotal = useMemo(() => {
+    if (!rates) return null;
+    return totalInBase(totals, baseCurrency, rates);
+  }, [totals, baseCurrency, rates]);
+
   const { start, end } = monthRange();
   const summary = useMemo(() => rangeSummary(transactions, start, end), [transactions, start, end]);
 
@@ -61,14 +69,29 @@ export default function Dashboard() {
 
       <Card className="p-5">
         <div className="text-sm text-slate-500">{t("dashboard.netWorth")}</div>
-        <div className="mt-1 space-y-0.5">
-          {Object.entries(totals).map(([currency, cents]) => (
-            <div key={currency}>
-              <AmountDisplay cents={cents} currency={currency} size="xl" />
+        <div className="mt-1">
+          {baseTotal != null && otherCurrencies.length > 0 ? (
+            <>
+              <AmountDisplay cents={baseTotal} currency={baseCurrency} size="xl" />
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-slate-500">
+                {Object.entries(totals).map(([currency, cents]) => (
+                  <span key={currency} className="tabular-nums">
+                    {formatMoney(cents, currency, lang)}
+                  </span>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="space-y-0.5">
+              {Object.entries(totals).map(([currency, cents]) => (
+                <div key={currency}>
+                  <AmountDisplay cents={cents} currency={currency} size="xl" />
+                </div>
+              ))}
+              {Object.keys(totals).length === 0 && (
+                <AmountDisplay cents={0} currency={baseCurrency} size="xl" />
+              )}
             </div>
-          ))}
-          {Object.keys(totals).length === 0 && (
-            <AmountDisplay cents={0} currency={baseCurrency} size="xl" />
           )}
         </div>
       </Card>

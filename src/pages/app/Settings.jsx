@@ -1,14 +1,17 @@
 import React, { useEffect, useRef, useState } from "react";
-import { LogOut, Globe, Coins, Sun, Moon, Laptop, Upload, Download, Lock } from "lucide-react";
+import { LogOut, Globe, Coins, Sun, Moon, Laptop, Upload, Download, Lock, FileJson, AlertTriangle } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader.jsx";
 import { Card } from "@/components/ui/Card.jsx";
 import Button from "@/components/ui/Button.jsx";
 import { useFinance, active } from "@/lib/finance/store.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { useAuth } from "@/auth/AuthProvider.jsx";
+import { useToast } from "@/components/common/ToastProvider.jsx";
 import { SUPPORTED_LANGS } from "@/i18n/translations.js";
 import { SUPPORTED_CURRENCIES } from "@/lib/money.js";
 import { csvToTransactions } from "@/lib/finance/csv.js";
+import { buildBackup, parseBackup } from "@/lib/finance/backup.js";
+import { apiJson } from "@/lib/api.js";
 import Input from "@/components/ui/Input.jsx";
 import { isPinEnabled, setPin, clearPin } from "@/components/common/PinLock.jsx";
 
@@ -32,7 +35,12 @@ function applyTheme(theme) {
 export default function Settings() {
   const { t, lang, setLang } = useI18n();
   const { user, logout } = useAuth();
-  const { state, setPrefs, upsert } = useFinance();
+  const { state, setPrefs, upsert, update } = useFinance();
+  const toast = useToast();
+  const jsonInputRef = useRef(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletingBusy, setDeletingBusy] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState("");
   const prefs = state.prefs || {};
   const fileInputRef = useRef(null);
   const [importStatus, setImportStatus] = useState(null);
@@ -65,6 +73,48 @@ export default function Settings() {
       setImportStatus({ ok: false, error: err?.message || "Failed to import" });
     } finally {
       e.target.value = "";
+    }
+  };
+
+  const exportJson = () => {
+    const data = JSON.stringify(buildBackup(state), null, 2);
+    const blob = new Blob([data], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `koshyk-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast.push({ kind: "success", title: t("toasts.copied") });
+  };
+
+  const onImportJson = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const restored = parseBackup(text);
+      const ok = window.confirm(t("settings.restoreConfirm"));
+      if (!ok) return;
+      update(restored);
+      toast.push({ kind: "success", title: t("toasts.restored") });
+    } catch (err) {
+      toast.push({ kind: "error", title: err?.message || t("errors.generic") });
+    } finally {
+      e.target.value = "";
+    }
+  };
+
+  const onDeleteAccount = async () => {
+    setDeletingBusy(true);
+    try {
+      await apiJson("/api/auth/me", { method: "DELETE" });
+      try { localStorage.clear(); } catch {}
+      window.location.assign("/");
+    } catch (err) {
+      toast.push({ kind: "error", title: err?.message || t("errors.generic") });
+    } finally {
+      setDeletingBusy(false);
     }
   };
 
@@ -193,6 +243,24 @@ export default function Settings() {
               : importStatus.error}
           </div>
         )}
+        <div className="h-px bg-slate-100 dark:bg-slate-800 my-1" />
+        <Button variant="secondary" onClick={exportJson} className="w-full">
+          <FileJson className="w-4 h-4" /> {t("settings.exportJson")}
+        </Button>
+        <input
+          ref={jsonInputRef}
+          type="file"
+          accept=".json,application/json"
+          onChange={onImportJson}
+          className="hidden"
+        />
+        <Button
+          variant="secondary"
+          onClick={() => jsonInputRef.current?.click()}
+          className="w-full"
+        >
+          <Upload className="w-4 h-4" /> {t("settings.importJson")}
+        </Button>
       </Card>
 
       <Card className="p-5 space-y-3">
@@ -244,10 +312,54 @@ export default function Settings() {
         )}
       </Card>
 
-      <Card className="p-5">
-        <Button variant="danger" className="w-full" onClick={() => logout()}>
+      <Card className="p-5 space-y-3">
+        <Button variant="secondary" className="w-full" onClick={() => logout()}>
           <LogOut className="w-4 h-4" /> {t("nav.logout")}
         </Button>
+        {!deleteOpen ? (
+          <Button
+            variant="ghost"
+            className="w-full text-red-600 hover:text-red-700"
+            onClick={() => setDeleteOpen(true)}
+          >
+            <AlertTriangle className="w-4 h-4" />
+            {t("settings.deleteAccount")}
+          </Button>
+        ) : (
+          <div className="rounded-2xl bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-900 p-4 space-y-3">
+            <div className="text-sm font-semibold text-red-800 dark:text-red-200">
+              {t("settings.deleteAccount")}
+            </div>
+            <p className="text-sm text-red-700 dark:text-red-300">
+              {t("settings.deleteConfirm")}
+            </p>
+            <Input
+              value={deleteConfirm}
+              onChange={(e) => setDeleteConfirm(e.target.value)}
+              placeholder="DELETE"
+            />
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                className="flex-1"
+                onClick={() => {
+                  setDeleteOpen(false);
+                  setDeleteConfirm("");
+                }}
+              >
+                {t("common.cancel")}
+              </Button>
+              <Button
+                variant="danger"
+                className="flex-1"
+                disabled={deleteConfirm !== "DELETE" || deletingBusy}
+                onClick={onDeleteAccount}
+              >
+                {deletingBusy ? t("common.loading") : t("common.confirm")}
+              </Button>
+            </div>
+          </div>
+        )}
       </Card>
     </div>
   );

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { rangeFromPreset, RANGE_PRESETS } from "@/lib/finance/range.js";
+import { rangeFromPreset, RANGE_PRESETS, customRange } from "@/lib/finance/range.js";
 
 describe("rangeFromPreset", () => {
   it("returns ISO strings for every preset", () => {
@@ -39,5 +39,18 @@ describe("rangeFromPreset", () => {
     const { start, end } = rangeFromPreset("all", new Date());
     expect(new Date(end).getFullYear()).toBeGreaterThan(2100);
     expect(new Date(start).getFullYear()).toBeLessThan(2000);
+  });
+});
+
+describe("customRange", () => {
+  it("end is the day after the input end (exclusive)", () => {
+    const { start, end } = customRange("2026-04-01", "2026-04-30");
+    expect(start.slice(0, 10)).toBe("2026-04-01");
+    expect(end.slice(0, 10)).toBe("2026-05-01");
+  });
+
+  it("single-day range yields a 24h window", () => {
+    const { start, end } = customRange("2026-06-15", "2026-06-15");
+    expect(new Date(end).getTime() - new Date(start).getTime()).toBe(24 * 60 * 60 * 1000);
   });
 });
