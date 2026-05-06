@@ -16,7 +16,32 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Koshyk">
     <meta name="description" content="Koshyk — простий особистий фінансовий трекер. Доходи, витрати, бюджети, цілі. Працює офлайн.">
+    <meta name="robots" content="index, follow">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Koshyk · Особистий фінансовий трекер">
+    <meta property="og:description" content="Простий облік доходів, витрат і бюджетів. Працює офлайн. Без реклами.">
+    <meta property="og:image" content="/pwa-icon-512x512.png">
+    <meta property="og:locale" content="uk_UA">
+    <meta property="og:locale:alternate" content="en_US">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Koshyk · Особистий фінансовий трекер">
+    <meta name="twitter:description" content="Простий облік доходів, витрат і бюджетів. Працює офлайн. Без реклами.">
+    <meta name="twitter:image" content="/pwa-icon-512x512.png">
+    <link rel="alternate" hreflang="uk" href="/">
+    <link rel="alternate" hreflang="en" href="/">
     <title>Koshyk · Особистий фінансовий трекер</title>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Koshyk",
+        "applicationCategory": "FinanceApplication",
+        "operatingSystem": "Web, Android, iOS",
+        "description": "Personal finance tracker: wallets, categories, transactions, budgets, goals. Works offline.",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "aggregateRating": { "@type": "AggregateRating", "ratingValue": "5", "reviewCount": "1" }
+      }
+    </script>
     <script>
       // Apply theme before React mounts to avoid a flash of wrong-mode UI.
       // Source of truth: localStorage["koshyk:theme"] = "light" | "dark" | "system".

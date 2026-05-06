@@ -11,11 +11,15 @@ import {
   Settings as SettingsIcon,
   Trash2,
   Tags,
+  Bell,
+  Coins,
 } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
+import { useUnreadCount } from "@/lib/finance/useUnreadCount.js";
 
 export default function SideNav() {
   const { t } = useI18n();
+  const unread = useUnreadCount();
   const items = [
     { to: "/app/dashboard", label: t("nav.dashboard"), icon: Home, end: true },
     { to: "/app/transactions", label: t("nav.transactions"), icon: ListTree },
@@ -24,7 +28,9 @@ export default function SideNav() {
     { to: "/app/budgets", label: t("nav.budgets"), icon: PiggyBank },
     { to: "/app/goals", label: t("nav.goals"), icon: Target },
     { to: "/app/recurring", label: t("nav.recurring"), icon: Repeat },
+    { to: "/app/debts", label: t("nav.debts"), icon: Coins },
     { to: "/app/analytics", label: t("nav.analytics"), icon: BarChart3 },
+    { to: "/app/notifications", label: t("nav.notifications"), icon: Bell, badge: unread },
     { to: "/app/settings", label: t("nav.settings"), icon: SettingsIcon },
     { to: "/app/trash", label: t("nav.trash"), icon: Trash2 },
   ];
@@ -34,7 +40,7 @@ export default function SideNav() {
         <span className="text-xl font-bold tracking-tight text-emerald-600">Koshyk</span>
       </div>
       <nav className="px-3 flex-1 flex flex-col gap-0.5" aria-label="Primary">
-        {items.map(({ to, label, icon: Icon, end }) => (
+        {items.map(({ to, label, icon: Icon, end, badge }) => (
           <NavLink
             key={to}
             to={to}
@@ -48,7 +54,12 @@ export default function SideNav() {
             }
           >
             <Icon className="w-5 h-5" />
-            {label}
+            <span className="flex-1">{label}</span>
+            {badge > 0 && (
+              <span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-emerald-500 text-white text-[10px] font-bold">
+                {badge > 99 ? "99+" : badge}
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>

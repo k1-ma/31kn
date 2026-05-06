@@ -10,6 +10,7 @@ import BottomSheet from "@/components/ui/BottomSheet.jsx";
 import NumPad from "@/components/ui/NumPad.jsx";
 import TagsInput from "@/components/ui/TagsInput.jsx";
 import RangeBar from "@/components/ui/RangeBar.jsx";
+import Skeleton, { SkeletonCard } from "@/components/ui/Skeleton.jsx";
 import EmptyState from "@/components/common/EmptyState.jsx";
 import { useToast } from "@/components/common/ToastProvider.jsx";
 
@@ -84,6 +85,12 @@ export default function UiPlayground() {
 
       <Section title="EmptyState">
         <EmptyState icon={Wallet} title="Nothing here" description="Тут поки порожньо. Додай перший запис." />
+      </Section>
+
+      <Section title="Skeleton">
+        <Skeleton className="w-1/3" />
+        <Skeleton lines={3} />
+        <SkeletonCard />
       </Section>
 
       <Section title="RangeBar">

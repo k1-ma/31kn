@@ -5,6 +5,7 @@ import PageHeader from "@/components/ui/PageHeader.jsx";
 import { Card } from "@/components/ui/Card.jsx";
 import AmountDisplay from "@/components/ui/AmountDisplay.jsx";
 import EmptyState from "@/components/common/EmptyState.jsx";
+import Skeleton, { SkeletonCard } from "@/components/ui/Skeleton.jsx";
 import { useFinance, active } from "@/lib/finance/store.jsx";
 import { useAuth } from "@/auth/AuthProvider.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
@@ -22,7 +23,7 @@ function monthRange() {
 export default function Dashboard() {
   const { t, lang } = useI18n();
   const { user } = useAuth();
-  const { state } = useFinance();
+  const { state, loaded } = useFinance();
 
   const wallets = useMemo(() => active(state.wallets).filter((w) => !w.isArchived), [state.wallets]);
   const transactions = state.transactions;
@@ -62,6 +63,21 @@ export default function Dashboard() {
 
   const catMap = useMemo(() => new Map(active(state.categories).map((c) => [c.id, c])), [state.categories]);
   const walMap = useMemo(() => new Map(wallets.map((w) => [w.id, w])), [wallets]);
+
+  if (!loaded) {
+    return (
+      <div className="page-enter space-y-5">
+        <Skeleton className="w-48 mb-2" height="h-7" />
+        <SkeletonCard />
+        <div className="grid grid-cols-2 gap-3">
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+        <SkeletonCard />
+        <SkeletonCard />
+      </div>
+    );
+  }
 
   return (
     <div className="page-enter space-y-5">

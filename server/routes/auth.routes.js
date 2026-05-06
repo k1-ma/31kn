@@ -1050,17 +1050,43 @@ router.get("/google/status", loginRateLimit, async (req, res) => {
   if (!pool) {
     try { pool = await ensurePool(); } catch { /* retry failed */ }
   }
-  
+
   // Log configuration status for debugging (only if unavailable)
   if (!config.available) {
     // eslint-disable-next-line no-console
     console.info(`[auth] Google OAuth disabled - missing env vars: ${config.missing.join(", ")}`);
   }
-  
-  return res.json({ 
+
+  return res.json({
     available: config.available,
     dbReady: !!pool,
   });
+});
+
+// DELETE /api/auth/me — permanently delete the caller's account.
+// Cascades through users → states / sessions / wallets / categories / etc.
+// thanks to ON DELETE CASCADE on every user_id FK in db.js.
+router.delete("/me", requireAuth, async (req, res) => {
+  let pool = getPool();
+  if (!pool) {
+    try { pool = await ensurePool(); } catch { /* retry failed */ }
+  }
+  if (!pool) return res.status(503).json(dbUnavailableResponse());
+
+  try {
+    const userId = req.session.userId;
+    await pool.query("DELETE FROM users WHERE id = $1", [userId]);
+    // Belt & braces: explicitly clear the cookie so the browser stops
+    // sending a SID that no longer exists in sessions.
+    res.setHeader(
+      "Set-Cookie",
+      `${COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${IS_PROD ? "; Secure" : ""}`
+    );
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error("[auth] account delete error:", error?.message || error);
+    return res.status(500).json({ error: "Failed to delete account" });
+  }
 });
 
 export default router;
