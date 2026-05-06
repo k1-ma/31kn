@@ -14,29 +14,31 @@ export default function Login() {
   const nav = useNavigate();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [err, setErr] = useState("");
+  const [response, setResponse] = useState(null);
   const [busy, setBusy] = useState(false);
 
   if (user) return <Navigate to="/app/dashboard" replace />;
 
   const onSubmit = async (e) => {
     e.preventDefault();
-    setErr("");
+    setResponse(null);
     setBusy(true);
     try {
       const res = await login({ username: username.trim(), password, remember: true });
       if (res?.ok) {
         nav("/app/dashboard");
       } else {
-        setErr(mapAuthError(res, t));
+        setResponse(res);
       }
     } catch (e2) {
-      // apiJson errors carry .code (errorCode) + .data
-      setErr(mapAuthError({ errorCode: e2?.code, error: e2?.message, ...(e2?.data || {}) }, t));
+      setResponse({ errorCode: e2?.code, error: e2?.message, ...(e2?.data || {}) });
     } finally {
       setBusy(false);
     }
   };
+
+  const errMessage = response ? mapAuthError(response, t) : "";
+  const errCode = response?.errorCode || response?.code;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-emerald-50/40 dark:from-slate-950 dark:to-slate-900 flex flex-col px-5 py-8">
@@ -74,9 +76,24 @@ export default function Login() {
                 required
               />
             </div>
-            {err && (
-              <div role="alert" className="text-sm text-red-700 bg-red-50 dark:bg-red-950 dark:text-red-300 px-3 py-2 rounded-xl">
-                {err}
+            {errMessage && (
+              <div role="alert" className="text-sm text-red-700 bg-red-50 dark:bg-red-950 dark:text-red-300 px-3 py-2 rounded-xl space-y-2">
+                <div>{errMessage}</div>
+                {errCode === "INVALID_CREDENTIALS" && (
+                  <div className="flex gap-3 text-xs">
+                    <Link to="/forgot-password" className="font-semibold underline">
+                      {t("auth.forgot")}
+                    </Link>
+                    <Link to="/register" className="font-semibold underline">
+                      {t("auth.noAccount")}
+                    </Link>
+                  </div>
+                )}
+                {errCode === "EMAIL_NOT_VERIFIED" && (
+                  <div className="text-xs">
+                    {t("auth.errors.EMAIL_NOT_VERIFIED")}
+                  </div>
+                )}
               </div>
             )}
             <Button type="submit" size="lg" className="w-full mt-2" disabled={busy}>

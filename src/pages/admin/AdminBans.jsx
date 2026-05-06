@@ -4,24 +4,39 @@ import { apiJson } from "@/lib/api.js";
 
 export default function AdminBans() {
   const [items, setItems] = useState([]);
+  const [status, setStatus] = useState("loading");
   const [err, setErr] = useState("");
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     apiJson("/api/admin/bans")
-      .then((res) => setItems(res?.bans || []))
-      .catch((e) => setErr(e?.message || "Failed to load"))
-      .finally(() => setLoading(false));
+      .then((res) => {
+        setItems(res?.bans || []);
+        setStatus("ok");
+      })
+      .catch((e) => {
+        if (e?.status === 404) setStatus("not-implemented");
+        else {
+          setErr(e?.message || "Failed to load");
+          setStatus("error");
+        }
+      });
   }, []);
 
   return (
     <AdminLayout title="Bans">
-      {err && <div className="text-red-400">{err}</div>}
-      {loading ? (
-        <div className="text-slate-500">Loading…</div>
-      ) : items.length === 0 ? (
-        <div className="text-slate-500">No bans</div>
-      ) : (
+      {status === "loading" && <div className="text-slate-500">Loading…</div>}
+      {status === "not-implemented" && (
+        <div className="rounded-2xl bg-slate-900 border border-slate-800 p-5 text-sm text-slate-400">
+          Endpoint <code className="text-amber-400">/api/admin/bans</code> isn't implemented yet.
+        </div>
+      )}
+      {status === "error" && <div className="text-red-400">{err}</div>}
+      {status === "ok" && items.length === 0 && (
+        <div className="rounded-2xl bg-slate-900 border border-slate-800 p-5 text-sm text-slate-400">
+          No bans
+        </div>
+      )}
+      {status === "ok" && items.length > 0 && (
         <div className="rounded-2xl border border-slate-800 overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-xs uppercase text-slate-500 tracking-wider">

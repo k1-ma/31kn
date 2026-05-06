@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { apiJson } from "@/lib/api.js";
@@ -11,7 +11,14 @@ export default function ResetPassword() {
   const { t } = useI18n();
   const [params] = useSearchParams();
   const nav = useNavigate();
-  const token = params.get("token") || "";
+  // Capture the token once, then strip it from the URL so it doesn't
+  // linger in browser history / referrer on subsequent navigation.
+  const tokenRef = useRef(params.get("token") || "");
+  useEffect(() => {
+    if (tokenRef.current && window.location.search.includes("token=")) {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
   const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -23,7 +30,7 @@ export default function ResetPassword() {
     try {
       await apiJson("/api/auth/reset-password", {
         method: "POST",
-        body: JSON.stringify({ token, password: pw }),
+        body: JSON.stringify({ token: tokenRef.current, password: pw }),
       });
       nav("/login");
     } catch (e2) {
@@ -46,7 +53,7 @@ export default function ResetPassword() {
             minLength={8}
           />
           {err && <div className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-xl">{err}</div>}
-          <Button type="submit" size="lg" className="w-full" disabled={busy || !token}>
+          <Button type="submit" size="lg" className="w-full" disabled={busy || !tokenRef.current}>
             {busy ? t("common.loading") : t("common.save")}
           </Button>
         </form>

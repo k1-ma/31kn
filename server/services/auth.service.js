@@ -344,7 +344,7 @@ export async function verifyEmail(token) {
 
   // Check if already verified
   if (user.email_verified) {
-    return { ok: true, alreadyVerified: true };
+    return { ok: true, alreadyVerified: true, userId: user.id };
   }
 
   // Check expiration
@@ -369,7 +369,7 @@ export async function verifyEmail(token) {
     await logAdmin(null, "auth.email_verified", user.id, { email: user.email });
   } catch {}
 
-  return { ok: true };
+  return { ok: true, userId: user.id };
 }
 
 /**

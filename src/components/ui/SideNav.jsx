@@ -13,9 +13,12 @@ import {
   Tags,
   Bell,
   Coins,
+  Sparkles,
 } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { useUnreadCount } from "@/lib/finance/useUnreadCount.js";
+
+const IS_DEV = import.meta.env?.DEV;
 
 export default function SideNav() {
   const { t } = useI18n();
@@ -33,6 +36,7 @@ export default function SideNav() {
     { to: "/app/notifications", label: t("nav.notifications"), icon: Bell, badge: unread },
     { to: "/app/settings", label: t("nav.settings"), icon: SettingsIcon },
     { to: "/app/trash", label: t("nav.trash"), icon: Trash2 },
+    ...(IS_DEV ? [{ to: "/app/_ui", label: "UI playground", icon: Sparkles }] : []),
   ];
   return (
     <aside className="hidden md:flex md:flex-col md:w-60 md:shrink-0 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 sticky top-0 self-start min-h-screen">

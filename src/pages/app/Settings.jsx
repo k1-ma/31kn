@@ -15,6 +15,7 @@ import { apiJson } from "@/lib/api.js";
 import { applyTheme as applyThemeGlobal } from "@/lib/theme.js";
 import Input from "@/components/ui/Input.jsx";
 import Select from "@/components/ui/Select.jsx";
+import BottomSheet from "@/components/ui/BottomSheet.jsx";
 import { isPinEnabled, setPin, clearPin } from "@/components/common/PinLock.jsx";
 import { useConfirm } from "@/components/common/ConfirmProvider.jsx";
 
@@ -40,6 +41,7 @@ export default function Settings() {
   const prefs = state.prefs || {};
   const fileInputRef = useRef(null);
   const [importStatus, setImportStatus] = useState(null);
+  const [importPreview, setImportPreview] = useState(null); // { rows: [], skipped: number }
   const [pinOn, setPinOn] = useState(false);
   const [pinDraft, setPinDraft] = useState("");
   const [pinErr, setPinErr] = useState("");
@@ -58,18 +60,29 @@ export default function Settings() {
       const wallets = active(state.wallets);
       const categories = active(state.categories);
       const txns = csvToTransactions(text, { wallets, categories });
-      let added = 0;
-      for (const tx of txns) {
-        if (!tx.walletId) continue;
-        upsert("transactions", tx);
-        added++;
-      }
-      setImportStatus({ ok: true, added, skipped: txns.length - added });
+      const skipped = txns.filter((x) => !x.walletId).length;
+      const valid = txns.filter((x) => x.walletId);
+      setImportPreview({ rows: valid, skipped, total: txns.length });
     } catch (err) {
       setImportStatus({ ok: false, error: err?.message || "Failed to import" });
     } finally {
       e.target.value = "";
     }
+  };
+
+  const commitImport = () => {
+    if (!importPreview) return;
+    let added = 0;
+    for (const tx of importPreview.rows) {
+      upsert("transactions", tx);
+      added++;
+    }
+    setImportPreview(null);
+    setImportStatus({ ok: true, added, skipped: importPreview.skipped });
+    toast.push({
+      kind: "success",
+      title: t("settings.importDone", { count: added }),
+    });
   };
 
   const exportJson = () => {
@@ -374,6 +387,81 @@ export default function Settings() {
           </div>
         )}
       </Card>
+
+      <BottomSheet
+        open={!!importPreview}
+        onClose={() => setImportPreview(null)}
+        title={t("settings.importPreview")}
+      >
+        {importPreview && (
+          <div className="space-y-3">
+            <div className="text-sm text-slate-600 dark:text-slate-300">
+              {t("settings.importPreviewBody", {
+                ready: importPreview.rows.length,
+                skipped: importPreview.skipped,
+              })}
+            </div>
+            <div className="rounded-2xl border border-slate-100 dark:border-slate-800 max-h-[55vh] overflow-y-auto -mx-1">
+              {importPreview.rows.slice(0, 50).map((row, idx) => {
+                const wal = state.wallets.find((w) => w.id === row.walletId);
+                const cat = state.categories.find((c) => c.id === row.categoryId);
+                return (
+                  <div
+                    key={idx}
+                    className="flex items-center gap-3 px-4 py-2 border-b border-slate-100 dark:border-slate-800 last:border-b-0"
+                  >
+                    <span className="text-lg shrink-0">{cat?.icon || (row.type === "income" ? "📥" : "💸")}</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium truncate">
+                        {cat?.name || row.note || row.type}
+                      </div>
+                      <div className="text-xs text-slate-500 truncate">
+                        {wal?.name || "—"} ·{" "}
+                        {new Date(row.date).toLocaleDateString(lang === "uk" ? "uk-UA" : "en-US")}
+                      </div>
+                    </div>
+                    <div
+                      className={`text-sm font-semibold tabular-nums ${
+                        row.type === "income"
+                          ? "text-emerald-600"
+                          : row.type === "expense"
+                            ? "text-red-600"
+                            : "text-slate-500"
+                      }`}
+                    >
+                      {row.type === "income" ? "+" : row.type === "expense" ? "-" : "↔"}{" "}
+                      {(row.amount_cents / 100).toFixed(2)} {row.currency}
+                    </div>
+                  </div>
+                );
+              })}
+              {importPreview.rows.length > 50 && (
+                <div className="px-4 py-2 text-xs text-slate-500 text-center">
+                  + {importPreview.rows.length - 50} more…
+                </div>
+              )}
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Button
+                variant="secondary"
+                size="lg"
+                className="flex-1"
+                onClick={() => setImportPreview(null)}
+              >
+                {t("common.cancel")}
+              </Button>
+              <Button
+                size="lg"
+                className="flex-1"
+                disabled={importPreview.rows.length === 0}
+                onClick={commitImport}
+              >
+                {t("common.confirm")}
+              </Button>
+            </div>
+          </div>
+        )}
+      </BottomSheet>
     </div>
   );
 }

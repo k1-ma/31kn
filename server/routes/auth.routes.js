@@ -300,7 +300,9 @@ router.get("/email-service-status", (req, res) => {
   return res.json({ enabled: isEmailServiceEnabled() });
 });
 
-// POST /api/auth/verify-email - Verify email with token
+// POST /api/auth/verify-email - Verify email with token + auto-login.
+// On success creates a session and sets the cookie so the user lands
+// on /app instead of /login → "type your password again".
 router.post("/verify-email", loginRateLimit, async (req, res) => {
   const { token } = req.body || {};
   if (!token) return res.status(400).json({ error: "Token required" });
@@ -310,7 +312,17 @@ router.post("/verify-email", loginRateLimit, async (req, res) => {
     return res.status(400).json({ error: result.error, errorCode: result.errorCode });
   }
 
-  return res.json({ ok: true, alreadyVerified: result.alreadyVerified });
+  // Auto-login: open a 1-day session so the click-from-email lands on /app.
+  if (result.userId) {
+    try {
+      const session = await createSession(result.userId, req.ip, req.get("user-agent"), false);
+      if (session?.sid) setSessionCookie(res, session.sid, false, req);
+    } catch {
+      // Verification still succeeded; client falls back to /login.
+    }
+  }
+
+  return res.json({ ok: true, alreadyVerified: !!result.alreadyVerified });
 });
 
 // POST /api/auth/resend-verification - Resend verification email
