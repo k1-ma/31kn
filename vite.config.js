@@ -28,10 +28,7 @@ export default defineConfig({
         manualChunks(id) {
           if (!id.includes('node_modules')) return undefined;
           if (id.includes('recharts')) return 'recharts';
-          if (id.includes('@tiptap') || id.includes('prosemirror')) return 'tiptap';
           if (id.includes('framer-motion')) return 'framer-motion';
-          if (id.includes('exceljs')) return 'exceljs';
-          if (id.includes('marked')) return 'markdown';
           if (id.includes('lucide-react')) return 'icons';
           if (id.includes('react-router')) return 'router';
           if (id.includes('/react/') || id.includes('/react-dom/') || id.includes('scheduler')) return 'react';
@@ -87,18 +84,6 @@ export default defineConfig({
           { urlPattern: /\/api\//, handler: 'NetworkOnly', method: 'PATCH' },
           { urlPattern: /\/api\//, handler: 'NetworkOnly', method: 'DELETE' },
 
-          // Admin-managed changelog — stale-while-revalidate keeps the
-          // changelog instant on slow networks.
-          {
-            urlPattern: /\/api\/updates(\?|$|\/)/,
-            handler: 'StaleWhileRevalidate',
-            method: 'GET',
-            options: {
-              cacheName: 'api-updates-cache-v1',
-              expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 },
-            },
-          },
-
           // All other GET /api/* — NetworkFirst with raised timeout.
           // 30 s absorbs slow Neon cold-starts and large reads while still
           // falling back to cache when the network is genuinely dead.
@@ -136,17 +121,6 @@ export default defineConfig({
               expiration: {
                 maxEntries: 60,
                 maxAgeSeconds: 30 * 24 * 60 * 60,
-              },
-            },
-          },
-          {
-            urlPattern: /^https:\/\/hauntedxcdn\.b-cdn\.net\/.*/,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'cdn-cache',
-              expiration: {
-                maxEntries: 30,
-                maxAgeSeconds: 7 * 24 * 60 * 60,
               },
             },
           },

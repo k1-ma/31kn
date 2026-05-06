@@ -11,11 +11,10 @@
  *
  * Setup:
  *   1. Set CANONICAL_HOST in Vercel Dashboard → Settings → Environment Variables
- *      Example: CANONICAL_HOST=www.hauntedx.trade
+ *      Example: CANONICAL_HOST=koshyk.app
  *   2. Make sure the same domain is set as "Primary Domain" in Vercel Domains.
- *   3. (Optional) Set ORIGIN_HOST to the reverse-proxy origin hostname
- *      (e.g. origin.hauntedx.trade for bunny.net CDN). Requests arriving on
- *      this host will NOT be redirected, preventing redirect loops.
+ *   3. (Optional) Set ORIGIN_HOST to the reverse-proxy origin hostname.
+ *      Requests arriving on this host will NOT be redirected, preventing loops.
  */
 
 export default function middleware(request) {
@@ -47,9 +46,9 @@ export default function middleware(request) {
     return;
   }
 
-  // Never redirect the reverse-proxy origin host (e.g. bunny.net CDN upstream).
-  // Without this exception, requests from the CDN to origin.hauntedx.trade
-  // would be 308-redirected to the canonical host, causing a redirect loop.
+  // Never redirect the reverse-proxy origin host (e.g. CDN upstream).
+  // Without this exception, requests from the CDN would be 308-redirected
+  // to the canonical host, causing a redirect loop.
   const originHost = process.env.ORIGIN_HOST;
   if (originHost && url.hostname === originHost) {
     return;

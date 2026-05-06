@@ -1,11 +1,28 @@
 import React, { createContext, useContext, useEffect, useMemo, useState, useRef } from "react";
 import { apiJson } from "@/lib/api.js";
-import { clearUserSyncArtefacts } from "@/lib/syncDb.js";
+
+// Best-effort cleanup of legacy per-user sync artefacts in localStorage on logout.
+function clearUserSyncArtefacts(userId) {
+  if (!userId) return;
+  const prefixes = [
+    `koshyk:state:${userId}`,
+    `koshyk:user:${userId}`,
+    `koshyk:outbox:${userId}`,
+    `koshyk:lastSynced:${userId}`,
+    `koshyk:lastLocalSave:${userId}`,
+    `koshyk:serverVersion:${userId}`,
+    `koshyk:syncProgress:${userId}`,
+    `koshyk:lastVersion:${userId}`,
+  ];
+  for (const k of prefixes) {
+    try { localStorage.removeItem(k); } catch {}
+  }
+}
 
 const AuthCtx = createContext(null);
 
 // localStorage key for storing last known user ID
-const LAST_KNOWN_USER_ID_KEY = "tradecrm:lastKnownUserId";
+const LAST_KNOWN_USER_ID_KEY = "koshyk:lastKnownUserId";
 
 /**
  * Get the last known user ID from localStorage
@@ -71,8 +88,8 @@ export function AuthProvider({ children }) {
     } catch (e) {
       if (isNetworkError(e) && user) {
         // Network error (VPN drop, timeout, etc.) — do NOT reset user.
-        // Resetting user to null causes userId oscillation which triggers
-        // the sync-reset cascade that wipes trades (see syncDb.js).
+        // Resetting user to null causes userId oscillation which would clear
+        // local state on a transient blip.
         setAuthError({
           code: "NETWORK_ERROR",
           status: 0,

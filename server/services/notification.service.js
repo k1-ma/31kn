@@ -4,41 +4,47 @@ import { getPool } from "./db.service.js";
  * Notification types supported by the system
  */
 export const NOTIFICATION_TYPES = {
-  // Risk-related notifications
-  RISK_MAX_LOSS_WARNING: "risk_max_loss_warning",
-  RISK_MAX_LOSS_EXCEEDED: "risk_max_loss_exceeded",
-  RISK_DAILY_LOSS_WARNING: "risk_daily_loss_warning",
-  RISK_DAILY_LOSS_EXCEEDED: "risk_daily_loss_exceeded",
-  RISK_MAX_DRAWDOWN_WARNING: "risk_max_drawdown_warning",
-  
-  // Admin/user interaction notifications
-  SUGGESTION_REPLY: "suggestion_reply",
-  SUGGESTION_STATUS_CHANGED: "suggestion_status_changed",
-  FEEDBACK_REPLY: "feedback_reply",
-  FEEDBACK_STATUS_CHANGED: "feedback_status_changed",
-  FEEDBACK_MESSAGE: "feedback_message",
-  
-  // Daily digest notifications
-  UPDATES_DAILY_DIGEST: "updates_daily_digest",
-  
-  // Service notifications
-  ACHIEVEMENT_UNLOCKED: "achievement_unlocked",
-  CHALLENGE_COMPLETED: "challenge_completed",
+  // Budget alerts
+  BUDGET_WARN: "budget_warn",
+  BUDGET_EXCEEDED: "budget_exceeded",
+
+  // Recurring payments
+  RECURRING_DUE: "recurring_due",
+
+  // Goals
+  GOAL_REACHED: "goal_reached",
+
+  // Generic
   REMINDER: "reminder",
   SYSTEM_MESSAGE: "system_message",
 };
 
 /**
- * Create a notification for a user
- * @param {number} userId - User ID to create notification for
- * @param {string} type - Notification type (from NOTIFICATION_TYPES)
- * @param {object} data - Notification data (flexible JSON payload)
- * @returns {Promise<object>} Created notification
+ * Create a notification for a user. If `data.dedupeKey` is set and a row
+ * with the same (user_id, type, dedupeKey) already exists, the existing
+ * row is returned and no new INSERT runs. This lets the client retry
+ * client-side alerts without flooding the inbox.
+ *
+ * @param {number} userId
+ * @param {string} type
+ * @param {object} [data]
+ * @returns {Promise<object>} created or pre-existing notification
  */
 export async function createNotification(userId, type, data = {}) {
   const pool = getPool();
   if (!pool) {
     throw new Error("Database pool not available");
+  }
+
+  const dedupeKey = data?.dedupeKey;
+  if (dedupeKey) {
+    const dup = await pool.query(
+      `SELECT * FROM notifications
+       WHERE user_id = $1 AND type = $2 AND data->>'dedupeKey' = $3
+       LIMIT 1`,
+      [userId, type, dedupeKey]
+    );
+    if (dup.rows[0]) return dup.rows[0];
   }
 
   const result = await pool.query(
@@ -213,92 +219,12 @@ export async function deleteOldNotifications(daysOld = 90) {
 }
 
 /**
- * Ensure daily updates digest notification exists for user.
- * Creates a notification if there were updates published yesterday
- * and no digest notification exists for today.
- * 
- * @param {number} userId - User ID
- * @returns {Promise<object|null>} Created notification or null
+ * Legacy hook kept as a no-op so existing route handlers don't break.
+ * The trader-domain "updates digest" feature is no longer part of Koshyk.
+ *
+ * @returns {Promise<null>}
  */
-export async function ensureDailyUpdatesDigest(userId) {
-  const pool = getPool();
-  if (!pool) {
-    return null;
-  }
-
-  try {
-    // Get today and yesterday dates (server time)
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().substring(0, 10); // YYYY-MM-DD (more robust)
-
-    // Single-flight per (user, day) via advisory transaction lock.
-    // Prevents two concurrent requests both passing the existence check and
-    // inserting duplicate digest notifications.
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-      // Lock key: hash of userId + yesterdayStr fits a 64-bit advisory lock.
-      await client.query(
-        `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
-        [`digest:${userId}:${yesterdayStr}`]
-      );
-
-      const existingCheck = await client.query(
-        `SELECT id FROM notifications
-         WHERE user_id = $1
-           AND type = $2
-           AND created_at >= $3
-           AND data->>'date' = $4
-         LIMIT 1`,
-        [userId, NOTIFICATION_TYPES.UPDATES_DAILY_DIGEST, today, yesterdayStr]
-      );
-
-      if (existingCheck.rows.length > 0) {
-        await client.query("COMMIT");
-        return null;
-      }
-
-      const countResult = await client.query(
-        `SELECT COUNT(*) as count, MAX(id) as latest_id
-         FROM project_updates
-         WHERE is_published = true
-           AND published_at >= $1
-           AND published_at < $2`,
-        [yesterday, today]
-      );
-
-      const count = parseInt(countResult.rows[0]?.count || 0, 10);
-      const latestUpdateId = countResult.rows[0]?.latest_id || null;
-
-      if (count === 0) {
-        await client.query("COMMIT");
-        return null;
-      }
-
-      const ins = await client.query(
-        `INSERT INTO notifications (user_id, type, data)
-         VALUES ($1, $2, $3::jsonb)
-         RETURNING *`,
-        [
-          userId,
-          NOTIFICATION_TYPES.UPDATES_DAILY_DIGEST,
-          JSON.stringify({ count, date: yesterdayStr, latestUpdateId }),
-        ]
-      );
-      await client.query("COMMIT");
-      return ins.rows?.[0] || null;
-    } catch (e) {
-      try { await client.query("ROLLBACK"); } catch {}
-      throw e;
-    } finally {
-      client.release();
-    }
-  } catch (err) {
-    console.error("[notification] ensureDailyUpdatesDigest error:", err);
-    return null;
-  }
+export async function ensureDailyUpdatesDigest() {
+  return null;
 }
 

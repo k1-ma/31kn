@@ -4,7 +4,7 @@ import QRCode from "qrcode";
 import bcrypt from "bcryptjs";
 import { getPool, queryWithRecovery, getUserById } from "./db.service.js";
 
-const APP_NAME = "TradeJ";
+const APP_NAME = "Koshyk";
 const IS_PROD = (process.env.NODE_ENV || "development") === "production";
 
 // Get encryption key from environment (base64-encoded 32 bytes for AES-256)

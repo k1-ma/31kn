@@ -1,5 +1,5 @@
 import { useRegisterSW } from "virtual:pwa-register/react";
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 
@@ -8,82 +8,58 @@ const HIDDEN_ROUTES = ["/", "/login", "/register"];
 export default function ReloadPrompt() {
   const { t } = useI18n();
   const { pathname } = useLocation();
-  const updateIntervalRef = useRef(null);
+  const updateRef = useRef(null);
   const {
     offlineReady: [offlineReady, setOfflineReady],
   } = useRegisterSW({
-    onRegisteredSW(swUrl, r) {
-      if (r) {
-        // Check for updates every 30 minutes
-        updateIntervalRef.current = setInterval(() => { r.update(); }, 30 * 60 * 1000);
-      }
+    onRegisteredSW(_swUrl, r) {
+      if (r) updateRef.current = setInterval(() => r.update(), 30 * 60 * 1000);
     },
     onRegisterError() {},
   });
 
-  // Show a non-intrusive banner when a new service worker takes control,
-  // instead of force-reloading.  The old code called window.location.reload()
-  // immediately which caused data loss when the user had unsaved documents or
-  // trades open.  Now the user decides when to apply the update.
   const [needsUpdate, setNeedsUpdate] = useState(false);
-  const [bannerVisible, setBannerVisible] = useState(true);
-  const redisplayTimer = useRef(null);
-
-  useEffect(() => {
-    if ("serviceWorker" in navigator) {
-      const onControllerChange = () => {
-        setNeedsUpdate(true);
-        setBannerVisible(true);
-      };
-      navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
-      return () => {
-        navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
-        if (updateIntervalRef.current) clearInterval(updateIntervalRef.current);
-        if (redisplayTimer.current) clearTimeout(redisplayTimer.current);
-      };
-    }
-  }, []);
-
   const [showOffline, setShowOffline] = useState(false);
 
   useEffect(() => {
-    if (offlineReady) {
-      setShowOffline(true);
-      const timer = setTimeout(() => {
-        setShowOffline(false);
-        setOfflineReady(false);
-      }, 3000);
-      return () => clearTimeout(timer);
-    }
+    if (!("serviceWorker" in navigator)) return;
+    const onChange = () => setNeedsUpdate(true);
+    navigator.serviceWorker.addEventListener("controllerchange", onChange);
+    return () => {
+      navigator.serviceWorker.removeEventListener("controllerchange", onChange);
+      if (updateRef.current) clearInterval(updateRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!offlineReady) return;
+    setShowOffline(true);
+    const t = setTimeout(() => {
+      setShowOffline(false);
+      setOfflineReady(false);
+    }, 2500);
+    return () => clearTimeout(t);
   }, [offlineReady, setOfflineReady]);
 
   if (HIDDEN_ROUTES.includes(pathname)) return null;
 
-  // Update-available banner (persistent until user acts)
-  if (needsUpdate && bannerVisible) {
+  if (needsUpdate) {
     return (
-      <div role="alert" className="fixed bottom-6 right-6 z-[9999] max-w-sm animate-in fade-in slide-in-from-bottom-4">
-        <div className="rounded-xl border border-white/10 dark:border-white/10 bg-white/80 dark:bg-black/60 p-4 shadow-2xl backdrop-blur-xl space-y-2">
-          <p className="text-sm text-gray-600 dark:text-gray-300">
-            {t("pwa.updateAvailable")}
-          </p>
+      <div className="fixed bottom-24 md:bottom-6 right-4 left-4 md:left-auto z-[9999] max-w-sm">
+        <div className="rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xl space-y-2">
+          <p className="text-sm text-slate-700 dark:text-slate-200">{t("common.retry")}?</p>
           <div className="flex gap-2">
             <button
-              className="h-8 px-3 rounded-lg bg-accent text-accent-foreground text-xs font-semibold"
+              className="h-9 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-semibold"
               onClick={() => window.location.reload()}
             >
-              {t("pwa.update")}
+              {t("common.confirm")}
             </button>
             <button
-              className="h-8 px-3 rounded-lg bg-muted/50 text-muted-foreground text-xs font-semibold"
-              onClick={() => {
-                setBannerVisible(false);
-                // Re-show the banner after 10 minutes so the user doesn't forget
-                if (redisplayTimer.current) clearTimeout(redisplayTimer.current);
-                redisplayTimer.current = setTimeout(() => setBannerVisible(true), 10 * 60 * 1000);
-              }}
+              className="h-9 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold"
+              onClick={() => setNeedsUpdate(false)}
             >
-              {t("pwa.close")}
+              {t("common.close")}
             </button>
           </div>
         </div>
@@ -92,13 +68,10 @@ export default function ReloadPrompt() {
   }
 
   if (!showOffline) return null;
-
   return (
-    <div className="fixed bottom-6 right-6 z-[9999] max-w-sm animate-in fade-in slide-in-from-bottom-4">
-      <div className="rounded-xl border border-white/10 dark:border-white/10 bg-white/80 dark:bg-black/60 p-4 shadow-2xl backdrop-blur-xl">
-        <p className="text-sm text-gray-600 dark:text-gray-300">
-          {t("pwa.offlineReady")}
-        </p>
+    <div className="fixed bottom-24 md:bottom-6 right-4 z-[9999]">
+      <div className="rounded-2xl border border-emerald-100 bg-emerald-50 dark:bg-emerald-950 px-4 py-2 text-sm text-emerald-800 dark:text-emerald-200">
+        {t("common.done")}
       </div>
     </div>
   );

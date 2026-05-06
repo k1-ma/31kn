@@ -29,8 +29,8 @@ export async function getAllUsers() {
       u.created_ip,
       u.created_at, 
       u.updated_at,
-      COALESCE(jsonb_array_length(s.state_json->'accounts'), 0) AS accounts_count,
-      COALESCE(jsonb_array_length(s.state_json->'trades'), 0) AS trades_count,
+      COALESCE(jsonb_array_length(s.state_json->'wallets'), 0) AS wallets_count,
+      COALESCE(jsonb_array_length(s.state_json->'transactions'), 0) AS transactions_count,
       ls.ip AS last_ip
     FROM users u
     LEFT JOIN states s ON s.user_id = u.id
@@ -440,8 +440,8 @@ export async function getDashboardStats() {
     `),
     pool.query(`
       SELECT
-        COALESCE(SUM(trades_count), 0) AS total_trades,
-        COALESCE(SUM(accounts_count), 0) AS total_accounts,
+        COALESCE(SUM(transactions_count), 0) AS total_transactions,
+        COALESCE(SUM(wallets_count), 0) AS total_wallets,
         MAX(updated_at) AS cache_updated_at
       FROM user_stats_cache
     `),
@@ -450,8 +450,8 @@ export async function getDashboardStats() {
   return {
     total_users: parseInt(usersResult.rows?.[0]?.count || 0),
     active_sessions: parseInt(sessionsResult.rows?.[0]?.count || 0),
-    total_trades: parseInt(statsCache.rows?.[0]?.total_trades || 0),
-    total_accounts: parseInt(statsCache.rows?.[0]?.total_accounts || 0),
+    total_transactions: parseInt(statsCache.rows?.[0]?.total_transactions || 0),
+    total_wallets: parseInt(statsCache.rows?.[0]?.total_wallets || 0),
     total_logs: parseInt(logsResult.rows?.[0]?.count || 0),
     requests_today: parseInt(usageResult.rows?.[0]?.requests_today || 0),
     bytes_today: parseInt(usageResult.rows?.[0]?.bytes_today || 0),
@@ -481,19 +481,19 @@ export async function refreshUserStatsCache() {
   try {
     await client.query("SET statement_timeout = '60s'");
     const r = await client.query(`
-      INSERT INTO user_stats_cache (user_id, trades_count, accounts_count, documents_count, updated_at)
+      INSERT INTO user_stats_cache (user_id, transactions_count, wallets_count, categories_count, updated_at)
       SELECT
         s.user_id,
-        COALESCE(jsonb_array_length(COALESCE(s.state_json->'trades',    '[]'::jsonb)), 0),
-        COALESCE(jsonb_array_length(COALESCE(s.state_json->'accounts',  '[]'::jsonb)), 0),
-        COALESCE(jsonb_array_length(COALESCE(s.state_json->'documents', '[]'::jsonb)), 0),
+        COALESCE(jsonb_array_length(COALESCE(s.state_json->'transactions',    '[]'::jsonb)), 0),
+        COALESCE(jsonb_array_length(COALESCE(s.state_json->'wallets',  '[]'::jsonb)), 0),
+        COALESCE(jsonb_array_length(COALESCE(s.state_json->'categories', '[]'::jsonb)), 0),
         now()
       FROM states s
       WHERE s.state_json IS NOT NULL
       ON CONFLICT (user_id) DO UPDATE SET
-        trades_count    = EXCLUDED.trades_count,
-        accounts_count  = EXCLUDED.accounts_count,
-        documents_count = EXCLUDED.documents_count,
+        transactions_count    = EXCLUDED.transactions_count,
+        wallets_count  = EXCLUDED.wallets_count,
+        categories_count = EXCLUDED.categories_count,
         updated_at      = EXCLUDED.updated_at
     `);
     updated = r.rowCount || 0;
@@ -509,9 +509,8 @@ export async function refreshUserStatsCache() {
   return { ok: true, updated };
 }
 
-// Dashboard summary with date range metrics.
-// All 5 metrics (trades, accounts, documents, activeUsers, ideasCreated) are filtered by date range.
-// trades/accounts/documents use JSONB createdAt field via jsonb_array_elements.
+// Range metrics: counts of new transactions/wallets/categories/active users
+// over the requested window. Reads timestamps embedded in state_json.
 export async function getDashboardSummary(fromDate, toDate) {
   const pool = getPool();
   if (!pool) return null;
@@ -535,31 +534,22 @@ export async function getDashboardSummary(fromDate, toDate) {
 
   // Run lightweight queries in parallel
   let activeUsers = 0;
-  let ideasCreated = 0;
   try {
-    const [ideasResult, activeUsersResult] = await Promise.all([
-      pool.query(
-        `SELECT COUNT(*) AS count FROM trading_ideas
-         WHERE created_at >= $1 AND created_at <= $2`,
-        [fromDateObj.toISOString(), toDateObj.toISOString()]
-      ),
-      pool.query(
-        `SELECT COUNT(DISTINCT user_id) AS count FROM usage_daily
-         WHERE day >= $1::date AND day <= $2::date AND user_id IS NOT NULL`,
-        [fromDate, toDate]
-      ),
-    ]);
+    const activeUsersResult = await pool.query(
+      `SELECT COUNT(DISTINCT user_id) AS count FROM usage_daily
+       WHERE day >= $1::date AND day <= $2::date AND user_id IS NOT NULL`,
+      [fromDate, toDate]
+    );
     activeUsers = parseInt(activeUsersResult.rows?.[0]?.count || 0);
-    ideasCreated = parseInt(ideasResult.rows?.[0]?.count || 0);
   } catch (err) {
     console.error("[admin] getDashboardSummary lightweight queries error:", err?.message || err);
   }
 
-  // Heavy JSONB query for period-filtered trades/accounts/documents
+  // Heavy JSONB query for period-filtered finance entities.
   // Uses a dedicated client with raised statement_timeout + JS-side timeout
-  let tradesCreated = null;
-  let accountsCreated = null;
-  let documentsCreated = null;
+  let transactionsCreated = null;
+  let walletsCreated = null;
+  let categoriesCreated = null;
 
   const client = await pool.connect();
   try {
@@ -573,25 +563,25 @@ export async function getDashboardSummary(fromDate, toDate) {
 
     const jsonbQuery = client.query(
       `SELECT
-        COUNT(*) FILTER (WHERE elem_type = 'trade') AS trades_created,
-        COUNT(*) FILTER (WHERE elem_type = 'account') AS accounts_created,
-        COUNT(*) FILTER (WHERE elem_type = 'document') AS documents_created
+        COUNT(*) FILTER (WHERE elem_type = 'transaction') AS trades_created,
+        COUNT(*) FILTER (WHERE elem_type = 'wallet') AS accounts_created,
+        COUNT(*) FILTER (WHERE elem_type = 'category') AS documents_created
       FROM (
-        SELECT 'trade' AS elem_type
-        FROM states s, jsonb_array_elements(COALESCE(s.state_json->'trades', '[]'::jsonb)) AS elem
+        SELECT 'transaction' AS elem_type
+        FROM states s, jsonb_array_elements(COALESCE(s.state_json->'transactions', '[]'::jsonb)) AS elem
         WHERE s.state_json IS NOT NULL
           AND (elem->>'createdAt')::bigint BETWEEN $1 AND $2
           AND (elem->>'deletedAt') IS NULL
         UNION ALL
         SELECT 'account' AS elem_type
-        FROM states s, jsonb_array_elements(COALESCE(s.state_json->'accounts', '[]'::jsonb)) AS elem
+        FROM states s, jsonb_array_elements(COALESCE(s.state_json->'wallets', '[]'::jsonb)) AS elem
         WHERE s.state_json IS NOT NULL
           AND (elem->>'createdAt')::bigint BETWEEN $1 AND $2
           AND (elem->>'deletedAt') IS NULL
           AND (elem->>'archivedAt') IS NULL
         UNION ALL
-        SELECT 'document' AS elem_type
-        FROM states s, jsonb_array_elements(COALESCE(s.state_json->'documents', '[]'::jsonb)) AS elem
+        SELECT 'category' AS elem_type
+        FROM states s, jsonb_array_elements(COALESCE(s.state_json->'categories', '[]'::jsonb)) AS elem
         WHERE s.state_json IS NOT NULL
           AND (elem->>'createdAt')::bigint BETWEEN $1 AND $2
           AND (elem->>'deletedAt') IS NULL
@@ -601,15 +591,15 @@ export async function getDashboardSummary(fromDate, toDate) {
 
     const jsonbResult = await Promise.race([jsonbQuery, jsTimeout]);
     const row = jsonbResult.rows?.[0] || {};
-    tradesCreated = parseInt(row.trades_created || 0);
-    accountsCreated = parseInt(row.accounts_created || 0);
-    documentsCreated = parseInt(row.documents_created || 0);
+    transactionsCreated = parseInt(row.trades_created || 0);
+    walletsCreated = parseInt(row.accounts_created || 0);
+    categoriesCreated = parseInt(row.documents_created || 0);
   } catch (err) {
     console.error("[admin] getDashboardSummary JSONB query error:", err?.message || err);
     // Return null to signal frontend to show "—" instead of misleading "0"
-    tradesCreated = null;
-    accountsCreated = null;
-    documentsCreated = null;
+    transactionsCreated = null;
+    walletsCreated = null;
+    categoriesCreated = null;
   } finally {
     await client.query("SET statement_timeout = '10s'").catch(() => {});
     client.release();
@@ -618,11 +608,10 @@ export async function getDashboardSummary(fromDate, toDate) {
   const result = {
     range: { from: fromDate, to: toDate },
     metrics: {
-      tradesCreated,
-      accountsCreated,
+      transactionsCreated,
+      walletsCreated,
       activeUsers,
-      documentsCreated,
-      ideasCreated,
+      categoriesCreated,
     },
   };
 
@@ -639,7 +628,7 @@ export async function getDashboardSummary(fromDate, toDate) {
   return result;
 }
 
-// Top users by trades and accounts — reads from pre-computed cache, no JSONB scan
+// Top users by transactions and wallets — reads from pre-computed cache, no JSONB scan
 export async function getTopUsers(limit = 10) {
   const pool = getPool();
   if (!pool) return null;
@@ -652,9 +641,9 @@ export async function getTopUsers(limit = 10) {
       u.role,
       u.role_color,
       u.created_at,
-      COALESCE(sc.trades_count,    0) AS trades_count,
-      COALESCE(sc.accounts_count,  0) AS accounts_count,
-      COALESCE(sc.documents_count, 0) AS documents_count,
+      COALESCE(sc.transactions_count,    0) AS transactions_count,
+      COALESCE(sc.wallets_count,  0) AS wallets_count,
+      COALESCE(sc.categories_count, 0) AS categories_count,
       ls.last_seen_at
     FROM users u
     LEFT JOIN user_stats_cache sc ON sc.user_id = u.id
@@ -664,7 +653,7 @@ export async function getTopUsers(limit = 10) {
       WHERE revoked = false
       GROUP BY user_id
     ) ls ON ls.user_id = u.id
-    ORDER BY COALESCE(sc.trades_count, 0) DESC, COALESCE(sc.accounts_count, 0) DESC
+    ORDER BY COALESCE(sc.transactions_count, 0) DESC, COALESCE(sc.wallets_count, 0) DESC
     LIMIT $1
   `, [limit]);
 

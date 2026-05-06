@@ -2,7 +2,7 @@ import { Router } from "express";
 import { sign, parseCookies } from "../utils/cookies.js";
 
 const router = Router();
-const COOKIE_NAME = "tradecrm.sid";
+const COOKIE_NAME = "koshyk.sid";
 const AUTH_DEBUG = process.env.AUTH_DEBUG === "true";
 
 // GET /api/ping — lightweight connectivity probe (no DB, no auth)

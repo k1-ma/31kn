@@ -239,8 +239,8 @@ export async function rateLimitDbMiddleware(req, res, next) {
   return next();
 }
 
-// Per-IP public-read rate limiter: 120 req/min. Generous enough for legitimate
-// users browsing public tournaments / leaderboards but blocks scraping/DoS.
+// Per-IP public-read rate limiter: 120 req/min. Casual readers stay free,
+// scraping/DoS gets throttled.
 const publicReadLimiter = new SlidingWindowRateLimiter({
   windowMs: 60 * 1000,
   maxRequests: 120,

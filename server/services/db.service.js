@@ -46,11 +46,11 @@ function isConnectionError(err) {
  * Ends the current pool gracefully and clears global references.
  */
 export async function resetPool() {
-  const currentPool = globalThis.__tradej_pool;
+  const currentPool = globalThis.__koshyk_pool;
   
   // Clear references first to prevent new requests from using the old pool
-  globalThis.__tradej_pool = null;
-  globalThis.__tradej_db_init_promise = null;
+  globalThis.__koshyk_pool = null;
+  globalThis.__koshyk_db_init_promise = null;
   
   if (currentPool) {
     try {
@@ -71,19 +71,19 @@ export async function resetPool() {
  */
 export async function ensurePool() {
   // Return existing pool if available
-  if (globalThis.__tradej_pool) {
-    return globalThis.__tradej_pool;
+  if (globalThis.__koshyk_pool) {
+    return globalThis.__koshyk_pool;
   }
   
   // Wait for in-progress initialization
-  if (globalThis.__tradej_db_init_promise) {
-    return globalThis.__tradej_db_init_promise;
+  if (globalThis.__koshyk_db_init_promise) {
+    return globalThis.__koshyk_db_init_promise;
   }
   
   // Start new initialization
-  globalThis.__tradej_db_init_promise = (async () => {
+  globalThis.__koshyk_db_init_promise = (async () => {
     try {
-      globalThis.__tradej_db_error = null; // Clear previous error before retry
+      globalThis.__koshyk_db_error = null; // Clear previous error before retry
       let pool;
       
       if (RUN_MIGRATIONS_ON_BOOT) {
@@ -98,17 +98,17 @@ export async function ensurePool() {
         console.log("[db] pool created (no migrations)");
       }
       
-      globalThis.__tradej_pool = pool;
-      globalThis.__tradej_db_error = null;
+      globalThis.__koshyk_pool = pool;
+      globalThis.__koshyk_db_error = null;
       return pool;
     } catch (err) {
-      globalThis.__tradej_db_error = err;
-      globalThis.__tradej_db_init_promise = null;
+      globalThis.__koshyk_db_error = err;
+      globalThis.__koshyk_db_init_promise = null;
       throw err;
     }
   })();
   
-  return globalThis.__tradej_db_init_promise;
+  return globalThis.__koshyk_db_init_promise;
 }
 
 /**
@@ -136,11 +136,11 @@ export async function queryWithRecovery(sql, params) {
 }
 
 export function getPool() {
-  return globalThis.__tradej_pool || null;
+  return globalThis.__koshyk_pool || null;
 }
 
 export function getDbError() {
-  return globalThis.__tradej_db_error || null;
+  return globalThis.__koshyk_db_error || null;
 }
 
 // Error codes for consistency

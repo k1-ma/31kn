@@ -11,11 +11,11 @@
  *
  * Usage:
  *   import { idbStorage } from "@/lib/idbStorage.js";
- *   const data = await idbStorage.get("tradecrm:user:abc123");
- *   await idbStorage.set("tradecrm:user:abc123", stateObject);
+ *   const data = await idbStorage.get("koshyk:user:abc123");
+ *   await idbStorage.set("koshyk:user:abc123", stateObject);
  */
 
-const DB_NAME = "tradej-storage";
+const DB_NAME = "koshyk-storage";
 const DB_VERSION = 1;
 const STORE_NAME = "keyval";
 
@@ -129,7 +129,7 @@ async function isAvailable() {
 async function migrateFromLocalStorage(userId) {
   if (!userId) return false;
 
-  const key = `tradecrm:user:${userId}`;
+  const key = `koshyk:user:${userId}`;
   try {
     // Check if IDB already has data for this user
     const existing = await get(key);
