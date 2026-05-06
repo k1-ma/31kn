@@ -94,12 +94,15 @@ export default function Categories() {
   const { state, upsert, remove } = useFinance();
   const [editing, setEditing] = useState(null);
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
 
   const cats = useMemo(() => {
+    const q = search.trim().toLowerCase();
     return active(state.categories)
+      .filter((c) => !q || (c.name || "").toLowerCase().includes(q))
       .slice()
       .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || String(a.id).localeCompare(String(b.id)));
-  }, [state.categories]);
+  }, [state.categories, search]);
   const expense = cats.filter((c) => c.kind === "expense");
   const income = cats.filter((c) => c.kind === "income");
 
@@ -160,6 +163,11 @@ export default function Categories() {
             {t("categories.add")}
           </Button>
         }
+      />
+      <Input
+        placeholder={t("common.search")}
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
       />
       {cats.length === 0 ? (
         <EmptyState icon={Tags} title={t("categories.empty")} />

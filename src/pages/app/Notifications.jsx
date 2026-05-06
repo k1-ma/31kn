@@ -4,8 +4,11 @@ import PageHeader from "@/components/ui/PageHeader.jsx";
 import { Card } from "@/components/ui/Card.jsx";
 import Button from "@/components/ui/Button.jsx";
 import EmptyState from "@/components/common/EmptyState.jsx";
+import Skeleton from "@/components/ui/Skeleton.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { apiJson } from "@/lib/api.js";
+
+const PAGE_SIZE = 25;
 
 const KIND_ICONS = {
   budget_warn: "⚠️",
@@ -38,39 +41,56 @@ export default function Notifications() {
   const { t, lang } = useI18n();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [err, setErr] = useState("");
+  const [tab, setTab] = useState("all"); // "all" | "unread"
+  const [hasMore, setHasMore] = useState(false);
 
-  const load = () => {
-    setLoading(true);
-    apiJson("/api/notifications?limit=50")
-      .then((res) => setItems(res?.notifications || []))
-      .catch((e) => setErr(e?.message || t("errors.generic")))
-      .finally(() => setLoading(false));
+  const load = async ({ append = false } = {}) => {
+    if (append) setLoadingMore(true);
+    else setLoading(true);
+    try {
+      const offset = append ? items.length : 0;
+      const params = new URLSearchParams({
+        limit: String(PAGE_SIZE),
+        offset: String(offset),
+        unreadOnly: tab === "unread" ? "true" : "false",
+      });
+      const res = await apiJson(`/api/notifications?${params.toString()}`);
+      const next = res?.notifications || [];
+      setItems(append ? [...items, ...next] : next);
+      setHasMore(next.length === PAGE_SIZE);
+      setErr("");
+    } catch (e) {
+      setErr(e?.message || t("errors.generic"));
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
   };
 
   useEffect(() => {
     load();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   const markAllRead = async () => {
     try {
-      await apiJson("/api/notifications/markRead", {
-        method: "PATCH",
-        body: { all: true },
-      });
+      await apiJson("/api/notifications/markRead", { method: "PATCH", body: { all: true } });
       load();
     } catch (e) {
       setErr(e?.message || t("errors.generic"));
     }
   };
 
-  const toggleRead = async (n) => {
+  const markRead = async (n) => {
+    if (n.read) return;
     try {
       await apiJson("/api/notifications/markRead", {
         method: "PATCH",
-        body: { ids: [n.id], read: !n.read },
+        body: { notificationIds: [n.id] },
       });
-      load();
+      setItems((p) => p.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
     } catch (e) {
       setErr(e?.message || t("errors.generic"));
     }
@@ -79,7 +99,7 @@ export default function Notifications() {
   const removeOne = async (n) => {
     try {
       await apiJson(`/api/notifications/${n.id}`, { method: "DELETE" });
-      load();
+      setItems((p) => p.filter((x) => x.id !== n.id));
     } catch (e) {
       setErr(e?.message || t("errors.generic"));
     }
@@ -91,7 +111,7 @@ export default function Notifications() {
     <div className="page-enter space-y-4">
       <PageHeader
         title={t("nav.notifications")}
-        subtitle={unread > 0 ? t("notifications.unread", { count: unread }) : ""}
+        subtitle={tab === "all" && unread > 0 ? t("notifications.unread", { count: unread }) : ""}
         right={
           unread > 0 && (
             <Button variant="secondary" size="sm" onClick={markAllRead}>
@@ -102,6 +122,23 @@ export default function Notifications() {
         }
       />
 
+      <div className="inline-flex bg-slate-100 dark:bg-slate-800 rounded-2xl p-1">
+        {["all", "unread"].map((id) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setTab(id)}
+            className={`h-9 px-4 rounded-xl text-sm font-semibold transition ${
+              tab === id
+                ? "bg-white dark:bg-slate-900 text-emerald-600 shadow-sm"
+                : "text-slate-600 dark:text-slate-400"
+            }`}
+          >
+            {t(`notifications.tab${id === "all" ? "All" : "Unread"}`)}
+          </button>
+        ))}
+      </div>
+
       {err && (
         <div className="text-sm text-red-600 bg-red-50 dark:bg-red-950 dark:text-red-300 px-3 py-2 rounded-xl">
           {err}
@@ -109,7 +146,10 @@ export default function Notifications() {
       )}
 
       {loading ? (
-        <div className="text-slate-500 text-sm">{t("common.loading")}</div>
+        <div className="space-y-2">
+          <Skeleton lines={3} />
+          <Skeleton lines={3} />
+        </div>
       ) : items.length === 0 ? (
         <EmptyState
           icon={BellOff}
@@ -117,49 +157,59 @@ export default function Notifications() {
           description={t("notifications.emptyHint")}
         />
       ) : (
-        <Card className="overflow-hidden">
-          {items.map((n) => {
-            const { title, body } = formatNotification(n, t);
-            return (
-              <div
-                key={n.id}
-                className={`flex items-start gap-3 px-5 py-3 border-b border-slate-100 dark:border-slate-800 last:border-b-0 ${
-                  !n.read ? "bg-emerald-50/40 dark:bg-emerald-950/20" : ""
-                }`}
-              >
-                <span className="text-2xl shrink-0">{KIND_ICONS[n.type] || "🔔"}</span>
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                    {title}
-                    {!n.read && (
-                      <span className="ml-2 inline-block w-2 h-2 rounded-full bg-emerald-500 align-middle" />
+        <>
+          <Card className="overflow-hidden">
+            {items.map((n) => {
+              const { title, body } = formatNotification(n, t);
+              return (
+                <div
+                  key={n.id}
+                  onClick={() => markRead(n)}
+                  className={`flex items-start gap-3 px-5 py-3 border-b border-slate-100 dark:border-slate-800 last:border-b-0 cursor-pointer transition ${
+                    !n.read ? "bg-emerald-50/40 dark:bg-emerald-950/20 hover:bg-emerald-50 dark:hover:bg-emerald-950/40" : "hover:bg-slate-50 dark:hover:bg-slate-800"
+                  }`}
+                >
+                  <span className="text-2xl shrink-0">{KIND_ICONS[n.type] || "🔔"}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                      {title}
+                      {!n.read && (
+                        <span className="ml-2 inline-block w-2 h-2 rounded-full bg-emerald-500 align-middle" />
+                      )}
+                    </div>
+                    {body && (
+                      <div className="text-xs text-slate-500 mt-0.5 break-words">{body}</div>
                     )}
+                    <div className="text-[11px] text-slate-400 mt-0.5">
+                      {new Date(n.created_at).toLocaleString(lang === "uk" ? "uk-UA" : "en-US")}
+                    </div>
                   </div>
-                  {body && (
-                    <div className="text-xs text-slate-500 mt-0.5 break-words">{body}</div>
-                  )}
-                  <div className="text-[11px] text-slate-400 mt-0.5">
-                    {new Date(n.created_at).toLocaleString(lang === "uk" ? "uk-UA" : "en-US")}
-                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeOne(n);
+                    }}
+                    className="p-2 text-slate-400 hover:text-red-500"
+                    aria-label={t("common.delete")}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
-                <button
-                  onClick={() => toggleRead(n)}
-                  className="p-2 text-slate-400 hover:text-emerald-600"
-                  aria-label={n.read ? t("notifications.markUnread") : t("notifications.markRead")}
-                >
-                  <Check className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => removeOne(n)}
-                  className="p-2 text-slate-400 hover:text-red-500"
-                  aria-label={t("common.delete")}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            );
-          })}
-        </Card>
+              );
+            })}
+          </Card>
+          {hasMore && (
+            <div className="flex justify-center">
+              <Button
+                variant="secondary"
+                onClick={() => load({ append: true })}
+                disabled={loadingMore}
+              >
+                {loadingMore ? t("common.loading") : t("notifications.loadMore")}
+              </Button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

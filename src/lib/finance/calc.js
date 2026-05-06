@@ -1,8 +1,13 @@
 import { active } from "./store.jsx";
 
 /**
- * Compute a wallet's effective balance: opening balance + all confirmed
- * transactions touching it.
+ * Compute a wallet's effective balance: opening balance + every confirmed,
+ * non-deleted transaction touching it (income +, expense −, transfer
+ * subtracts from source and adds to destination).
+ *
+ * @param {{ id: string, balance_cents?: number }} wallet
+ * @param {Array<object>} transactions
+ * @returns {number} integer cents
  */
 export function walletBalance(wallet, transactions) {
   let total = wallet.balance_cents || 0;
@@ -19,7 +24,14 @@ export function walletBalance(wallet, transactions) {
   return total;
 }
 
-/** Return a {start, end} ISO-string range for a budget at the given anchor date. */
+/**
+ * Return a {start, end} ISO-string range for a budget at the given anchor
+ * date. `end` is exclusive.
+ *
+ * @param {{ period: "weekly"|"monthly"|"yearly"|"custom", startDate?: string, endDate?: string }} budget
+ * @param {Date} [anchor=new Date()]
+ * @returns {{ start: string, end: string }}
+ */
 export function budgetWindow(budget, anchor = new Date()) {
   const start = new Date(anchor);
   const end = new Date(anchor);
@@ -47,7 +59,14 @@ export function budgetWindow(budget, anchor = new Date()) {
   return { start: start.toISOString(), end: end.toISOString() };
 }
 
-/** Sum expenses in the budget's category set within its current window. */
+/**
+ * Sum expenses in the budget's category set within its current window.
+ *
+ * @param {object} budget
+ * @param {Array<object>} transactions
+ * @param {Date} [anchor=new Date()]
+ * @returns {number} integer cents
+ */
 export function budgetSpent(budget, transactions, anchor = new Date()) {
   const { start, end } = budgetWindow(budget, anchor);
   const startMs = new Date(start).getTime();
@@ -64,14 +83,27 @@ export function budgetSpent(budget, transactions, anchor = new Date()) {
   return total;
 }
 
-/** 0..1 progress; >1 means over-budget. */
+/**
+ * Progress 0..1 for a budget. Values >1 mean over-budget.
+ *
+ * @param {object} budget
+ * @param {Array<object>} transactions
+ * @returns {number}
+ */
 export function budgetProgress(budget, transactions) {
   const spent = budgetSpent(budget, transactions);
   if (!budget.limit_cents) return 0;
   return spent / budget.limit_cents;
 }
 
-/** Aggregate for a date range: income, expense, net. */
+/**
+ * Aggregate income, expense, net across a date range (transfers ignored).
+ *
+ * @param {Array<object>} transactions
+ * @param {string} startDate ISO inclusive
+ * @param {string} endDate   ISO exclusive
+ * @returns {{ income: number, expense: number, net: number }}
+ */
 export function rangeSummary(transactions, startDate, endDate) {
   const startMs = new Date(startDate).getTime();
   const endMs = new Date(endDate).getTime();
@@ -87,7 +119,16 @@ export function rangeSummary(transactions, startDate, endDate) {
   return { income, expense, net: income - expense };
 }
 
-/** Group expenses by category for a date range. Returns sorted array. */
+/**
+ * Group expense transactions by category within a date range.
+ * Sorted desc by total cents.
+ *
+ * @param {Array<object>} transactions
+ * @param {Array<object>} categories
+ * @param {string} startDate
+ * @param {string} endDate
+ * @returns {Array<{ category: object, cents: number }>}
+ */
 export function expenseByCategory(transactions, categories, startDate, endDate) {
   const startMs = new Date(startDate).getTime();
   const endMs = new Date(endDate).getTime();
@@ -105,7 +146,14 @@ export function expenseByCategory(transactions, categories, startDate, endDate) 
     .sort((a, b) => b.cents - a.cents);
 }
 
-/** Cash-flow data for the last `n` months, oldest first. */
+/**
+ * Cash-flow data for the last `n` months, oldest first.
+ *
+ * @param {Array<object>} transactions
+ * @param {number} [months=6]
+ * @param {Date} [anchor=new Date()]
+ * @returns {Array<{ label: string, ym: string, income: number, expense: number, net: number }>}
+ */
 export function monthlyCashflow(transactions, months = 6, anchor = new Date()) {
   const out = [];
   const cur = new Date(anchor.getFullYear(), anchor.getMonth() - months + 1, 1);
@@ -126,7 +174,12 @@ export function monthlyCashflow(transactions, months = 6, anchor = new Date()) {
   return out;
 }
 
-/** Goal progress 0..1. */
+/**
+ * Goal progress 0..1 (clamped).
+ *
+ * @param {{ target_cents?: number, current_cents?: number }} goal
+ * @returns {number}
+ */
 export function goalProgress(goal) {
   if (!goal.target_cents) return 0;
   return Math.max(0, Math.min(1, (goal.current_cents || 0) / goal.target_cents));

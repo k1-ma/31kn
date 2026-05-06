@@ -20,16 +20,31 @@ export const NOTIFICATION_TYPES = {
 };
 
 /**
- * Create a notification for a user
- * @param {number} userId - User ID to create notification for
- * @param {string} type - Notification type (from NOTIFICATION_TYPES)
- * @param {object} data - Notification data (flexible JSON payload)
- * @returns {Promise<object>} Created notification
+ * Create a notification for a user. If `data.dedupeKey` is set and a row
+ * with the same (user_id, type, dedupeKey) already exists, the existing
+ * row is returned and no new INSERT runs. This lets the client retry
+ * client-side alerts without flooding the inbox.
+ *
+ * @param {number} userId
+ * @param {string} type
+ * @param {object} [data]
+ * @returns {Promise<object>} created or pre-existing notification
  */
 export async function createNotification(userId, type, data = {}) {
   const pool = getPool();
   if (!pool) {
     throw new Error("Database pool not available");
+  }
+
+  const dedupeKey = data?.dedupeKey;
+  if (dedupeKey) {
+    const dup = await pool.query(
+      `SELECT * FROM notifications
+       WHERE user_id = $1 AND type = $2 AND data->>'dedupeKey' = $3
+       LIMIT 1`,
+      [userId, type, dedupeKey]
+    );
+    if (dup.rows[0]) return dup.rows[0];
   }
 
   const result = await pool.query(

@@ -12,6 +12,13 @@
 import { active } from "./store.jsx";
 import { budgetSpent, budgetWindow } from "./calc.js";
 
+/**
+ * @param {Array<object>} budgets
+ * @param {Array<object>} transactions
+ * @param {Iterable<string>} alreadySeen seen-set passed forward across renders
+ * @param {Date} [now=new Date()]
+ * @returns {{ alerts: Array<{ key: string, level: "warn"|"exceeded", budget: object, spent: number }>, seen: Set<string> }}
+ */
 export function computeBudgetAlerts(budgets, transactions, alreadySeen, now = new Date()) {
   const seen = new Set(alreadySeen || []);
   const out = [];

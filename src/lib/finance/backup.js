@@ -9,6 +9,14 @@ const BACKUP_VERSION = 1;
 
 const COLLECTIONS = ["wallets", "categories", "transactions", "budgets", "goals", "recurring", "debts"];
 
+/**
+ * Build a backup payload from a finance store snapshot. Always includes
+ * every known collection (empty array if missing on input) so the
+ * resulting JSON has a stable shape.
+ *
+ * @param {object} state
+ * @returns {{ meta: { version: number, app: string, exportedAt: string }, prefs: object, [k: string]: any }}
+ */
 export function buildBackup(state) {
   const out = {
     meta: {
@@ -24,7 +32,14 @@ export function buildBackup(state) {
   return out;
 }
 
-/** Returns a normalized state object or throws on invalid input. */
+/**
+ * Parse a backup file and return a normalized state object. Throws on
+ * malformed JSON, foreign-app payloads, or future versions.
+ *
+ * @param {string} text
+ * @returns {object}
+ * @throws {Error}
+ */
 export function parseBackup(text) {
   let parsed;
   try {

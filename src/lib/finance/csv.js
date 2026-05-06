@@ -7,7 +7,12 @@
 
 import { toCents } from "@/lib/money.js";
 
-/** Parse RFC4180-ish CSV. Handles quoted commas and "" escaping. */
+/**
+ * Parse RFC4180-ish CSV. Handles quoted commas and "" escaping.
+ *
+ * @param {string} text
+ * @returns {string[][]} list of rows, each row a list of cell strings
+ */
 export function parseCsv(text) {
   const rows = [];
   let row = [];
@@ -45,7 +50,16 @@ export function parseCsv(text) {
   return rows.filter((r) => r.some((c) => c !== ""));
 }
 
-/** Convert a parsed CSV (with header row) to an array of transaction-shaped objects. */
+/**
+ * Convert a parsed CSV (with header row) to an array of transaction-shaped
+ * objects. Names from the wallet/category columns are mapped to IDs by
+ * lowercase-equality. Rows with unknown wallet/category get null IDs and
+ * are skipped at insert time by the caller (wallet is required).
+ *
+ * @param {string} text
+ * @param {{ wallets?: Array<object>, categories?: Array<object> }} [opts]
+ * @returns {Array<object>} transaction-shaped objects
+ */
 export function csvToTransactions(text, { wallets = [], categories = [] } = {}) {
   const rows = parseCsv(text);
   if (rows.length < 2) return [];

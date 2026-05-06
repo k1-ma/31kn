@@ -5,7 +5,14 @@
 
 const MS_DAY = 24 * 60 * 60 * 1000;
 
-/** Add `every` units of `frequency` to a date and return a new Date. */
+/**
+ * Add `every` units of `frequency` to a date.
+ *
+ * @param {Date|string|number} date
+ * @param {"daily"|"weekly"|"monthly"|"yearly"} frequency
+ * @param {number} [every=1] minimum 1
+ * @returns {Date}
+ */
 export function advance(date, frequency, every = 1) {
   const d = new Date(date);
   const n = Math.max(1, Number(every) || 1);
@@ -16,7 +23,14 @@ export function advance(date, frequency, every = 1) {
   return d;
 }
 
-/** Return the list of rules whose nextRunAt is in the past (or missing). */
+/**
+ * Filter the rules list down to those whose nextRunAt is in the past
+ * (or missing), excluding deleted/inactive rules.
+ *
+ * @param {Array<{ deletedAt?: string|null, active?: boolean, nextRunAt?: string|null }>} rules
+ * @param {Date} [now=new Date()]
+ * @returns {Array<object>}
+ */
 export function dueRules(rules, now = new Date()) {
   const ts = now.getTime();
   return (rules || [])
@@ -31,6 +45,10 @@ export function dueRules(rules, now = new Date()) {
  * Build a transaction object from a rule's template, dated at the rule's
  * current nextRunAt (or now). Caller is responsible for upserting it and
  * advancing the rule's nextRunAt.
+ *
+ * @param {{ id: string, template: object }} rule
+ * @param {Date|string|number} [runAt=new Date()]
+ * @returns {object} transaction-shaped payload
  */
 export function materialize(rule, runAt = new Date()) {
   const tpl = rule.template || {};

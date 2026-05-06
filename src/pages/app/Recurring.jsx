@@ -9,6 +9,7 @@ import EmptyState from "@/components/common/EmptyState.jsx";
 import { useFinance, active } from "@/lib/finance/store.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { advance, dueRules, materialize } from "@/lib/finance/recurring.js";
+import { recordNotification } from "@/lib/finance/recordNotification.js";
 import { formatMoney, toCents } from "@/lib/money.js";
 
 const FREQS = ["daily", "weekly", "monthly", "yearly"];
@@ -200,6 +201,16 @@ export default function Recurring() {
   const due = useMemo(() => dueRules(rules), [rules]);
   const cats = useMemo(() => new Map(active(state.categories).map((c) => [c.id, c])), [state.categories]);
   const wals = useMemo(() => new Map(active(state.wallets).map((w) => [w.id, w])), [state.wallets]);
+
+  // Mirror due-rule notices to the server so the bell inbox keeps a record.
+  useEffect(() => {
+    for (const rule of due) {
+      const dueDay = rule.nextRunAt ? rule.nextRunAt.slice(0, 10) : "now";
+      const cat = cats.get(rule.template?.categoryId);
+      const title = rule.template?.note || cat?.name || t("recurring.confirmRun");
+      recordNotification(`recurring:${rule.id}:${dueDay}`, "recurring_due", { title });
+    }
+  }, [due, cats, t]);
 
   const runRule = (rule) => {
     const txn = materialize(rule, rule.nextRunAt || new Date());

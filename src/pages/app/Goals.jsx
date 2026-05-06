@@ -9,6 +9,7 @@ import EmptyState from "@/components/common/EmptyState.jsx";
 import { useFinance, active } from "@/lib/finance/store.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { goalProgress } from "@/lib/finance/calc.js";
+import { recordNotification } from "@/lib/finance/recordNotification.js";
 import { formatMoney, toCents, SUPPORTED_CURRENCIES } from "@/lib/money.js";
 
 const ICONS = ["🎯", "🏠", "🚗", "✈️", "🎓", "💍", "👶", "💻", "🎁", "💰"];
@@ -287,10 +288,21 @@ export default function Goals() {
         onClose={() => setContributingGoal(null)}
         onContribute={(cents) => {
           if (!contributingGoal) return;
-          upsert("goals", {
-            ...contributingGoal,
-            current_cents: (contributingGoal.current_cents || 0) + cents,
-          });
+          const before = contributingGoal.current_cents || 0;
+          const after = before + cents;
+          upsert("goals", { ...contributingGoal, current_cents: after });
+          // Fire a one-shot inbox record the first time the goal hits 100%.
+          if (
+            contributingGoal.target_cents &&
+            before < contributingGoal.target_cents &&
+            after >= contributingGoal.target_cents
+          ) {
+            recordNotification(
+              `goal:${contributingGoal.id}:reached`,
+              "goal_reached",
+              { name: contributingGoal.name }
+            );
+          }
         }}
       />
     </div>

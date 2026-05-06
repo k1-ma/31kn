@@ -8,6 +8,7 @@ import TransactionSheet from "@/pages/app/TransactionSheet.jsx";
 import PinLock from "@/components/common/PinLock.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { computeBudgetAlerts } from "@/lib/finance/budgetAlerts.js";
+import { recordNotification } from "@/lib/finance/recordNotification.js";
 import { formatMoney } from "@/lib/money.js";
 
 const Dashboard = lazy(() => import("@/pages/app/Dashboard.jsx"));
@@ -52,12 +53,22 @@ function BudgetAlertWatcher() {
     seenRef.current = seen;
     for (const a of alerts) {
       const titleKey = a.level === "exceeded" ? "budgets.alert100" : "budgets.alert80";
+      const title = t(titleKey, { name: a.budget.name });
+      const body = formatMoney(a.spent, a.budget.currency, lang);
       push({
         kind: a.level === "exceeded" ? "error" : "warning",
-        title: t(titleKey, { name: a.budget.name }),
-        body: formatMoney(a.spent, a.budget.currency, lang),
+        title,
+        body,
         duration: 6000,
       });
+      // Mirror to /api/notifications so the bell inbox keeps a record.
+      // dedupeKey uses the same window-keyed identity as the in-memory
+      // seen set so we never post twice for the same threshold-crossing.
+      recordNotification(
+        a.key,
+        a.level === "exceeded" ? "budget_exceeded" : "budget_warn",
+        { name: a.budget.name, body, currency: a.budget.currency, spent: a.spent }
+      );
     }
   }, [state.budgets, state.transactions, loaded, push, t, lang]);
 

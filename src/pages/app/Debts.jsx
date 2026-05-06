@@ -8,6 +8,7 @@ import BottomSheet from "@/components/ui/BottomSheet.jsx";
 import EmptyState from "@/components/common/EmptyState.jsx";
 import { useFinance, active } from "@/lib/finance/store.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
+import { transactionForSettle } from "@/lib/finance/debts.js";
 import { formatMoney, toCents, SUPPORTED_CURRENCIES } from "@/lib/money.js";
 
 function DebtForm({ open, onClose, initial }) {
@@ -117,15 +118,110 @@ function DebtForm({ open, onClose, initial }) {
   );
 }
 
+function SettleSheet({ open, onClose, debt, onConfirm }) {
+  const { t, lang } = useI18n();
+  const { state } = useFinance();
+  const wallets = useMemo(
+    () => active(state.wallets).filter((w) => !w.isArchived),
+    [state.wallets]
+  );
+  const matchingWallets = wallets.filter((w) => w.currency === debt?.currency);
+  const choices = matchingWallets.length ? matchingWallets : wallets;
+  const [walletId, setWalletId] = useState("");
+  const [createTx, setCreateTx] = useState(true);
+
+  useEffect(() => {
+    if (open) {
+      setWalletId(choices[0]?.id || "");
+      setCreateTx(true);
+    }
+  }, [open, choices]);
+
+  if (!debt) return null;
+
+  return (
+    <BottomSheet open={open} onClose={onClose} title={t("debts.settle")}>
+      <div className="space-y-3">
+        <div className="text-sm text-slate-600 dark:text-slate-300">
+          <span className="font-semibold">{debt.counterparty}</span> ·{" "}
+          <span className="tabular-nums">
+            {formatMoney(debt.amount_cents, debt.currency, lang)}
+          </span>{" "}
+          ({debt.direction === "owe" ? t("debts.owe") : t("debts.owed")})
+        </div>
+
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={createTx}
+            onChange={(e) => setCreateTx(e.target.checked)}
+            className="w-4 h-4 accent-emerald-500"
+          />
+          {t("debts.createTx")}
+        </label>
+
+        {createTx && (
+          <div>
+            <label className="text-xs text-slate-500 mb-1 inline-block">{t("tx.wallet")}</label>
+            <select
+              value={walletId}
+              onChange={(e) => setWalletId(e.target.value)}
+              className="h-12 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3"
+            >
+              {choices.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.icon} {w.name} · {w.currency}
+                </option>
+              ))}
+            </select>
+            {!matchingWallets.length && (
+              <p className="text-xs text-amber-600 mt-1">
+                {t("debts.currencyMismatch", { currency: debt.currency })}
+              </p>
+            )}
+          </div>
+        )}
+
+        <div className="flex gap-2 pt-2">
+          <Button variant="secondary" size="lg" className="flex-1" onClick={onClose}>
+            {t("common.cancel")}
+          </Button>
+          <Button
+            size="lg"
+            className="flex-1"
+            disabled={createTx && !walletId}
+            onClick={() => {
+              const wallet = wallets.find((w) => w.id === walletId);
+              onConfirm({ createTx, wallet });
+              onClose();
+            }}
+          >
+            {t("debts.settle")}
+          </Button>
+        </div>
+      </div>
+    </BottomSheet>
+  );
+}
+
 export default function Debts() {
   const { t, lang } = useI18n();
   const { state, upsert, remove } = useFinance();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [settling, setSettling] = useState(null);
   const debts = useMemo(
     () => active(state.debts).slice().sort((a, b) => new Date(a.due_date || "9999") - new Date(b.due_date || "9999")),
     [state.debts]
   );
+
+  const handleSettleConfirm = ({ createTx, wallet }) => {
+    if (!settling) return;
+    if (createTx && wallet) {
+      upsert("transactions", transactionForSettle(settling, wallet));
+    }
+    upsert("debts", { ...settling, is_settled: true });
+  };
 
   const open_ = debts.filter((d) => !d.is_settled);
   const settled = debts.filter((d) => d.is_settled);
@@ -168,7 +264,13 @@ export default function Debts() {
           {d.direction === "owe" ? "-" : "+"} {formatMoney(d.amount_cents, d.currency, lang)}
         </div>
         <button
-          onClick={() => upsert("debts", { ...d, is_settled: !d.is_settled })}
+          onClick={() => {
+            if (d.is_settled) {
+              upsert("debts", { ...d, is_settled: false });
+            } else {
+              setSettling(d);
+            }
+          }}
           className="p-2 text-slate-400 hover:text-emerald-600"
           aria-label={d.is_settled ? t("common.restore") : t("debts.settle")}
         >
@@ -246,6 +348,12 @@ export default function Debts() {
         open={open}
         onClose={() => { setOpen(false); setEditing(null); }}
         initial={editing}
+      />
+      <SettleSheet
+        open={!!settling}
+        debt={settling}
+        onClose={() => setSettling(null)}
+        onConfirm={handleSettleConfirm}
       />
     </div>
   );

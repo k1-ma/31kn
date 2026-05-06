@@ -5,7 +5,14 @@
 
 export const RANGE_PRESETS = ["today", "week", "month", "quarter", "year", "all"];
 
-/** Build a {start, end} range from inclusive YYYY-MM-DD strings (end exclusive of next day). */
+/**
+ * Build a {start, end} range from inclusive YYYY-MM-DD strings.
+ * `end` is exclusive of the day after the input end.
+ *
+ * @param {string} startDate YYYY-MM-DD
+ * @param {string} endDate   YYYY-MM-DD
+ * @returns {{ start: string, end: string }} ISO strings
+ */
 export function customRange(startDate, endDate) {
   const start = new Date(startDate);
   start.setHours(0, 0, 0, 0);
@@ -15,6 +22,13 @@ export function customRange(startDate, endDate) {
   return { start: start.toISOString(), end: end.toISOString() };
 }
 
+/**
+ * Resolve a named range preset to a concrete {start, end} window.
+ *
+ * @param {"today"|"week"|"month"|"quarter"|"year"|"all"} preset
+ * @param {Date} [anchor=new Date()]
+ * @returns {{ start: string, end: string }}
+ */
 export function rangeFromPreset(preset, anchor = new Date()) {
   const a = new Date(anchor);
   if (preset === "today") {
