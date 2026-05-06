@@ -64,32 +64,32 @@ export async function registerUser({ username, password, nickname, email, ip }) 
   // Validate username
   const usernameCheck = validateUsername(username);
   if (!usernameCheck.valid) {
-    return { error: usernameCheck.error };
+    return { error: usernameCheck.error, errorCode: usernameCheck.errorCode, field: "username" };
   }
 
   // Validate password
   const passwordCheck = validatePassword(password);
   if (!passwordCheck.valid) {
-    return { error: passwordCheck.error };
+    return { error: passwordCheck.error, errorCode: passwordCheck.errorCode, field: "password" };
   }
 
   // Validate email (required for registration)
   const emailCheck = validateEmail(email, { required: true });
   if (!emailCheck.valid) {
-    return { error: emailCheck.error, errorCode: emailCheck.errorCode };
+    return { error: emailCheck.error, errorCode: emailCheck.errorCode, field: "email" };
   }
 
   // Check if username exists
   const existingUser = await getUserByUsername(usernameCheck.normalized);
   if (existingUser) {
-    return { error: "Username already exists", errorCode: "USERNAME_EXISTS" };
+    return { error: "Username already exists", errorCode: "USERNAME_EXISTS", field: "username" };
   }
 
   // Check if email exists
   if (emailCheck.normalized) {
     const existingEmail = await getUserByEmail(emailCheck.normalized);
     if (existingEmail) {
-      return { error: "Email already registered", errorCode: "EMAIL_EXISTS" };
+      return { error: "Email already registered", errorCode: "EMAIL_EXISTS", field: "email" };
     }
   }
 
@@ -149,25 +149,26 @@ export async function loginUser({ username, password }) {
   }
   
   if (!u) {
-    // Equalize timing: still run a bcrypt comparison so that a non-existent
-    // user takes roughly the same time as a wrong-password attempt against a
-    // real account. Mitigates user enumeration via response timing.
     await bcrypt.compare(String(password), DUMMY_BCRYPT_HASH);
-    return { error: "Invalid credentials", status: 401 };
+    return { error: "Invalid credentials", errorCode: "INVALID_CREDENTIALS", status: 401 };
   }
 
   if (u.is_disabled) {
-    return { error: "Account disabled", status: 403, reason: u.disabled_reason };
+    return { error: "Account disabled", errorCode: "ACCOUNT_DISABLED", status: 403, reason: u.disabled_reason };
   }
 
-  // Check if account has temporary ban
   if (u.disabled_until && new Date(u.disabled_until) > new Date()) {
-    return { error: "Account temporarily suspended", status: 403, until: u.disabled_until };
+    return {
+      error: "Account temporarily suspended",
+      errorCode: "ACCOUNT_SUSPENDED",
+      status: 403,
+      until: u.disabled_until,
+    };
   }
 
   const ok = await bcrypt.compare(String(password), u.password_hash);
   if (!ok) {
-    return { error: "Invalid credentials", status: 401 };
+    return { error: "Invalid credentials", errorCode: "INVALID_CREDENTIALS", status: 401 };
   }
 
   // Opportunistic rehash: if the stored hash uses a legacy (lower) cost,

@@ -28,23 +28,25 @@ export function isReservedUsername(username) {
 export function validateUsername(username) {
   const normalized = normalizeUsername(username);
   if (!normalized || normalized.length < 3) {
-    return { valid: false, error: "Username must be at least 3 characters" };
+    return { valid: false, error: "Username must be at least 3 characters", errorCode: "USERNAME_TOO_SHORT" };
   }
   if (normalized.length > 32) {
-    return { valid: false, error: "Username must be at most 32 characters" };
+    return { valid: false, error: "Username must be at most 32 characters", errorCode: "USERNAME_TOO_LONG" };
   }
   if (!/^[a-z0-9_.-]+$/.test(normalized)) {
-    return { valid: false, error: "Username can only contain letters, numbers, dots, underscores and hyphens" };
+    return {
+      valid: false,
+      error: "Username can only contain letters, numbers, dots, underscores and hyphens",
+      errorCode: "USERNAME_INVALID_CHARS",
+    };
   }
   if (isReservedUsername(normalized)) {
-    return { valid: false, error: "This username is reserved" };
+    return { valid: false, error: "This username is reserved", errorCode: "USERNAME_RESERVED" };
   }
   return { valid: true, normalized };
 }
 
-// Common weak passwords blocklist (subset). Block at minimum the most-tried
-// values from public credential dumps so users can't pick "password",
-// "12345678", etc.
+// Common weak passwords blocklist (subset).
 const COMMON_WEAK_PASSWORDS = new Set([
   "password", "password1", "password123", "passw0rd",
   "12345678", "123456789", "1234567890", "qwerty123", "qwertyui",
@@ -56,13 +58,12 @@ const COMMON_WEAK_PASSWORDS = new Set([
 export function validatePassword(password) {
   const s = String(password || "");
   if (!s || s.length < 8) {
-    return { valid: false, error: "Password must be at least 8 characters" };
+    return { valid: false, error: "Password must be at least 8 characters", errorCode: "PASSWORD_TOO_SHORT" };
   }
   if (s.length > 128) {
-    return { valid: false, error: "Password is too long" };
+    return { valid: false, error: "Password is too long", errorCode: "PASSWORD_TOO_LONG" };
   }
 
-  // Complexity: require at least three of {lowercase, uppercase, digit, symbol}.
   const hasLower = /[a-z]/.test(s);
   const hasUpper = /[A-Z]/.test(s);
   const hasDigit = /[0-9]/.test(s);
@@ -71,18 +72,21 @@ export function validatePassword(password) {
   if (classes < 3) {
     return {
       valid: false,
-      error:
-        "Password must include at least three of: lowercase, uppercase, digit, symbol",
+      error: "Password must include at least three of: lowercase, uppercase, digit, symbol",
+      errorCode: "PASSWORD_WEAK_CLASSES",
     };
   }
 
-  // Reject single-class repetitions (e.g. "aaaaaaaa", "12345678").
   if (/^(.)\1+$/.test(s)) {
-    return { valid: false, error: "Password is too simple" };
+    return { valid: false, error: "Password is too simple", errorCode: "PASSWORD_REPEATED" };
   }
 
   if (COMMON_WEAK_PASSWORDS.has(s.toLowerCase())) {
-    return { valid: false, error: "This password is too common, choose another" };
+    return {
+      valid: false,
+      error: "This password is too common, choose another",
+      errorCode: "PASSWORD_COMMON",
+    };
   }
 
   return { valid: true };
@@ -93,13 +97,12 @@ export function validateEmail(email, { required = false } = {}) {
     if (required) {
       return { valid: false, error: "Email is required", errorCode: "EMAIL_REQUIRED" };
     }
-    return { valid: true, normalized: null }; // Email is optional
+    return { valid: true, normalized: null };
   }
   const normalized = String(email).trim().toLowerCase();
   if (normalized.length > 255) {
-    return { valid: false, error: "Email is too long", errorCode: "EMAIL_INVALID" };
+    return { valid: false, error: "Email is too long", errorCode: "EMAIL_TOO_LONG" };
   }
-  // Simple email regex
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(normalized)) {
     return { valid: false, error: "Invalid email format", errorCode: "EMAIL_INVALID" };

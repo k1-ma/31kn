@@ -11,12 +11,14 @@ import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { formatMoney } from "@/lib/money.js";
 import { rangeFromPreset } from "@/lib/finance/range.js";
 import RangeBar from "@/components/ui/RangeBar.jsx";
+import { useDeleteWithUndo } from "@/lib/finance/useDeleteWithUndo.js";
 
 const TYPE_OPTIONS = ["all", "income", "expense", "transfer"];
 
 export default function Transactions({ autoOpen = false }) {
   const { t, lang } = useI18n();
-  const { state, remove } = useFinance();
+  const { state } = useFinance();
+  const softDelete = useDeleteWithUndo();
 
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState(null);
@@ -278,7 +280,7 @@ export default function Transactions({ autoOpen = false }) {
                         <Pencil className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => remove("transactions", tx.id)}
+                        onClick={() => softDelete("transactions", tx.id)}
                         className="p-2 text-slate-400 hover:text-red-500"
                         aria-label={t("common.delete")}
                       >

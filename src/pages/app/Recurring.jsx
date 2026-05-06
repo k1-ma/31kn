@@ -10,6 +10,7 @@ import { useFinance, active } from "@/lib/finance/store.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { advance, dueRules, materialize } from "@/lib/finance/recurring.js";
 import { recordNotification } from "@/lib/finance/recordNotification.js";
+import { useDeleteWithUndo } from "@/lib/finance/useDeleteWithUndo.js";
 import { formatMoney, toCents } from "@/lib/money.js";
 
 const FREQS = ["daily", "weekly", "monthly", "yearly"];
@@ -193,7 +194,8 @@ function RecurringForm({ open, onClose, initial }) {
 
 export default function Recurring() {
   const { t, lang } = useI18n();
-  const { state, upsert, remove } = useFinance();
+  const { state, upsert } = useFinance();
+  const softDelete = useDeleteWithUndo();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
 
@@ -318,7 +320,7 @@ export default function Recurring() {
                   <Pencil className="w-4 h-4" />
                 </button>
                 <button
-                  onClick={() => remove("recurring", rule.id)}
+                  onClick={() => softDelete("recurring", rule.id, rule.template?.note || "")}
                   className="p-2 text-slate-400 hover:text-red-500"
                   aria-label={t("common.delete")}
                 >

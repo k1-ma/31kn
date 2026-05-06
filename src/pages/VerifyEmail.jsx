@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { apiJson } from "@/lib/api.js";
+import { mapAuthError } from "@/lib/authErrors.js";
 
 export default function VerifyEmail() {
   const { t } = useI18n();
@@ -19,7 +20,7 @@ export default function VerifyEmail() {
     apiJson("/api/auth/verify-email", { method: "POST", body: JSON.stringify({ token }) })
       .then(() => setStatus("ok"))
       .catch((e) => {
-        setErr(e?.message || t("errors.generic"));
+        setErr(mapAuthError({ errorCode: e?.code, error: e?.message, ...(e?.data || {}) }, t));
         setStatus("error");
       });
   }, [token, t]);

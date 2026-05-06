@@ -2,6 +2,7 @@ import React, { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { FinanceProvider, useFinance } from "@/lib/finance/store.jsx";
 import { ToastProvider, useToast } from "@/components/common/ToastProvider.jsx";
+import { ConfirmProvider } from "@/components/common/ConfirmProvider.jsx";
 import BottomNav from "@/components/ui/BottomNav.jsx";
 import SideNav from "@/components/ui/SideNav.jsx";
 import TransactionSheet from "@/pages/app/TransactionSheet.jsx";
@@ -122,9 +123,11 @@ function AppShell() {
 export default function KoshykApp() {
   return (
     <ToastProvider>
-      <FinanceProvider>
-        <AppShell />
-      </FinanceProvider>
+      <ConfirmProvider>
+        <FinanceProvider>
+          <AppShell />
+        </FinanceProvider>
+      </ConfirmProvider>
     </ToastProvider>
   );
 }

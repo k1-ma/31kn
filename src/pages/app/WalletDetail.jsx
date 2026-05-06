@@ -1,20 +1,23 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { ArrowLeft, Pencil, Archive, Trash2 } from "lucide-react";
+import { ArrowLeft, Archive, Trash2 } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader.jsx";
 import { Card } from "@/components/ui/Card.jsx";
-import Button from "@/components/ui/Button.jsx";
 import EmptyState from "@/components/common/EmptyState.jsx";
 import { useFinance, active } from "@/lib/finance/store.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { walletBalance } from "@/lib/finance/calc.js";
 import { formatMoney } from "@/lib/money.js";
+import { useConfirm } from "@/components/common/ConfirmProvider.jsx";
+import { useDeleteWithUndo } from "@/lib/finance/useDeleteWithUndo.js";
 
 export default function WalletDetail() {
   const { id } = useParams();
   const nav = useNavigate();
   const { t, lang } = useI18n();
-  const { state, upsert, remove } = useFinance();
+  const { state, upsert } = useFinance();
+  const softDelete = useDeleteWithUndo();
+  const confirm = useConfirm();
 
   const wallet = useMemo(() => state.wallets.find((w) => w.id === id), [state.wallets, id]);
   const cats = useMemo(() => new Map(active(state.categories).map((c) => [c.id, c])), [state.categories]);
@@ -90,8 +93,15 @@ export default function WalletDetail() {
             </button>
             <button
               className="p-2 text-slate-500 hover:text-red-500"
-              onClick={() => {
-                remove("wallets", wallet.id);
+              onClick={async () => {
+                const ok = await confirm({
+                  title: t("common.delete"),
+                  body: wallet.name,
+                  danger: true,
+                  label: t("common.delete"),
+                });
+                if (!ok) return;
+                softDelete("wallets", wallet.id, wallet.name);
                 nav("/app/wallets");
               }}
               aria-label={t("common.delete")}

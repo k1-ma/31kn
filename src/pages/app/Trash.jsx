@@ -7,12 +7,16 @@ import EmptyState from "@/components/common/EmptyState.jsx";
 import { useFinance } from "@/lib/finance/store.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { formatMoney } from "@/lib/money.js";
+import { useConfirm } from "@/components/common/ConfirmProvider.jsx";
+import { useToast } from "@/components/common/ToastProvider.jsx";
 
-const COLLECTIONS = ["transactions", "wallets", "categories", "budgets", "goals"];
+const COLLECTIONS = ["transactions", "wallets", "categories", "budgets", "goals", "recurring", "debts"];
 
 export default function TrashPage() {
   const { t, lang } = useI18n();
   const { state, restore, purge } = useFinance();
+  const confirm = useConfirm();
+  const toast = useToast();
 
   const items = useMemo(() => {
     const all = [];
@@ -23,6 +27,23 @@ export default function TrashPage() {
     }
     return all.sort((a, b) => new Date(b.item.deletedAt) - new Date(a.item.deletedAt));
   }, [state]);
+
+  const onPurge = async (collection, item) => {
+    const ok = await confirm({
+      title: t("common.delete"),
+      body: t("trash.purgeConfirm"),
+      danger: true,
+      label: t("common.delete"),
+    });
+    if (!ok) return;
+    purge(collection, item.id);
+    toast.push({ kind: "success", title: t("toasts.deleted") });
+  };
+
+  const onRestore = (collection, item) => {
+    restore(collection, item.id);
+    toast.push({ kind: "success", title: t("toasts.restored") });
+  };
 
   const renderItem = ({ collection, item }) => {
     let label = item.name || "—";
@@ -38,10 +59,10 @@ export default function TrashPage() {
           <div className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">{label}</div>
           <div className="text-xs text-slate-500">{collection}</div>
         </div>
-        <Button size="sm" variant="secondary" onClick={() => restore(collection, item.id)}>
+        <Button size="sm" variant="secondary" onClick={() => onRestore(collection, item)}>
           {t("trash.restore")}
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => purge(collection, item.id)}>
+        <Button size="sm" variant="ghost" onClick={() => onPurge(collection, item)}>
           {t("common.delete")}
         </Button>
       </div>

@@ -14,6 +14,7 @@ import { buildBackup, parseBackup } from "@/lib/finance/backup.js";
 import { apiJson } from "@/lib/api.js";
 import Input from "@/components/ui/Input.jsx";
 import { isPinEnabled, setPin, clearPin } from "@/components/common/PinLock.jsx";
+import { useConfirm } from "@/components/common/ConfirmProvider.jsx";
 
 const THEMES = [
   { id: "light", icon: Sun, key: "settings.themes.light" },
@@ -37,6 +38,7 @@ export default function Settings() {
   const { user, logout } = useAuth();
   const { state, setPrefs, upsert, update } = useFinance();
   const toast = useToast();
+  const confirm = useConfirm();
   const jsonInputRef = useRef(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletingBusy, setDeletingBusy] = useState(false);
@@ -94,7 +96,12 @@ export default function Settings() {
     try {
       const text = await file.text();
       const restored = parseBackup(text);
-      const ok = window.confirm(t("settings.restoreConfirm"));
+      const ok = await confirm({
+        title: t("settings.importJson"),
+        body: t("settings.restoreConfirm"),
+        danger: true,
+        label: t("common.confirm"),
+      });
       if (!ok) return;
       update(restored);
       toast.push({ kind: "success", title: t("toasts.restored") });
@@ -143,6 +150,7 @@ export default function Settings() {
     a.download = `koshyk-transactions-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast.push({ kind: "success", title: t("toasts.saved") });
   };
 
   return (
@@ -276,6 +284,7 @@ export default function Settings() {
               setPinOn(false);
               setPinErr("");
               setPinDraft("");
+              toast.push({ kind: "success", title: t("toasts.deleted") });
             }}
           >
             {t("common.delete")} PIN
@@ -300,6 +309,7 @@ export default function Settings() {
                   setPinOn(true);
                   setPinDraft("");
                   setPinErr("");
+                  toast.push({ kind: "success", title: t("toasts.saved") });
                 } catch (e) {
                   setPinErr(e?.message || t("errors.generic"));
                 }
@@ -313,7 +323,18 @@ export default function Settings() {
       </Card>
 
       <Card className="p-5 space-y-3">
-        <Button variant="secondary" className="w-full" onClick={() => logout()}>
+        <Button
+          variant="secondary"
+          className="w-full"
+          onClick={async () => {
+            const ok = await confirm({
+              title: t("nav.logout"),
+              body: t("settings.logoutConfirm"),
+              label: t("nav.logout"),
+            });
+            if (ok) logout();
+          }}
+        >
           <LogOut className="w-4 h-4" /> {t("nav.logout")}
         </Button>
         {!deleteOpen ? (

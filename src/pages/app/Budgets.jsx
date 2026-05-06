@@ -10,6 +10,7 @@ import { useFinance, active } from "@/lib/finance/store.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { budgetSpent, budgetProgress } from "@/lib/finance/calc.js";
 import { formatMoney, toCents } from "@/lib/money.js";
+import { useDeleteWithUndo } from "@/lib/finance/useDeleteWithUndo.js";
 
 function BudgetForm({ open, onClose, initial }) {
   const { t } = useI18n();
@@ -126,7 +127,8 @@ function BudgetForm({ open, onClose, initial }) {
 
 export default function Budgets() {
   const { t, lang } = useI18n();
-  const { state, remove } = useFinance();
+  const { state } = useFinance();
+  const softDelete = useDeleteWithUndo();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const budgets = useMemo(() => active(state.budgets), [state.budgets]);
@@ -168,7 +170,7 @@ export default function Budgets() {
                       {t("common.edit")}
                     </button>
                     <button
-                      onClick={() => remove("budgets", b.id)}
+                      onClick={() => softDelete("budgets", b.id, b.name)}
                       className="p-2 text-slate-400 hover:text-red-500"
                       aria-label={t("common.delete")}
                     >

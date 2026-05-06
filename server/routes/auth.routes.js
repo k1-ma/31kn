@@ -259,9 +259,12 @@ router.post("/register", registerRateLimit, async (req, res) => {
 
   const { username, password, nickname, email } = req.body || {};
   const result = await registerUser({ username, password, nickname, email, ip });
-  
   if (result.error) {
-    return res.status(400).json({ error: result.error, errorCode: result.errorCode });
+    return res.status(400).json({
+      error: result.error,
+      errorCode: result.errorCode,
+      field: result.field,
+    });
   }
 
   // If email verification is required, don't create session

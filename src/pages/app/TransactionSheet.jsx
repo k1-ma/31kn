@@ -6,6 +6,7 @@ import Input from "@/components/ui/Input.jsx";
 import TagsInput from "@/components/ui/TagsInput.jsx";
 import { useFinance, active } from "@/lib/finance/store.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
+import { useToast } from "@/components/common/ToastProvider.jsx";
 import { toCents } from "@/lib/money.js";
 
 const TYPES = [
@@ -17,6 +18,7 @@ const TYPES = [
 export default function TransactionSheet({ open, onClose, initial = null }) {
   const { t } = useI18n();
   const { state, upsert } = useFinance();
+  const toast = useToast();
 
   const [type, setType] = useState(initial?.type || "expense");
   const [amount, setAmount] = useState(initial ? String((initial.amount_cents || 0) / 100) : "0");
@@ -83,6 +85,7 @@ export default function TransactionSheet({ open, onClose, initial = null }) {
       tags,
     });
     reset();
+    toast.push({ kind: "success", title: t("toasts.saved"), duration: 2500 });
     onClose?.();
   };
 

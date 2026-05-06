@@ -10,6 +10,7 @@ import { useFinance, active } from "@/lib/finance/store.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { goalProgress } from "@/lib/finance/calc.js";
 import { recordNotification } from "@/lib/finance/recordNotification.js";
+import { useDeleteWithUndo } from "@/lib/finance/useDeleteWithUndo.js";
 import { formatMoney, toCents, SUPPORTED_CURRENCIES } from "@/lib/money.js";
 
 const ICONS = ["🎯", "🏠", "🚗", "✈️", "🎓", "💍", "👶", "💻", "🎁", "💰"];
@@ -196,7 +197,8 @@ function ContributeSheet({ open, onClose, goal, onContribute }) {
 
 export default function Goals() {
   const { t, lang } = useI18n();
-  const { state, upsert, remove } = useFinance();
+  const { state, upsert } = useFinance();
+  const softDelete = useDeleteWithUndo();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [contributingGoal, setContributingGoal] = useState(null);
@@ -242,7 +244,7 @@ export default function Goals() {
                       <Pencil className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => remove("goals", g.id)}
+                      onClick={() => softDelete("goals", g.id, g.name)}
                       className="p-2 text-slate-400 hover:text-red-500"
                       aria-label={t("common.delete")}
                     >

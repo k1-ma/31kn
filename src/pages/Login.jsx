@@ -3,8 +3,10 @@ import { Navigate, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/auth/AuthProvider.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import Input from "@/components/ui/Input.jsx";
+import PasswordInput from "@/components/ui/PasswordInput.jsx";
 import Button from "@/components/ui/Button.jsx";
 import LanguageSwitcher from "@/components/common/LanguageSwitcher.jsx";
+import { mapAuthError } from "@/lib/authErrors.js";
 
 export default function Login() {
   const { t } = useI18n();
@@ -23,10 +25,14 @@ export default function Login() {
     setBusy(true);
     try {
       const res = await login({ username: username.trim(), password, remember: true });
-      if (res?.ok) nav("/app/dashboard");
-      else setErr(res?.error || t("errors.generic"));
+      if (res?.ok) {
+        nav("/app/dashboard");
+      } else {
+        setErr(mapAuthError(res, t));
+      }
     } catch (e2) {
-      setErr(e2?.message || t("errors.generic"));
+      // apiJson errors carry .code (errorCode) + .data
+      setErr(mapAuthError({ errorCode: e2?.code, error: e2?.message, ...(e2?.data || {}) }, t));
     } finally {
       setBusy(false);
     }
@@ -44,10 +50,11 @@ export default function Login() {
             {t("auth.welcome")}
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t("auth.welcomeSub")}</p>
-          <form onSubmit={onSubmit} className="mt-6 space-y-3">
+          <form onSubmit={onSubmit} className="mt-6 space-y-3" noValidate>
             <div>
-              <label className="text-xs text-slate-500 mb-1 inline-block">{t("auth.email")}</label>
+              <label htmlFor="lg-user" className="text-xs text-slate-500 mb-1 inline-block">{t("auth.email")}</label>
               <Input
+                id="lg-user"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 autoComplete="username"
@@ -58,9 +65,9 @@ export default function Login() {
               />
             </div>
             <div>
-              <label className="text-xs text-slate-500 mb-1 inline-block">{t("auth.password")}</label>
-              <Input
-                type="password"
+              <label htmlFor="lg-pw" className="text-xs text-slate-500 mb-1 inline-block">{t("auth.password")}</label>
+              <PasswordInput
+                id="lg-pw"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="current-password"
@@ -68,7 +75,7 @@ export default function Login() {
               />
             </div>
             {err && (
-              <div className="text-sm text-red-600 bg-red-50 dark:bg-red-950 dark:text-red-300 px-3 py-2 rounded-xl">
+              <div role="alert" className="text-sm text-red-700 bg-red-50 dark:bg-red-950 dark:text-red-300 px-3 py-2 rounded-xl">
                 {err}
               </div>
             )}

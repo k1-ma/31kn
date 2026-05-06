@@ -3,7 +3,9 @@ import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { apiJson } from "@/lib/api.js";
 import Input from "@/components/ui/Input.jsx";
+import PasswordInput from "@/components/ui/PasswordInput.jsx";
 import Button from "@/components/ui/Button.jsx";
+import { mapAuthError } from "@/lib/authErrors.js";
 
 export default function ResetPassword() {
   const { t } = useI18n();
@@ -25,7 +27,7 @@ export default function ResetPassword() {
       });
       nav("/login");
     } catch (e2) {
-      setErr(e2?.message || t("errors.generic"));
+      setErr(mapAuthError({ errorCode: e2?.code, error: e2?.message, ...(e2?.data || {}) }, t));
     } finally {
       setBusy(false);
     }
@@ -36,8 +38,7 @@ export default function ResetPassword() {
       <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 p-7">
         <h1 className="text-2xl font-bold tracking-tight">{t("auth.resetTitle")}</h1>
         <form onSubmit={onSubmit} className="mt-6 space-y-3">
-          <Input
-            type="password"
+          <PasswordInput
             placeholder={t("auth.password")}
             value={pw}
             onChange={(e) => setPw(e.target.value)}

@@ -10,6 +10,7 @@ import EmptyState from "@/components/common/EmptyState.jsx";
 import { useFinance, active } from "@/lib/finance/store.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { reorderSiblings } from "@/lib/finance/reorder.js";
+import { useDeleteWithUndo } from "@/lib/finance/useDeleteWithUndo.js";
 import { walletBalance } from "@/lib/finance/calc.js";
 import { formatMoney, SUPPORTED_CURRENCIES, toCents } from "@/lib/money.js";
 
@@ -136,7 +137,8 @@ function WalletForm({ open, onClose, initial }) {
 
 export default function Wallets() {
   const { t, lang } = useI18n();
-  const { state, upsert, remove } = useFinance();
+  const { state, upsert } = useFinance();
+  const softDelete = useDeleteWithUndo();
   const [editing, setEditing] = useState(null);
   const [open, setOpen] = useState(false);
 
@@ -210,7 +212,7 @@ export default function Wallets() {
                       <Pencil className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => remove("wallets", w.id)}
+                      onClick={() => softDelete("wallets", w.id, w.name)}
                       className="p-2 text-slate-400 hover:text-red-500"
                       aria-label={t("common.delete")}
                     >

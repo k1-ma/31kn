@@ -5,6 +5,7 @@ import { apiJson } from "@/lib/api.js";
 import Input from "@/components/ui/Input.jsx";
 import Button from "@/components/ui/Button.jsx";
 import LanguageSwitcher from "@/components/common/LanguageSwitcher.jsx";
+import { mapAuthError } from "@/lib/authErrors.js";
 
 export default function ForgotPassword() {
   const { t } = useI18n();
@@ -24,7 +25,7 @@ export default function ForgotPassword() {
       });
       setSent(true);
     } catch (e2) {
-      setErr(e2?.message || t("errors.generic"));
+      setErr(mapAuthError({ errorCode: e2?.code, error: e2?.message, ...(e2?.data || {}) }, t));
     } finally {
       setBusy(false);
     }

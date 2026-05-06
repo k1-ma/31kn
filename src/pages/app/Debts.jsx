@@ -9,6 +9,7 @@ import EmptyState from "@/components/common/EmptyState.jsx";
 import { useFinance, active } from "@/lib/finance/store.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { transactionForSettle } from "@/lib/finance/debts.js";
+import { useDeleteWithUndo } from "@/lib/finance/useDeleteWithUndo.js";
 import { formatMoney, toCents, SUPPORTED_CURRENCIES } from "@/lib/money.js";
 
 function DebtForm({ open, onClose, initial }) {
@@ -206,7 +207,8 @@ function SettleSheet({ open, onClose, debt, onConfirm }) {
 
 export default function Debts() {
   const { t, lang } = useI18n();
-  const { state, upsert, remove } = useFinance();
+  const { state, upsert } = useFinance();
+  const softDelete = useDeleteWithUndo();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [settling, setSettling] = useState(null);
@@ -284,7 +286,7 @@ export default function Debts() {
           <Pencil className="w-4 h-4" />
         </button>
         <button
-          onClick={() => remove("debts", d.id)}
+          onClick={() => softDelete("debts", d.id, d.counterparty)}
           className="p-2 text-slate-400 hover:text-red-500"
           aria-label={t("common.delete")}
         >
