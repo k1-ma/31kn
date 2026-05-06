@@ -61,52 +61,135 @@ function FaqItem({ q, a }) {
   );
 }
 
-function HeroPhoneMock() {
+function PhoneFrame({ children, className = "" }) {
   return (
-    <div className="relative mx-auto w-[260px] h-[520px] rounded-[40px] bg-slate-950 p-2 shadow-2xl shadow-emerald-500/20 ring-1 ring-slate-900/20">
+    <div
+      className={`relative mx-auto w-[260px] h-[520px] rounded-[40px] bg-slate-950 p-2 shadow-2xl shadow-emerald-500/20 ring-1 ring-slate-900/20 ${className}`}
+    >
       <div className="h-full w-full rounded-[32px] bg-gradient-to-b from-emerald-50 to-white dark:from-slate-900 dark:to-slate-950 p-4 flex flex-col gap-3 overflow-hidden">
-        <div className="text-xs font-medium text-emerald-700">Привіт ✨</div>
-        <div className="text-2xl font-bold tabular-nums">42 580 ₴</div>
-        <div className="text-xs text-slate-500">Чисті активи</div>
-        <div className="grid grid-cols-2 gap-2 mt-2">
-          <div className="rounded-2xl bg-white dark:bg-slate-900 p-3 shadow-sm">
-            <div className="text-[10px] text-slate-500">Витрачено</div>
-            <div className="text-sm font-semibold tabular-nums">8 240 ₴</div>
-          </div>
-          <div className="rounded-2xl bg-white dark:bg-slate-900 p-3 shadow-sm">
-            <div className="text-[10px] text-slate-500">Заробив</div>
-            <div className="text-sm font-semibold tabular-nums text-emerald-600">25 000 ₴</div>
-          </div>
-        </div>
-        <div className="rounded-2xl bg-white dark:bg-slate-900 p-3 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-500">Їжа · бюджет</span>
-            <span className="text-xs font-semibold tabular-nums">62%</span>
-          </div>
-          <div className="mt-2 h-1.5 rounded-full bg-slate-100 dark:bg-slate-800">
-            <div className="h-full rounded-full bg-emerald-500" style={{ width: "62%" }} />
-          </div>
-        </div>
-        <div className="rounded-2xl bg-white dark:bg-slate-900 p-3 shadow-sm space-y-2">
-          {[
-            { i: "🍔", t: "Їжа", a: "-280 ₴" },
-            { i: "🚗", t: "Транспорт", a: "-110 ₴" },
-            { i: "💼", t: "Зарплата", a: "+25 000 ₴" },
-          ].map((row, idx) => (
-            <div key={idx} className="flex items-center justify-between">
-              <span className="text-sm">
-                {row.i} {row.t}
-              </span>
-              <span
-                className={`text-sm tabular-nums ${row.a.startsWith("+") ? "text-emerald-600" : "text-slate-700 dark:text-slate-300"}`}
-              >
-                {row.a}
-              </span>
-            </div>
-          ))}
-        </div>
+        {children}
       </div>
     </div>
+  );
+}
+
+function HeroPhoneMock() {
+  return (
+    <PhoneFrame>
+      <div className="text-xs font-medium text-emerald-700">Привіт ✨</div>
+      <div className="text-2xl font-bold tabular-nums">42 580 ₴</div>
+      <div className="text-xs text-slate-500">Чисті активи</div>
+      <div className="grid grid-cols-2 gap-2 mt-2">
+        <div className="rounded-2xl bg-white dark:bg-slate-900 p-3 shadow-sm">
+          <div className="text-[10px] text-slate-500">Витрачено</div>
+          <div className="text-sm font-semibold tabular-nums">8 240 ₴</div>
+        </div>
+        <div className="rounded-2xl bg-white dark:bg-slate-900 p-3 shadow-sm">
+          <div className="text-[10px] text-slate-500">Заробив</div>
+          <div className="text-sm font-semibold tabular-nums text-emerald-600">25 000 ₴</div>
+        </div>
+      </div>
+      <div className="rounded-2xl bg-white dark:bg-slate-900 p-3 shadow-sm">
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-slate-500">Їжа · бюджет</span>
+          <span className="text-xs font-semibold tabular-nums">62%</span>
+        </div>
+        <div className="mt-2 h-1.5 rounded-full bg-slate-100 dark:bg-slate-800">
+          <div className="h-full rounded-full bg-emerald-500" style={{ width: "62%" }} />
+        </div>
+      </div>
+      <div className="rounded-2xl bg-white dark:bg-slate-900 p-3 shadow-sm space-y-2">
+        {[
+          { i: "🍔", t: "Їжа", a: "-280 ₴" },
+          { i: "🚗", t: "Транспорт", a: "-110 ₴" },
+          { i: "💼", t: "Зарплата", a: "+25 000 ₴" },
+        ].map((row, idx) => (
+          <div key={idx} className="flex items-center justify-between">
+            <span className="text-sm">
+              {row.i} {row.t}
+            </span>
+            <span
+              className={`text-sm tabular-nums ${
+                row.a.startsWith("+") ? "text-emerald-600" : "text-slate-700 dark:text-slate-300"
+              }`}
+            >
+              {row.a}
+            </span>
+          </div>
+        ))}
+      </div>
+    </PhoneFrame>
+  );
+}
+
+function BudgetsPhoneMock() {
+  const budgets = [
+    { name: "Їжа", pct: 62, color: "bg-emerald-500" },
+    { name: "Транспорт", pct: 35, color: "bg-emerald-500" },
+    { name: "Розваги", pct: 88, color: "bg-amber-500" },
+    { name: "Підписки", pct: 100, color: "bg-red-500" },
+  ];
+  return (
+    <PhoneFrame>
+      <div className="text-xs font-medium text-slate-500">Бюджети · Березень</div>
+      <div className="space-y-3 mt-1">
+        {budgets.map((b, i) => (
+          <div key={i} className="rounded-2xl bg-white dark:bg-slate-900 p-3 shadow-sm">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium">{b.name}</span>
+              <span className="text-xs font-semibold tabular-nums">{b.pct}%</span>
+            </div>
+            <div className="h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+              <div
+                className={`h-full rounded-full ${b.color}`}
+                style={{ width: `${Math.min(100, b.pct)}%` }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </PhoneFrame>
+  );
+}
+
+function GoalsPhoneMock() {
+  return (
+    <PhoneFrame>
+      <div className="text-xs font-medium text-slate-500">Цілі</div>
+      <div className="rounded-2xl bg-white dark:bg-slate-900 p-4 shadow-sm">
+        <div className="flex items-center gap-2">
+          <span className="text-2xl">✈️</span>
+          <div>
+            <div className="text-sm font-semibold">Подорож до Японії</div>
+            <div className="text-[10px] text-slate-500">До серпня 2026</div>
+          </div>
+        </div>
+        <div className="mt-3 text-xs text-slate-500">28 500 з 60 000 ₴</div>
+        <div className="mt-2 h-3 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+          <div className="h-full bg-emerald-500" style={{ width: "47%" }} />
+        </div>
+        <div className="mt-2 text-sm font-semibold tabular-nums">47%</div>
+      </div>
+      <div className="rounded-2xl bg-white dark:bg-slate-900 p-4 shadow-sm">
+        <div className="flex items-center gap-2">
+          <span className="text-2xl">🏠</span>
+          <div>
+            <div className="text-sm font-semibold">Перший внесок</div>
+            <div className="text-[10px] text-slate-500">До 2027</div>
+          </div>
+        </div>
+        <div className="mt-3 text-xs text-slate-500">125 000 з 300 000 ₴</div>
+        <div className="mt-2 h-3 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+          <div className="h-full bg-indigo-500" style={{ width: "42%" }} />
+        </div>
+        <div className="mt-2 text-sm font-semibold tabular-nums">42%</div>
+      </div>
+      <div className="rounded-2xl bg-emerald-50 dark:bg-emerald-950 p-3 shadow-sm">
+        <div className="text-xs text-emerald-700 dark:text-emerald-300 font-medium">
+          🎯 На цьому тижні: +1 500 ₴
+        </div>
+      </div>
+    </PhoneFrame>
   );
 }
 
@@ -203,6 +286,51 @@ export default function Landing() {
         </div>
       </Section>
 
+      {/* Screens carousel */}
+      <Section className="py-12">
+        <h2 className="font-display text-2xl md:text-4xl font-bold text-center mb-10 text-slate-900 dark:text-slate-100">
+          {t("landing.screensTitle")}
+        </h2>
+        <div className="flex gap-6 overflow-x-auto no-scrollbar snap-x snap-mandatory -mx-4 px-4 md:justify-center md:flex-wrap md:overflow-visible">
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-80px" }}
+            transition={{ duration: 0.4 }}
+            className="snap-center shrink-0 w-[280px] flex flex-col items-center gap-3"
+          >
+            <HeroPhoneMock />
+            <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
+              {t("landing.screenDashboard")}
+            </span>
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-80px" }}
+            transition={{ duration: 0.4, delay: 0.05 }}
+            className="snap-center shrink-0 w-[280px] flex flex-col items-center gap-3"
+          >
+            <BudgetsPhoneMock />
+            <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
+              {t("landing.screenBudgets")}
+            </span>
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-80px" }}
+            transition={{ duration: 0.4, delay: 0.1 }}
+            className="snap-center shrink-0 w-[280px] flex flex-col items-center gap-3"
+          >
+            <GoalsPhoneMock />
+            <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
+              {t("landing.screenGoals")}
+            </span>
+          </motion.div>
+        </div>
+      </Section>
+
       {/* Security */}
       <Section className="py-12">
         <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 p-7 md:p-10 flex flex-col md:flex-row items-start md:items-center gap-6">
@@ -262,8 +390,75 @@ export default function Landing() {
         </div>
       </Section>
 
-      <footer className="py-10 text-center text-sm text-slate-400 border-t border-slate-100 dark:border-slate-900">
-        © {new Date().getFullYear()} Koshyk
+      <footer className="border-t border-slate-100 dark:border-slate-900 py-10">
+        <Section className="space-y-6">
+          <div className="grid sm:grid-cols-3 gap-6 text-sm">
+            <div>
+              <div className="text-base font-bold text-emerald-600 mb-2">Koshyk</div>
+              <div className="text-slate-500 dark:text-slate-400 leading-relaxed">
+                {t("landing.heroSub")}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wider text-slate-400 mb-3">
+                {t("landing.product")}
+              </div>
+              <ul className="space-y-2 text-slate-600 dark:text-slate-300">
+                <li>
+                  <Link to="/login" className="hover:text-emerald-600">
+                    {t("auth.login")}
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/register" className="hover:text-emerald-600">
+                    {t("auth.register")}
+                  </Link>
+                </li>
+              </ul>
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wider text-slate-400 mb-3">
+                {t("legal.contact")}
+              </div>
+              <ul className="space-y-2 text-slate-600 dark:text-slate-300">
+                <li>
+                  <Link to="/privacy" className="hover:text-emerald-600">
+                    {t("legal.privacy")}
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/terms" className="hover:text-emerald-600">
+                    {t("legal.terms")}
+                  </Link>
+                </li>
+                <li>
+                  <a
+                    href="mailto:hello@koshyk.app"
+                    className="hover:text-emerald-600"
+                  >
+                    hello@koshyk.app
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="https://github.com/k1-ma/31kn"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-emerald-600"
+                  >
+                    GitHub
+                  </a>
+                </li>
+              </ul>
+            </div>
+          </div>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-6 border-t border-slate-100 dark:border-slate-900 text-xs text-slate-400">
+            <span>
+              © {new Date().getFullYear()} Koshyk · Made with 💚 in Ukraine
+            </span>
+            <LanguageSwitcher />
+          </div>
+        </Section>
       </footer>
     </div>
   );

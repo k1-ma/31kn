@@ -17,6 +17,8 @@ import ForgotPassword from "@/pages/ForgotPassword.jsx";
 import ResetPassword from "@/pages/ResetPassword.jsx";
 import ConfirmEmailChange from "@/pages/ConfirmEmailChange.jsx";
 import AdminLogin from "@/pages/AdminLogin.jsx";
+import Privacy from "@/pages/Privacy.jsx";
+import Terms from "@/pages/Terms.jsx";
 
 const KoshykApp = lazy(() => import("@/KoshykApp.jsx"));
 const AdminUsers = lazy(() => import("@/pages/admin/AdminUsers.jsx"));
@@ -89,6 +91,8 @@ export default function App() {
                 <Route path="/forgot-password" element={<ForgotPassword />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
                 <Route path="/confirm-email-change" element={<ConfirmEmailChange />} />
+                <Route path="/privacy" element={<Privacy />} />
+                <Route path="/terms" element={<Terms />} />
 
                 <Route path="/admincrm-panel" element={<AdminLogin />} />
                 <Route element={<RequireAdmin />}>

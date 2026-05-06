@@ -49,7 +49,7 @@ export default function RangeBar({ value, onChange, showSubLabel = true }) {
   return (
     <>
       <div className="space-y-1.5">
-        <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4">
+        <div className="flex gap-2 overflow-x-auto no-scrollbar scroll-fade-right -mx-4 px-4">
           {RANGE_PRESETS.map((p) => {
             const sel = !isCustom && value === p;
             return (

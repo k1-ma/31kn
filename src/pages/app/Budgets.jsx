@@ -103,13 +103,16 @@ function BudgetForm({ open, onClose, initial }) {
             className="flex-1"
             onClick={() => {
               if (!name.trim()) return;
+              const validCategoryIds = categoryIds.filter((id) =>
+                cats.some((c) => c.id === id)
+              );
               upsert("budgets", {
                 id: initial?.id,
                 name: name.trim(),
                 period,
                 limit_cents: toCents(limit),
                 currency,
-                categoryIds,
+                categoryIds: validCategoryIds,
                 alertAt,
                 rollover: initial?.rollover || false,
               });
