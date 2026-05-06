@@ -3,6 +3,8 @@ import BottomSheet from "@/components/ui/BottomSheet.jsx";
 import Button from "@/components/ui/Button.jsx";
 import NumPad from "@/components/ui/NumPad.jsx";
 import Input from "@/components/ui/Input.jsx";
+import Select from "@/components/ui/Select.jsx";
+import DateField from "@/components/ui/DateField.jsx";
 import TagsInput from "@/components/ui/TagsInput.jsx";
 import { useFinance, active } from "@/lib/finance/store.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
@@ -124,36 +126,33 @@ export default function TransactionSheet({ open, onClose, initial = null }) {
           <label className="text-xs text-slate-500 mb-1 inline-block">
             {type === "transfer" ? t("tx.fromWallet") : t("tx.wallet")}
           </label>
-          <select
+          <Select
             value={walletId}
-            onChange={(e) => setWalletId(e.target.value)}
-            className="h-12 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-base"
-          >
-            {wallets.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.icon} {w.name} · {w.currency}
-              </option>
-            ))}
-          </select>
+            onChange={setWalletId}
+            options={wallets.map((w) => ({
+              value: w.id,
+              label: w.name,
+              icon: w.icon || "💼",
+              hint: w.currency,
+            }))}
+            title={type === "transfer" ? t("tx.fromWallet") : t("tx.wallet")}
+            searchable={wallets.length > 6}
+          />
         </div>
 
         {type === "transfer" ? (
           <div>
             <label className="text-xs text-slate-500 mb-1 inline-block">{t("tx.toWallet")}</label>
-            <select
+            <Select
               value={toWalletId}
-              onChange={(e) => setToWalletId(e.target.value)}
-              className="h-12 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-base"
-            >
-              <option value="">—</option>
-              {wallets
+              onChange={setToWalletId}
+              options={wallets
                 .filter((w) => w.id !== walletId)
-                .map((w) => (
-                  <option key={w.id} value={w.id}>
-                    {w.icon} {w.name} · {w.currency}
-                  </option>
-                ))}
-            </select>
+                .map((w) => ({ value: w.id, label: w.name, icon: w.icon || "💼", hint: w.currency }))}
+              placeholder="—"
+              title={t("tx.toWallet")}
+              searchable={wallets.length > 6}
+            />
           </div>
         ) : (
           <div>
@@ -181,7 +180,7 @@ export default function TransactionSheet({ open, onClose, initial = null }) {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-xs text-slate-500 mb-1 inline-block">{t("tx.date")}</label>
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <DateField value={date} onChange={setDate} />
           </div>
           <div>
             <label className="text-xs text-slate-500 mb-1 inline-block">{t("tx.note")}</label>

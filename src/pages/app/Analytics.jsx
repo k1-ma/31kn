@@ -34,7 +34,18 @@ export default function Analytics() {
     [preset]
   );
   const summary = useMemo(() => rangeSummary(txns, range.start, range.end), [txns, range]);
-  const cashflow = useMemo(() => monthlyCashflow(txns, 6), [txns]);
+  const monthsForRange = useMemo(() => {
+    const rangeMs = new Date(range.end).getTime() - new Date(range.start).getTime();
+    const days = rangeMs / (1000 * 60 * 60 * 24);
+    if (days <= 35) return 3;          // weekly/monthly → last 3 months
+    if (days <= 100) return 6;         // quarter → last 6 months
+    if (days <= 380) return 12;        // year → last 12 months
+    return 24;                         // all/custom long → 24
+  }, [range]);
+  const cashflow = useMemo(
+    () => monthlyCashflow(txns, monthsForRange, new Date(range.end)),
+    [txns, monthsForRange, range.end]
+  );
   const byCategory = useMemo(
     () => expenseByCategory(txns, state.categories, range.start, range.end),
     [txns, state.categories, range]

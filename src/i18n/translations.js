@@ -56,6 +56,7 @@ const UK = {
     notifications: "Сповіщення",
     debts: "Борги",
     trash: "Кошик",
+    more: "Ще",
     logout: "Вийти",
   },
   notifications: {
@@ -398,6 +399,7 @@ const EN = {
     notifications: "Notifications",
     debts: "Debts",
     trash: "Trash",
+    more: "More",
     logout: "Sign out",
   },
   notifications: {

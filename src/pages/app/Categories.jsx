@@ -172,7 +172,11 @@ export default function Categories() {
         onChange={(e) => setSearch(e.target.value)}
       />
       {cats.length === 0 ? (
-        <EmptyState icon={Tags} title={t("categories.empty")} />
+        <EmptyState
+          icon={Tags}
+          title={t("categories.empty")}
+          cta={{ label: t("categories.add"), onClick: () => { setEditing(null); setOpen(true); } }}
+        />
       ) : (
         <>
           {expense.length > 0 && (

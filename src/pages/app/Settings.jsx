@@ -13,6 +13,7 @@ import { csvToTransactions } from "@/lib/finance/csv.js";
 import { buildBackup, parseBackup } from "@/lib/finance/backup.js";
 import { apiJson } from "@/lib/api.js";
 import Input from "@/components/ui/Input.jsx";
+import Select from "@/components/ui/Select.jsx";
 import { isPinEnabled, setPin, clearPin } from "@/components/common/PinLock.jsx";
 import { useConfirm } from "@/components/common/ConfirmProvider.jsx";
 
@@ -206,15 +207,13 @@ export default function Settings() {
         <div className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
           <Coins className="w-4 h-4" /> {t("settings.baseCurrency")}
         </div>
-        <select
+        <Select
           value={prefs.baseCurrency || "UAH"}
-          onChange={(e) => setPrefs({ baseCurrency: e.target.value })}
-          className="h-12 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3"
-        >
-          {SUPPORTED_CURRENCIES.map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-        </select>
+          onChange={(v) => setPrefs({ baseCurrency: v })}
+          options={SUPPORTED_CURRENCIES.map((c) => ({ value: c, label: c }))}
+          title={t("settings.baseCurrency")}
+          searchable
+        />
       </Card>
 
       <Card className="p-5 space-y-3">

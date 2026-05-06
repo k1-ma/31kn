@@ -5,6 +5,8 @@ import { Card } from "@/components/ui/Card.jsx";
 import Button from "@/components/ui/Button.jsx";
 import Input from "@/components/ui/Input.jsx";
 import BottomSheet from "@/components/ui/BottomSheet.jsx";
+import Select from "@/components/ui/Select.jsx";
+import DateField from "@/components/ui/DateField.jsx";
 import EmptyState from "@/components/common/EmptyState.jsx";
 import { useFinance, active } from "@/lib/finance/store.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
@@ -95,32 +97,29 @@ function RecurringForm({ open, onClose, initial }) {
           </div>
           <div>
             <label className="text-xs text-slate-500 mb-1 inline-block">{t("tx.wallet")}</label>
-            <select
+            <Select
               value={walletId}
-              onChange={(e) => setWalletId(e.target.value)}
-              className="h-12 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3"
-            >
-              {wallets.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.icon} {w.name} · {w.currency}
-                </option>
-              ))}
-            </select>
+              onChange={setWalletId}
+              options={wallets.map((w) => ({
+                value: w.id,
+                label: w.name,
+                icon: w.icon || "💼",
+                hint: w.currency,
+              }))}
+              title={t("tx.wallet")}
+              searchable={wallets.length > 6}
+            />
           </div>
         </div>
         <div>
           <label className="text-xs text-slate-500 mb-1 inline-block">{t("tx.category")}</label>
-          <select
+          <Select
             value={categoryId}
-            onChange={(e) => setCategoryId(e.target.value)}
-            className="h-12 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3"
-          >
-            {cats.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.icon} {c.name}
-              </option>
-            ))}
-          </select>
+            onChange={setCategoryId}
+            options={cats.map((c) => ({ value: c.id, label: c.name, icon: c.icon }))}
+            title={t("tx.category")}
+            searchable={cats.length > 6}
+          />
         </div>
         <div className="grid grid-cols-3 gap-3">
           <div>
@@ -134,22 +133,20 @@ function RecurringForm({ open, onClose, initial }) {
           </div>
           <div className="col-span-2">
             <label className="text-xs text-slate-500 mb-1 inline-block">{t("recurring.frequency")}</label>
-            <select
+            <Select
               value={frequency}
-              onChange={(e) => setFrequency(e.target.value)}
-              className="h-12 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3"
-            >
-              {FREQS.map((f) => (
-                <option key={f} value={f}>
-                  {t(`recurring.frequencies.${f}`)}
-                </option>
-              ))}
-            </select>
+              onChange={setFrequency}
+              options={FREQS.map((f) => ({
+                value: f,
+                label: t(`recurring.frequencies.${f}`),
+              }))}
+              title={t("recurring.frequency")}
+            />
           </div>
         </div>
         <div>
           <label className="text-xs text-slate-500 mb-1 inline-block">{t("recurring.nextRun")}</label>
-          <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+          <DateField value={startDate} onChange={setStartDate} />
         </div>
 
         <div className="flex gap-2 pt-2">
@@ -284,7 +281,11 @@ export default function Recurring() {
       )}
 
       {rules.length === 0 ? (
-        <EmptyState icon={Repeat} title={t("recurring.empty")} />
+        <EmptyState
+          icon={Repeat}
+          title={t("recurring.empty")}
+          cta={{ label: t("recurring.add"), onClick: () => { setEditing(null); setOpen(true); } }}
+        />
       ) : (
         <Card className="overflow-hidden">
           {rules.map((rule) => {

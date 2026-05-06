@@ -5,6 +5,8 @@ import { Card } from "@/components/ui/Card.jsx";
 import Button from "@/components/ui/Button.jsx";
 import Input from "@/components/ui/Input.jsx";
 import BottomSheet from "@/components/ui/BottomSheet.jsx";
+import Select from "@/components/ui/Select.jsx";
+import DateField from "@/components/ui/DateField.jsx";
 import EmptyState from "@/components/common/EmptyState.jsx";
 import { useFinance, active } from "@/lib/finance/store.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
@@ -49,15 +51,13 @@ function GoalForm({ open, onClose, initial }) {
           </div>
           <div>
             <label className="text-xs text-slate-500 mb-1 inline-block">{t("wallets.currency")}</label>
-            <select
+            <Select
               value={currency}
-              onChange={(e) => setCurrency(e.target.value)}
-              className="h-12 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3"
-            >
-              {SUPPORTED_CURRENCIES.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
+              onChange={setCurrency}
+              options={SUPPORTED_CURRENCIES.map((c) => ({ value: c, label: c }))}
+              title={t("wallets.currency")}
+              searchable
+            />
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
@@ -67,7 +67,7 @@ function GoalForm({ open, onClose, initial }) {
           </div>
           <div>
             <label className="text-xs text-slate-500 mb-1 inline-block">{t("goals.deadline")}</label>
-            <Input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
+            <DateField value={deadline} onChange={setDeadline} />
           </div>
         </div>
         <div>
@@ -215,7 +215,11 @@ export default function Goals() {
         }
       />
       {goals.length === 0 ? (
-        <EmptyState icon={Target} title={t("goals.empty")} />
+        <EmptyState
+          icon={Target}
+          title={t("goals.empty")}
+          cta={{ label: t("goals.add"), onClick: () => { setEditing(null); setOpen(true); } }}
+        />
       ) : (
         <div className="grid sm:grid-cols-2 gap-3">
           {goals.map((g) => {

@@ -5,19 +5,21 @@ import { Card } from "@/components/ui/Card.jsx";
 import Input from "@/components/ui/Input.jsx";
 import Button from "@/components/ui/Button.jsx";
 import EmptyState from "@/components/common/EmptyState.jsx";
+import Skeleton, { SkeletonCard } from "@/components/ui/Skeleton.jsx";
 import TransactionSheet from "@/pages/app/TransactionSheet.jsx";
 import { useFinance, active } from "@/lib/finance/store.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { formatMoney } from "@/lib/money.js";
 import { rangeFromPreset } from "@/lib/finance/range.js";
 import RangeBar from "@/components/ui/RangeBar.jsx";
+import Select from "@/components/ui/Select.jsx";
 import { useDeleteWithUndo } from "@/lib/finance/useDeleteWithUndo.js";
 
 const TYPE_OPTIONS = ["all", "income", "expense", "transfer"];
 
 export default function Transactions({ autoOpen = false }) {
   const { t, lang } = useI18n();
-  const { state } = useFinance();
+  const { state, loaded } = useFinance();
   const softDelete = useDeleteWithUndo();
 
   const [search, setSearch] = useState("");
@@ -145,29 +147,29 @@ export default function Transactions({ autoOpen = false }) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-slate-500 mb-1 inline-block">{t("tx.wallet")}</label>
-              <select
+              <Select
                 value={walletId}
-                onChange={(e) => setWalletId(e.target.value)}
-                className="h-12 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3"
-              >
-                <option value="all">{t("common.all")}</option>
-                {Array.from(wals.values()).map((w) => (
-                  <option key={w.id} value={w.id}>{w.name}</option>
-                ))}
-              </select>
+                onChange={setWalletId}
+                title={t("tx.wallet")}
+                options={[
+                  { value: "all", label: t("common.all") },
+                  ...Array.from(wals.values()).map((w) => ({ value: w.id, label: w.name, icon: w.icon || "💼" })),
+                ]}
+                searchable={wals.size > 6}
+              />
             </div>
             <div>
               <label className="text-xs text-slate-500 mb-1 inline-block">{t("tx.category")}</label>
-              <select
+              <Select
                 value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
-                className="h-12 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3"
-              >
-                <option value="all">{t("common.all")}</option>
-                {Array.from(cats.values()).map((c) => (
-                  <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
-                ))}
-              </select>
+                onChange={setCategoryId}
+                title={t("tx.category")}
+                options={[
+                  { value: "all", label: t("common.all") },
+                  ...Array.from(cats.values()).map((c) => ({ value: c.id, label: c.name, icon: c.icon })),
+                ]}
+                searchable={cats.size > 6}
+              />
             </div>
           </div>
           <div className="flex justify-end">
@@ -215,8 +217,19 @@ export default function Transactions({ autoOpen = false }) {
         </div>
       )}
 
-      {grouped.length === 0 ? (
-        <EmptyState icon={ListTree} title={t("tx.empty")} description={t("tx.emptyHint")} />
+      {!loaded ? (
+        <div className="space-y-3">
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+      ) : grouped.length === 0 ? (
+        <EmptyState
+          icon={ListTree}
+          title={t("tx.empty")}
+          description={t("tx.emptyHint")}
+          cta={{ label: t("common.add"), onClick: () => { setEditing(null); setSheetOpen(true); } }}
+        />
       ) : (
         <div className="space-y-4">
           {grouped.map(([day, items]) => (

@@ -6,7 +6,9 @@ import { Card } from "@/components/ui/Card.jsx";
 import Button from "@/components/ui/Button.jsx";
 import Input from "@/components/ui/Input.jsx";
 import BottomSheet from "@/components/ui/BottomSheet.jsx";
+import Select from "@/components/ui/Select.jsx";
 import EmptyState from "@/components/common/EmptyState.jsx";
+import { SkeletonCard } from "@/components/ui/Skeleton.jsx";
 import { useFinance, active } from "@/lib/finance/store.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { reorderSiblings } from "@/lib/finance/reorder.js";
@@ -65,17 +67,13 @@ function WalletForm({ open, onClose, initial }) {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-xs text-slate-500 mb-1 inline-block">{t("wallets.currency")}</label>
-            <select
+            <Select
               value={currency}
-              onChange={(e) => setCurrency(e.target.value)}
-              className="h-12 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3"
-            >
-              {SUPPORTED_CURRENCIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
+              onChange={setCurrency}
+              options={SUPPORTED_CURRENCIES.map((c) => ({ value: c, label: c }))}
+              title={t("wallets.currency")}
+              searchable
+            />
           </div>
           <div>
             <label className="text-xs text-slate-500 mb-1 inline-block">{t("wallets.balance")}</label>
@@ -137,7 +135,7 @@ function WalletForm({ open, onClose, initial }) {
 
 export default function Wallets() {
   const { t, lang } = useI18n();
-  const { state, upsert } = useFinance();
+  const { state, upsert, loaded } = useFinance();
   const softDelete = useDeleteWithUndo();
   const [editing, setEditing] = useState(null);
   const [open, setOpen] = useState(false);
@@ -166,8 +164,17 @@ export default function Wallets() {
           </Button>
         }
       />
-      {wallets.length === 0 ? (
-        <EmptyState icon={WalletIcon} title={t("wallets.empty")} />
+      {!loaded ? (
+        <div className="grid sm:grid-cols-2 gap-3">
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+      ) : wallets.length === 0 ? (
+        <EmptyState
+          icon={WalletIcon}
+          title={t("wallets.empty")}
+          cta={{ label: t("wallets.add"), onClick: () => { setEditing(null); setOpen(true); } }}
+        />
       ) : (
         <div className="grid sm:grid-cols-2 gap-3">
           {wallets.map((w, idx) => {

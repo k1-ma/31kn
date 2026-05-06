@@ -5,6 +5,8 @@ import { Card } from "@/components/ui/Card.jsx";
 import Button from "@/components/ui/Button.jsx";
 import Input from "@/components/ui/Input.jsx";
 import BottomSheet from "@/components/ui/BottomSheet.jsx";
+import Select from "@/components/ui/Select.jsx";
+import DateField from "@/components/ui/DateField.jsx";
 import EmptyState from "@/components/common/EmptyState.jsx";
 import { useFinance, active } from "@/lib/finance/store.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
@@ -70,20 +72,18 @@ function DebtForm({ open, onClose, initial }) {
           </div>
           <div>
             <label className="text-xs text-slate-500 mb-1 inline-block">{t("wallets.currency")}</label>
-            <select
+            <Select
               value={currency}
-              onChange={(e) => setCurrency(e.target.value)}
-              className="h-12 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3"
-            >
-              {SUPPORTED_CURRENCIES.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
+              onChange={setCurrency}
+              options={SUPPORTED_CURRENCIES.map((c) => ({ value: c, label: c }))}
+              title={t("wallets.currency")}
+              searchable
+            />
           </div>
         </div>
         <div>
           <label className="text-xs text-slate-500 mb-1 inline-block">{t("debts.dueDate")}</label>
-          <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+          <DateField value={dueDate} onChange={setDueDate} />
         </div>
         <div>
           <label className="text-xs text-slate-500 mb-1 inline-block">{t("tx.note")}</label>
@@ -164,17 +164,18 @@ function SettleSheet({ open, onClose, debt, onConfirm }) {
         {createTx && (
           <div>
             <label className="text-xs text-slate-500 mb-1 inline-block">{t("tx.wallet")}</label>
-            <select
+            <Select
               value={walletId}
-              onChange={(e) => setWalletId(e.target.value)}
-              className="h-12 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3"
-            >
-              {choices.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.icon} {w.name} · {w.currency}
-                </option>
-              ))}
-            </select>
+              onChange={setWalletId}
+              options={choices.map((w) => ({
+                value: w.id,
+                label: w.name,
+                icon: w.icon || "💼",
+                hint: w.currency,
+              }))}
+              title={t("tx.wallet")}
+              searchable={choices.length > 6}
+            />
             {!matchingWallets.length && (
               <p className="text-xs text-amber-600 mt-1">
                 {t("debts.currencyMismatch", { currency: debt.currency })}
@@ -323,7 +324,11 @@ export default function Debts() {
       )}
 
       {debts.length === 0 ? (
-        <EmptyState icon={Coins} title={t("debts.empty")} />
+        <EmptyState
+          icon={Coins}
+          title={t("debts.empty")}
+          cta={{ label: t("debts.add"), onClick: () => { setEditing(null); setOpen(true); } }}
+        />
       ) : (
         <>
           {open_.length > 0 && (

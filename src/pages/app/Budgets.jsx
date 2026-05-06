@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/Card.jsx";
 import Button from "@/components/ui/Button.jsx";
 import Input from "@/components/ui/Input.jsx";
 import BottomSheet from "@/components/ui/BottomSheet.jsx";
+import Select from "@/components/ui/Select.jsx";
 import EmptyState from "@/components/common/EmptyState.jsx";
 import { useFinance, active } from "@/lib/finance/store.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
@@ -52,17 +53,15 @@ function BudgetForm({ open, onClose, initial }) {
           </div>
           <div>
             <label className="text-xs text-slate-500 mb-1 inline-block">{t("budgets.period")}</label>
-            <select
+            <Select
               value={period}
-              onChange={(e) => setPeriod(e.target.value)}
-              className="h-12 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3"
-            >
-              {["weekly", "monthly", "yearly"].map((p) => (
-                <option key={p} value={p}>
-                  {t(`budgets.periods.${p}`)}
-                </option>
-              ))}
-            </select>
+              onChange={setPeriod}
+              options={["weekly", "monthly", "yearly"].map((p) => ({
+                value: p,
+                label: t(`budgets.periods.${p}`),
+              }))}
+              title={t("budgets.period")}
+            />
           </div>
         </div>
         <div>
@@ -144,7 +143,11 @@ export default function Budgets() {
         }
       />
       {budgets.length === 0 ? (
-        <EmptyState icon={PiggyBank} title={t("budgets.empty")} />
+        <EmptyState
+          icon={PiggyBank}
+          title={t("budgets.empty")}
+          cta={{ label: t("budgets.add"), onClick: () => { setEditing(null); setOpen(true); } }}
+        />
       ) : (
         <div className="space-y-3">
           {budgets.map((b) => {
