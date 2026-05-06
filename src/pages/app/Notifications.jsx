@@ -130,7 +130,7 @@ export default function Notifications() {
             onClick={() => setTab(id)}
             className={`h-9 px-4 rounded-xl text-sm font-semibold transition ${
               tab === id
-                ? "bg-white dark:bg-slate-900 text-emerald-600 shadow-sm"
+                ? "bg-white dark:bg-slate-900 text-indigo-600 shadow-sm"
                 : "text-slate-600 dark:text-slate-400"
             }`}
           >
@@ -166,7 +166,7 @@ export default function Notifications() {
                   key={n.id}
                   onClick={() => markRead(n)}
                   className={`flex items-start gap-3 px-5 py-3 border-b border-slate-100 dark:border-slate-800 last:border-b-0 cursor-pointer transition ${
-                    !n.read ? "bg-emerald-50/40 dark:bg-emerald-950/20 hover:bg-emerald-50 dark:hover:bg-emerald-950/40" : "hover:bg-slate-50 dark:hover:bg-slate-800"
+                    !n.read ? "bg-indigo-50/40 dark:bg-indigo-950/20 hover:bg-indigo-50 dark:hover:bg-indigo-950/40" : "hover:bg-slate-50 dark:hover:bg-slate-800"
                   }`}
                 >
                   <span className="text-2xl shrink-0">{KIND_ICONS[n.type] || "🔔"}</span>
@@ -174,7 +174,7 @@ export default function Notifications() {
                     <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
                       {title}
                       {!n.read && (
-                        <span className="ml-2 inline-block w-2 h-2 rounded-full bg-emerald-500 align-middle" />
+                        <span className="ml-2 inline-block w-2 h-2 rounded-full bg-indigo-500 align-middle" />
                       )}
                     </div>
                     {body && (

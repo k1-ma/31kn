@@ -39,7 +39,7 @@ function CategoryForm({ open, onClose, initial }) {
               onClick={() => setKind(k)}
               className={`h-10 rounded-xl border font-medium ${
                 kind === k
-                  ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                  ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300"
                   : "border-slate-200 dark:border-slate-700"
               }`}
             >
@@ -54,7 +54,7 @@ function CategoryForm({ open, onClose, initial }) {
               type="button"
               onClick={() => setIcon(i)}
               className={`h-10 rounded-xl text-xl border ${
-                icon === i ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950" : "border-slate-200 dark:border-slate-700"
+                icon === i ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-950" : "border-slate-200 dark:border-slate-700"
               }`}
             >
               {i}

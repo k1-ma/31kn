@@ -74,7 +74,7 @@ function BudgetForm({ open, onClose, initial }) {
                 onClick={() => toggleCat(c.id)}
                 className={`p-2 rounded-2xl border text-xs flex items-center gap-2 ${
                   categoryIds.includes(c.id)
-                    ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950"
+                    ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-950"
                     : "border-slate-200 dark:border-slate-700"
                 }`}
               >
@@ -187,7 +187,7 @@ export default function Budgets() {
                 <div className="mt-2 h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                   <div
                     className={`h-full ${
-                      over ? "bg-red-500" : pct > b.alertAt / 100 ? "bg-amber-500" : "bg-emerald-500"
+                      over ? "bg-red-500" : pct > b.alertAt / 100 ? "bg-amber-500" : "bg-indigo-500"
                     }`}
                     style={{ width: `${Math.min(100, Math.round(pct * 100))}%` }}
                   />

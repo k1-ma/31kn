@@ -76,7 +76,7 @@ export default function InstallPrompt() {
               <X className="h-4 w-4" />
             </button>
             <div className="flex items-start gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 dark:bg-emerald-950">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 dark:bg-indigo-950">
                 <img src="/pwa-icon-192x192.png" alt="Koshyk" className="h-9 w-9 rounded-xl" />
               </div>
               <div className="flex-1 min-w-0">
@@ -90,7 +90,7 @@ export default function InstallPrompt() {
                   <div className="mt-3 flex gap-2">
                     <button
                       onClick={handleInstall}
-                      className="flex items-center gap-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 px-4 py-2 text-xs font-semibold text-white"
+                      className="flex items-center gap-1.5 rounded-xl bg-indigo-500 hover:bg-indigo-600 px-4 py-2 text-xs font-semibold text-white"
                     >
                       <Download className="h-3.5 w-3.5" />
                       {t("common.add")}
@@ -105,7 +105,7 @@ export default function InstallPrompt() {
                 )}
                 {showIosTip && (
                   <div className="mt-3 flex items-center gap-2 rounded-xl bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs text-slate-600 dark:text-slate-300">
-                    <Share className="h-4 w-4 shrink-0 text-emerald-600" />
+                    <Share className="h-4 w-4 shrink-0 text-indigo-600" />
                     <span>{t("landing.pwaBody")}</span>
                   </div>
                 )}

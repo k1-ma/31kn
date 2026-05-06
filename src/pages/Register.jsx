@@ -50,12 +50,18 @@ export default function Register() {
 
   if (pendingEmail) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-5 bg-gradient-to-b from-slate-50 to-emerald-50/40 dark:from-slate-950 dark:to-slate-900">
-        <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 p-7 text-center">
-          <h1 className="text-2xl font-bold mb-2">{t("auth.verifyTitle")}</h1>
+      <div
+        className="min-h-screen flex flex-col items-center justify-center p-5"
+        style={{
+          background:
+            "radial-gradient(ellipse at top, var(--brand-soft), transparent 60%), var(--bg)",
+        }}
+      >
+        <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 p-8 text-center shadow-[0_14px_36px_rgba(20,20,40,0.08)]">
+          <h1 className="font-display text-2xl font-bold mb-2 text-slate-900 dark:text-slate-100">{t("auth.verifyTitle")}</h1>
           <p className="text-slate-500 dark:text-slate-400">{t("auth.verifySub")}</p>
-          <p className="mt-4 text-emerald-600 font-medium">{pendingEmail}</p>
-          <Link to="/login" className="block mt-6 text-emerald-600">
+          <p className="mt-4 text-indigo-600 font-medium">{pendingEmail}</p>
+          <Link to="/login" className="block mt-6 text-indigo-600 font-medium">
             {t("auth.login")}
           </Link>
         </div>
@@ -64,15 +70,24 @@ export default function Register() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-emerald-50/40 dark:from-slate-950 dark:to-slate-900 flex flex-col px-5 py-8">
-      <div className="flex justify-between items-center max-w-md w-full mx-auto">
-        <Link to="/" className="text-xl font-bold text-emerald-600">Koshyk</Link>
+    <div
+      className="min-h-screen flex flex-col px-5 py-8 relative overflow-hidden"
+      style={{
+        background:
+          "radial-gradient(ellipse at top, var(--brand-soft), transparent 60%), var(--bg)",
+      }}
+    >
+      <div className="flex justify-between items-center max-w-md w-full mx-auto relative">
+        <Link to="/" className="flex items-center gap-2">
+          <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-indigo-500 text-white font-display font-bold">К</span>
+          <span className="font-display text-lg font-bold text-slate-900 dark:text-slate-100">Koshyk</span>
+        </Link>
         <LanguageSwitcher />
       </div>
-      <div className="flex-1 flex items-center justify-center">
-        <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-[0_8px_32px_rgba(15,23,42,0.06)] p-7">
-          <h1 className="text-2xl font-bold tracking-tight">{t("auth.createTitle")}</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t("auth.createSub")}</p>
+      <div className="flex-1 flex items-center justify-center relative">
+        <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-[0_14px_36px_rgba(20,20,40,0.08),0_4px_12px_rgba(20,20,40,0.04)] p-8">
+          <h1 className="font-display text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">{t("auth.createTitle")}</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">{t("auth.createSub")}</p>
           <form onSubmit={onSubmit} className="mt-6 space-y-3">
             <div>
               <label className="text-xs text-slate-500 mb-1 inline-block">{t("auth.name")}</label>
@@ -112,7 +127,7 @@ export default function Register() {
           </form>
           <p className="mt-5 text-sm text-center text-slate-600 dark:text-slate-300">
             {t("auth.haveAccount")}{" "}
-            <Link to="/login" className="text-emerald-600">
+            <Link to="/login" className="text-indigo-600">
               {t("auth.login")}
             </Link>
           </p>

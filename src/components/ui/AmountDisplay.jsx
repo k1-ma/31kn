@@ -32,7 +32,7 @@ export default function AmountDisplay({
     : "text-slate-900 dark:text-slate-100";
   const prefix = signed && isPositive ? "+" : "";
   return (
-    <span className={`tabular-nums ${sizeMap[size]} ${colorMap} ${className}`}>
+    <span className={`font-mono-tabular ${sizeMap[size]} ${colorMap} ${className}`}>
       {prefix}
       {formatMoney(value, currency, lang)}
     </span>

@@ -72,7 +72,7 @@ export default function Analytics() {
       <div className="grid grid-cols-3 gap-2">
         <Card className="p-3">
           <div className="text-[10px] uppercase tracking-wider text-slate-500">{t("tx.income")}</div>
-          <div className="text-sm font-semibold tabular-nums text-emerald-600 mt-1">
+          <div className="text-sm font-semibold tabular-nums text-indigo-600 mt-1">
             {formatMoney(summary.income, baseCurrency, lang)}
           </div>
         </Card>
@@ -86,7 +86,7 @@ export default function Analytics() {
           <div className="text-[10px] uppercase tracking-wider text-slate-500">Net</div>
           <div
             className={`text-sm font-semibold tabular-nums mt-1 ${
-              summary.net >= 0 ? "text-emerald-600" : "text-red-600"
+              summary.net >= 0 ? "text-indigo-600" : "text-red-600"
             }`}
           >
             {formatMoney(summary.net, baseCurrency, lang)}

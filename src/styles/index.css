@@ -1,8 +1,83 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Koshyk Design Tokens v2 — "Calm Fintech".
+   Mirrors 31kn-design/tokens.css. Tailwind utilities still drive most
+   styling; these vars are used by the redesigned hero cards, CTA blocks,
+   and any place that needs gradients keyed off the brand. */
+:root {
+  /* Brand — indigo (replaces emerald) */
+  --brand: oklch(0.58 0.16 280);
+  --brand-hover: oklch(0.52 0.17 280);
+  --brand-press: oklch(0.46 0.17 280);
+  --brand-soft: oklch(0.96 0.03 280);
+  --brand-ring: oklch(0.58 0.16 280 / 0.35);
+  --brand-deep: oklch(0.45 0.16 290);
+  --on-brand: #ffffff;
+
+  /* Surfaces — warm off-white in light */
+  --bg: oklch(0.985 0.004 80);
+  --surface: #ffffff;
+  --surface-2: oklch(0.97 0.005 80);
+  --surface-3: oklch(0.945 0.006 80);
+  --border: oklch(0.92 0.005 80);
+  --border-strong: oklch(0.86 0.008 80);
+
+  /* Text */
+  --text: oklch(0.22 0.02 260);
+  --text-muted: oklch(0.5 0.015 260);
+  --text-subtle: oklch(0.62 0.012 260);
+
+  /* States */
+  --success: oklch(0.62 0.16 155);
+  --success-soft: oklch(0.96 0.04 155);
+  --warning: oklch(0.74 0.16 75);
+  --warning-soft: oklch(0.96 0.05 75);
+  --danger: oklch(0.6 0.2 25);
+  --danger-soft: oklch(0.96 0.04 25);
+  --info: oklch(0.62 0.13 240);
+
+  /* Shadows */
+  --sh-1: 0 1px 2px rgba(20, 20, 40, 0.04), 0 1px 1px rgba(20, 20, 40, 0.03);
+  --sh-2: 0 2px 6px rgba(20, 20, 40, 0.05), 0 1px 2px rgba(20, 20, 40, 0.04);
+  --sh-3: 0 6px 18px rgba(20, 20, 40, 0.07), 0 2px 6px rgba(20, 20, 40, 0.05);
+  --sh-4: 0 14px 36px rgba(20, 20, 40, 0.10), 0 4px 12px rgba(20, 20, 40, 0.06);
+  --sh-5: 0 28px 60px rgba(20, 20, 40, 0.16), 0 8px 24px rgba(20, 20, 40, 0.08);
+  --sh-brand: 0 12px 32px oklch(0.58 0.16 280 / 0.32);
+}
+
+html.dark {
+  --bg: oklch(0.16 0.018 260);
+  --surface: oklch(0.205 0.02 260);
+  --surface-2: oklch(0.235 0.022 260);
+  --surface-3: oklch(0.27 0.024 260);
+  --border: oklch(0.3 0.02 260);
+  --border-strong: oklch(0.38 0.024 260);
+
+  --text: oklch(0.96 0.005 260);
+  --text-muted: oklch(0.74 0.012 260);
+  --text-subtle: oklch(0.6 0.012 260);
+
+  --brand: oklch(0.7 0.16 280);
+  --brand-hover: oklch(0.76 0.16 280);
+  --brand-soft: oklch(0.32 0.08 280);
+  --brand-ring: oklch(0.7 0.16 280 / 0.4);
+  --brand-deep: oklch(0.55 0.18 290);
+
+  --success: oklch(0.74 0.16 155);
+  --warning: oklch(0.82 0.16 75);
+  --danger: oklch(0.72 0.18 25);
+
+  --sh-1: 0 1px 2px rgba(0,0,0,0.4);
+  --sh-2: 0 2px 8px rgba(0,0,0,0.45);
+  --sh-3: 0 8px 22px rgba(0,0,0,0.5);
+  --sh-4: 0 18px 40px rgba(0,0,0,0.55);
+  --sh-5: 0 30px 70px rgba(0,0,0,0.6);
+  --sh-brand: 0 14px 36px oklch(0.7 0.16 280 / 0.4);
+}
 
 html, body, #root {
   height: 100%;
@@ -10,21 +85,27 @@ html, body, #root {
 
 body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  background-color: #F7F8FA;
-  color: #0F172A;
+  background-color: var(--bg);
+  color: var(--text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-feature-settings: "ss01", "cv02", "cv11";
 }
 
 html.dark body {
-  background-color: #0B1220;
-  color: #F1F5F9;
+  background-color: var(--bg);
+  color: var(--text);
 }
 
 .font-display {
-  font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+  font-family: 'Geist', 'Inter', system-ui, sans-serif;
   letter-spacing: -0.02em;
+}
+
+.font-mono-tabular,
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-family: 'Geist Mono', ui-monospace, "SF Mono", Menlo, monospace;
 }
 
 input, button, textarea, select {
@@ -60,3 +141,23 @@ input[type="number"] { -moz-appearance: textfield; }
 /* Hide scrollbar where it's noisy */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Brand gradient utility used across hero/CTA cards. */
+.bg-brand-gradient {
+  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-deep) 100%);
+}
+.shadow-brand {
+  box-shadow: var(--sh-brand);
+}
+
+/* Subtle grid pattern for hero backgrounds. */
+.bg-grid-pattern {
+  background-image:
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}

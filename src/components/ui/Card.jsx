@@ -4,7 +4,7 @@ export function Card({ className = "", ...props }) {
   return (
     <div
       className={
-        "rounded-3xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-[0_2px_18px_rgba(15,23,42,0.04)] " +
+        "rounded-3xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-[0_1px_2px_rgba(20,20,40,0.04),0_1px_1px_rgba(20,20,40,0.03)] " +
         className
       }
       {...props}
@@ -19,7 +19,7 @@ export function CardHeader({ className = "", ...props }) {
 export function CardTitle({ className = "", ...props }) {
   return (
     <div
-      className={"text-base font-semibold text-slate-900 dark:text-slate-100 " + className}
+      className={"text-base font-semibold text-slate-900 dark:text-slate-100 font-display " + className}
       {...props}
     />
   );

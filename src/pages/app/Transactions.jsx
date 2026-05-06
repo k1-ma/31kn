@@ -110,7 +110,7 @@ export default function Transactions({ autoOpen = false }) {
           onClick={() => setShowFilters((v) => !v)}
           className={`shrink-0 inline-flex items-center gap-1.5 h-9 px-3 rounded-full text-xs font-semibold border ${
             filtersActive
-              ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300"
+              ? "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950 dark:text-indigo-300"
               : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"
           }`}
         >
@@ -131,7 +131,7 @@ export default function Transactions({ autoOpen = false }) {
                   onClick={() => setType(tp)}
                   className={`h-9 px-3 rounded-xl text-xs font-medium border ${
                     type === tp
-                      ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                      ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300"
                       : "border-slate-200 dark:border-slate-700"
                   }`}
                 >
@@ -190,7 +190,7 @@ export default function Transactions({ autoOpen = false }) {
         <div className="grid grid-cols-3 gap-2 text-center">
           <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 p-2">
             <div className="text-[10px] uppercase tracking-wider text-slate-500">{t("tx.income")}</div>
-            <div className="text-sm font-semibold tabular-nums text-emerald-600">
+            <div className="text-sm font-semibold tabular-nums text-indigo-600">
               {formatMoney(totals.inc, baseCurrency, lang)}
             </div>
           </div>
@@ -204,7 +204,7 @@ export default function Transactions({ autoOpen = false }) {
             <div className="text-[10px] uppercase tracking-wider text-slate-500">Net</div>
             <div
               className={`text-sm font-semibold tabular-nums ${
-                totals.net >= 0 ? "text-emerald-600" : "text-red-600"
+                totals.net >= 0 ? "text-indigo-600" : "text-red-600"
               }`}
             >
               {formatMoney(totals.net, baseCurrency, lang)}
@@ -233,7 +233,7 @@ export default function Transactions({ autoOpen = false }) {
                   const sign = tx.type === "income" ? "+" : tx.type === "expense" ? "-" : "↔";
                   const cls =
                     tx.type === "income"
-                      ? "text-emerald-600"
+                      ? "text-indigo-600"
                       : tx.type === "expense"
                         ? "text-red-600"
                         : "text-slate-500";
@@ -256,7 +256,7 @@ export default function Transactions({ autoOpen = false }) {
                             {tx.tags.map((tag) => (
                               <span
                                 key={tag}
-                                className="inline-flex h-5 items-center rounded-full bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 px-2 text-[10px] font-medium"
+                                className="inline-flex h-5 items-center rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 px-2 text-[10px] font-medium"
                               >
                                 #{tag}
                               </span>

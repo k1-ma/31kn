@@ -50,7 +50,7 @@ export default function ReloadPrompt() {
           <p className="text-sm text-slate-700 dark:text-slate-200">{t("common.retry")}?</p>
           <div className="flex gap-2">
             <button
-              className="h-9 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-semibold"
+              className="h-9 px-3 rounded-xl bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-semibold"
               onClick={() => window.location.reload()}
             >
               {t("common.confirm")}
@@ -70,7 +70,7 @@ export default function ReloadPrompt() {
   if (!showOffline) return null;
   return (
     <div className="fixed bottom-24 md:bottom-6 right-4 z-[9999]">
-      <div className="rounded-2xl border border-emerald-100 bg-emerald-50 dark:bg-emerald-950 px-4 py-2 text-sm text-emerald-800 dark:text-emerald-200">
+      <div className="rounded-2xl border border-indigo-100 bg-indigo-50 dark:bg-indigo-950 px-4 py-2 text-sm text-indigo-800 dark:text-indigo-200">
         {t("common.done")}
       </div>
     </div>

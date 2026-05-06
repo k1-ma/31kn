@@ -97,7 +97,7 @@ export default function TransactionSheet({ open, onClose, initial = null }) {
               onClick={() => setType(tp.id)}
               className={`flex-1 h-10 rounded-xl text-sm font-semibold transition ${
                 type === tp.id
-                  ? "bg-white dark:bg-slate-900 text-emerald-600 shadow-sm"
+                  ? "bg-white dark:bg-slate-900 text-indigo-600 shadow-sm"
                   : "text-slate-600 dark:text-slate-400"
               }`}
             >
@@ -163,7 +163,7 @@ export default function TransactionSheet({ open, onClose, initial = null }) {
                   onClick={() => setCategoryId(c.id)}
                   className={`flex flex-col items-center gap-1 p-2 rounded-2xl border transition text-xs ${
                     categoryId === c.id
-                      ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950"
+                      ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-950"
                       : "border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800"
                   }`}
                 >

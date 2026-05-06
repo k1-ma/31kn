@@ -34,7 +34,7 @@ export default function RangeBar({ value, onChange }) {
               onClick={() => onChange(p)}
               className={`shrink-0 h-9 px-3 rounded-full text-xs font-semibold border transition ${
                 sel
-                  ? "bg-emerald-500 text-white border-emerald-500"
+                  ? "bg-indigo-500 text-white border-indigo-500"
                   : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"
               }`}
             >
@@ -47,7 +47,7 @@ export default function RangeBar({ value, onChange }) {
           onClick={() => setOpen(true)}
           className={`shrink-0 inline-flex items-center gap-1.5 h-9 px-3 rounded-full text-xs font-semibold border ${
             isCustom
-              ? "bg-emerald-500 text-white border-emerald-500"
+              ? "bg-indigo-500 text-white border-indigo-500"
               : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"
           }`}
         >

@@ -32,7 +32,7 @@ export default function ResetPassword() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-5 bg-gradient-to-b from-slate-50 to-emerald-50/40 dark:from-slate-950 dark:to-slate-900">
+    <div className="min-h-screen flex items-center justify-center p-5 bg-gradient-to-b from-slate-50 to-indigo-50/40 dark:from-slate-950 dark:to-slate-900">
       <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 p-7">
         <h1 className="text-2xl font-bold tracking-tight">{t("auth.resetTitle")}</h1>
         <form onSubmit={onSubmit} className="mt-6 space-y-3">

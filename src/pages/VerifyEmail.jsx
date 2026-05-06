@@ -25,7 +25,7 @@ export default function VerifyEmail() {
   }, [token, t]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-5 bg-gradient-to-b from-slate-50 to-emerald-50/40 dark:from-slate-950 dark:to-slate-900">
+    <div className="min-h-screen flex items-center justify-center p-5 bg-gradient-to-b from-slate-50 to-indigo-50/40 dark:from-slate-950 dark:to-slate-900">
       <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 p-7 text-center">
         {status === "loading" && (
           <p className="text-slate-500">{t("common.loading")}</p>
@@ -34,7 +34,7 @@ export default function VerifyEmail() {
           <>
             <h1 className="text-2xl font-bold mb-2">{t("common.done")}</h1>
             <p className="text-slate-500 dark:text-slate-400">{t("auth.welcome")}</p>
-            <Link to="/login" className="inline-block mt-6 text-emerald-600 font-semibold">
+            <Link to="/login" className="inline-block mt-6 text-indigo-600 font-semibold">
               {t("auth.login")}
             </Link>
           </>
@@ -43,7 +43,7 @@ export default function VerifyEmail() {
           <>
             <h1 className="text-2xl font-bold mb-2">{t("common.error")}</h1>
             <p className="text-red-600">{err}</p>
-            <Link to="/login" className="inline-block mt-6 text-emerald-600 font-semibold">
+            <Link to="/login" className="inline-block mt-6 text-indigo-600 font-semibold">
               {t("auth.login")}
             </Link>
           </>

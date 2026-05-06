@@ -164,7 +164,7 @@ export default function Settings() {
                 onClick={() => setLang(l.id)}
                 className={`h-11 rounded-xl border text-sm font-medium ${
                   lang === l.id
-                    ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                    ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300"
                     : "border-slate-200 dark:border-slate-700"
                 }`}
               >
@@ -182,7 +182,7 @@ export default function Settings() {
                 onClick={() => setPrefs({ theme: id })}
                 className={`h-11 rounded-xl border text-sm flex items-center justify-center gap-2 ${
                   prefs.theme === id
-                    ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                    ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300"
                     : "border-slate-200 dark:border-slate-700"
                 }`}
               >
@@ -234,7 +234,7 @@ export default function Settings() {
           <div
             className={`text-sm rounded-xl px-3 py-2 ${
               importStatus.ok
-                ? "text-emerald-700 bg-emerald-50 dark:bg-emerald-950 dark:text-emerald-300"
+                ? "text-indigo-700 bg-indigo-50 dark:bg-indigo-950 dark:text-indigo-300"
                 : "text-red-700 bg-red-50 dark:bg-red-950 dark:text-red-300"
             }`}
           >

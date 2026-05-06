@@ -79,7 +79,7 @@ function GoalForm({ open, onClose, initial }) {
                 onClick={() => setIcon(ic)}
                 className={`h-10 rounded-xl text-xl border ${
                   icon === ic
-                    ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950"
+                    ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-950"
                     : "border-slate-200 dark:border-slate-700"
                 }`}
               >
@@ -160,7 +160,7 @@ function ContributeSheet({ open, onClose, goal, onContribute }) {
           <button
             type="button"
             onClick={() => setAmount(String(remaining / 100))}
-            className="text-sm text-emerald-600 hover:text-emerald-700"
+            className="text-sm text-indigo-600 hover:text-indigo-700"
           >
             {t("budgets.remaining")}: {formatMoney(remaining, goal.currency, lang)}
           </button>
@@ -258,7 +258,7 @@ export default function Goals() {
                 </div>
                 <div className="mt-2 h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                   <div
-                    className={`h-full ${completed ? "bg-amber-400" : "bg-emerald-500"}`}
+                    className={`h-full ${completed ? "bg-amber-400" : "bg-indigo-500"}`}
                     style={{ width: `${Math.round(pct * 100)}%` }}
                   />
                 </div>
