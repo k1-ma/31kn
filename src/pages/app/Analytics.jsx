@@ -134,12 +134,29 @@ export default function Analytics() {
             <div style={{ width: "100%", height: 280 }}>
               <ResponsiveContainer>
                 <PieChart>
-                  <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={90}>
+                  <Pie
+                    data={pieData}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={100}
+                    paddingAngle={2}
+                    label={({ percent }) =>
+                      percent >= 0.07 ? `${Math.round(percent * 100)}%` : ""
+                    }
+                    labelLine={false}
+                  >
                     {pieData.map((d, idx) => (
-                      <Cell key={idx} fill={d.color} />
+                      <Cell key={idx} fill={d.color} stroke="transparent" />
                     ))}
                   </Pie>
-                  <Tooltip />
+                  <Tooltip
+                    formatter={(value) =>
+                      formatMoney(Math.round(value * 100), baseCurrency, lang)
+                    }
+                  />
                 </PieChart>
               </ResponsiveContainer>
             </div>
@@ -150,7 +167,9 @@ export default function Analytics() {
                     <span className="inline-block w-3 h-3 rounded" style={{ background: d.color }} />
                     {d.name}
                   </span>
-                  <span className="tabular-nums">{d.value.toFixed(2)}</span>
+                  <span className="tabular-nums">
+                    {formatMoney(Math.round(d.value * 100), baseCurrency, lang)}
+                  </span>
                 </div>
               ))}
             </div>

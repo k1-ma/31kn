@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Lock, Delete } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
+import { useAuth } from "@/auth/AuthProvider.jsx";
 
 const HASH_KEY = "koshyk:pinHash";
 const ENABLED_KEY = "koshyk:pinEnabled";
@@ -45,6 +46,7 @@ async function verifyPin(pin) {
 
 export default function PinLock({ children }) {
   const { t } = useI18n();
+  const { logout } = useAuth();
   const [unlocked, setUnlocked] = useState(() => !isPinEnabled());
   const [pin, setPinValue] = useState("");
   const [err, setErr] = useState("");
@@ -122,6 +124,22 @@ export default function PinLock({ children }) {
           )
         )}
       </div>
+      <button
+        type="button"
+        className="mt-6 text-sm text-slate-500 hover:text-emerald-600 transition"
+        onClick={async () => {
+          clearPin();
+          try {
+            await logout();
+          } catch {}
+          // Force a clean reload so the auth context resets and we land on /login.
+          try {
+            window.location.assign("/login");
+          } catch {}
+        }}
+      >
+        {t("auth.forgotPin")}
+      </button>
     </div>
   );
 }

@@ -98,6 +98,7 @@ const UK = {
     password: "Пароль",
     name: "Імʼя",
     forgot: "Забули пароль?",
+    forgotPin: "Забув PIN — вийти й увійти знову",
     haveAccount: "Вже маєш акаунт?",
     noAccount: "Ще немає акаунта?",
     welcome: "З поверненням!",
@@ -157,6 +158,11 @@ const UK = {
     monthTotal: "Цього місяця",
     filters: "Фільтри",
     search: "Пошук по нотатках",
+  },
+  walletDetail: {
+    transferFlow: "Перекази цього місяця",
+    transferIn: "Надходження",
+    transferOut: "Відправлено",
   },
   wallets: {
     title: "Гаманці",
@@ -441,6 +447,7 @@ const EN = {
     password: "Password",
     name: "Name",
     forgot: "Forgot password?",
+    forgotPin: "Forgot PIN — sign out and log in again",
     haveAccount: "Already have an account?",
     noAccount: "No account yet?",
     welcome: "Welcome back!",
@@ -500,6 +507,11 @@ const EN = {
     monthTotal: "This month",
     filters: "Filters",
     search: "Search notes",
+  },
+  walletDetail: {
+    transferFlow: "Transfers this month",
+    transferIn: "Received",
+    transferOut: "Sent",
   },
   wallets: {
     title: "Wallets",

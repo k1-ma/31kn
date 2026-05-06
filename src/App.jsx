@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from "rea
 import { AuthProvider, useAuth } from "@/auth/AuthProvider.jsx";
 import I18nProvider, { useI18n } from "@/i18n/I18nProvider.jsx";
 import { useLocalStorageState } from "@/lib/storage.js";
+import { useThemeListener } from "@/lib/theme.js";
 import { ErrorBoundary } from "@/components/ErrorBoundary.jsx";
 import { AdminErrorBoundary } from "@/components/AdminErrorBoundary.jsx";
 import ScrollToTop from "@/components/common/ScrollToTop.jsx";
@@ -62,6 +63,10 @@ function detectBrowserLang() {
 
 export default function App() {
   const [lang, setLang] = useLocalStorageState("koshyk_lang", detectBrowserLang);
+  useThemeListener();
+  useEffect(() => {
+    document.documentElement.lang = lang || "uk";
+  }, [lang]);
   useEffect(() => {
     if (typeof window !== "undefined" && typeof window.__clearBootScreen === "function") {
       window.__clearBootScreen();

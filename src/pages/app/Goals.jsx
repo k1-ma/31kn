@@ -16,6 +16,18 @@ import { useDeleteWithUndo } from "@/lib/finance/useDeleteWithUndo.js";
 import { formatMoney, toCents, SUPPORTED_CURRENCIES } from "@/lib/money.js";
 
 const ICONS = ["🎯", "🏠", "🚗", "✈️", "🎓", "💍", "👶", "💻", "🎁", "💰"];
+const COLORS = [
+  "#10B981", // emerald
+  "#06B6D4", // cyan
+  "#3B82F6", // blue
+  "#6366F1", // indigo
+  "#8B5CF6", // violet
+  "#EC4899", // pink
+  "#F43F5E", // rose
+  "#F59E0B", // amber
+  "#84CC16", // lime
+  "#64748B", // slate
+];
 
 function GoalForm({ open, onClose, initial }) {
   const { t } = useI18n();
@@ -28,6 +40,7 @@ function GoalForm({ open, onClose, initial }) {
     initial?.target_date ? initial.target_date.slice(0, 10) : ""
   );
   const [icon, setIcon] = useState(initial?.icon || "🎯");
+  const [color, setColor] = useState(initial?.color || COLORS[0]);
 
   useEffect(() => {
     if (open) {
@@ -37,6 +50,7 @@ function GoalForm({ open, onClose, initial }) {
       setCurrency(initial?.currency || state.prefs?.baseCurrency || "UAH");
       setDeadline(initial?.target_date ? initial.target_date.slice(0, 10) : "");
       setIcon(initial?.icon || "🎯");
+      setColor(initial?.color || COLORS[0]);
     }
   }, [open, initial, state.prefs]);
 
@@ -89,6 +103,25 @@ function GoalForm({ open, onClose, initial }) {
             ))}
           </div>
         </div>
+        <div>
+          <label className="text-xs text-slate-500 mb-1 inline-block">{t("wallets.color")}</label>
+          <div className="grid grid-cols-10 gap-2">
+            {COLORS.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setColor(c)}
+                aria-label={c}
+                className={`h-9 w-9 rounded-full border-2 transition ${
+                  color === c
+                    ? "border-slate-900 dark:border-white scale-110"
+                    : "border-transparent hover:scale-105"
+                }`}
+                style={{ background: c }}
+              />
+            ))}
+          </div>
+        </div>
         <div className="flex gap-2 pt-2">
           <Button variant="secondary" size="lg" className="flex-1" onClick={onClose}>
             {t("common.cancel")}
@@ -106,7 +139,7 @@ function GoalForm({ open, onClose, initial }) {
                 currency,
                 target_date: deadline ? new Date(deadline).toISOString() : null,
                 icon,
-                color: initial?.color || "#10B981",
+                color,
               });
               onClose();
             }}
@@ -264,8 +297,11 @@ export default function Goals() {
                 </div>
                 <div className="mt-2 h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                   <div
-                    className={`h-full ${completed ? "bg-amber-400" : "bg-emerald-500"}`}
-                    style={{ width: `${Math.round(pct * 100)}%` }}
+                    className="h-full transition-all"
+                    style={{
+                      width: `${Math.round(pct * 100)}%`,
+                      backgroundColor: completed ? "#F59E0B" : g.color || "#10B981",
+                    }}
                   />
                 </div>
                 <div className="mt-3 flex justify-between items-center">

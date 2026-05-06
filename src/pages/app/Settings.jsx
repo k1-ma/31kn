@@ -12,6 +12,7 @@ import { SUPPORTED_CURRENCIES } from "@/lib/money.js";
 import { csvToTransactions } from "@/lib/finance/csv.js";
 import { buildBackup, parseBackup } from "@/lib/finance/backup.js";
 import { apiJson } from "@/lib/api.js";
+import { applyTheme as applyThemeGlobal } from "@/lib/theme.js";
 import Input from "@/components/ui/Input.jsx";
 import Select from "@/components/ui/Select.jsx";
 import { isPinEnabled, setPin, clearPin } from "@/components/common/PinLock.jsx";
@@ -23,16 +24,8 @@ const THEMES = [
   { id: "system", icon: Laptop, key: "settings.themes.system" },
 ];
 
-function applyTheme(theme) {
-  const root = document.documentElement;
-  try { localStorage.setItem("koshyk:theme", theme); } catch {}
-  if (theme === "dark") root.classList.add("dark");
-  else if (theme === "light") root.classList.remove("dark");
-  else {
-    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    root.classList.toggle("dark", prefersDark);
-  }
-}
+// Use the centralized lib/theme.js so the OS-listener stays in sync.
+const applyTheme = applyThemeGlobal;
 
 export default function Settings() {
   const { t, lang, setLang } = useI18n();

@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { ArrowLeft, Archive, Trash2 } from "lucide-react";
+import { ArrowLeft, Archive, Trash2, ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader.jsx";
 import { Card } from "@/components/ui/Card.jsx";
 import EmptyState from "@/components/common/EmptyState.jsx";
@@ -41,23 +41,24 @@ export default function WalletDetail() {
   }
 
   const balance = walletBalance(wallet, state.transactions);
+  const now = new Date();
+  const isThisMonth = (tx) => {
+    const d = new Date(tx.date);
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+  };
   const monthIncome = txns
-    .filter((tx) => {
-      if (tx.type !== "income" && !(tx.type === "transfer" && tx.toWalletId === wallet.id)) return false;
-      const d = new Date(tx.date);
-      const now = new Date();
-      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-    })
+    .filter((tx) => tx.type === "income" && isThisMonth(tx))
     .reduce((s, tx) => s + (tx.amount_cents || 0), 0);
-
   const monthExpense = txns
-    .filter((tx) => {
-      if (tx.type !== "expense" && !(tx.type === "transfer" && tx.walletId === wallet.id)) return false;
-      const d = new Date(tx.date);
-      const now = new Date();
-      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-    })
+    .filter((tx) => tx.type === "expense" && isThisMonth(tx))
     .reduce((s, tx) => s + (tx.amount_cents || 0), 0);
+  const monthTransferIn = txns
+    .filter((tx) => tx.type === "transfer" && tx.toWalletId === wallet.id && isThisMonth(tx))
+    .reduce((s, tx) => s + (tx.amount_cents || 0), 0);
+  const monthTransferOut = txns
+    .filter((tx) => tx.type === "transfer" && tx.walletId === wallet.id && isThisMonth(tx))
+    .reduce((s, tx) => s + (tx.amount_cents || 0), 0);
+  const hasTransfers = monthTransferIn > 0 || monthTransferOut > 0;
 
   return (
     <div className="page-enter space-y-4">
@@ -129,6 +130,38 @@ export default function WalletDetail() {
           </div>
         </Card>
       </div>
+
+      {hasTransfers && (
+        <Card className="p-4">
+          <div className="text-xs uppercase tracking-wider text-slate-500">
+            {t("walletDetail.transferFlow")}
+          </div>
+          <div className="mt-2 grid grid-cols-2 gap-3">
+            <div className="flex items-center gap-2">
+              <span className="h-9 w-9 rounded-xl bg-emerald-50 dark:bg-emerald-950 flex items-center justify-center">
+                <ArrowDownLeft className="w-4 h-4 text-emerald-600" />
+              </span>
+              <div>
+                <div className="text-[11px] text-slate-500">{t("walletDetail.transferIn")}</div>
+                <div className="text-sm font-semibold tabular-nums">
+                  {formatMoney(monthTransferIn, wallet.currency, lang)}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="h-9 w-9 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+                <ArrowUpRight className="w-4 h-4 text-slate-600 dark:text-slate-300" />
+              </span>
+              <div>
+                <div className="text-[11px] text-slate-500">{t("walletDetail.transferOut")}</div>
+                <div className="text-sm font-semibold tabular-nums">
+                  {formatMoney(monthTransferOut, wallet.currency, lang)}
+                </div>
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
 
       <div>
         <div className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">
