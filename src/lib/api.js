@@ -98,7 +98,7 @@ export async function apiJson(url, options = {}) {
         await sleep(getRetryDelay(attempts - 1));
         continue;
       }
-      if (err.status === 503 || err.status === 0) {
+      if ((err.status === 503 || err.status === 0) && import.meta.env?.DEV) {
         console.error(`[API] ${method} ${url} failed after ${attempts + 1} attempt(s):`, err.message);
       }
       throw err;

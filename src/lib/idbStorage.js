@@ -64,12 +64,31 @@ function openDb() {
  */
 async function get(key) {
   const db = await openDb();
+  // Race the read against a 5s timeout so a stalled IDB transaction can't
+  // hang the whole app at the loading screen. Callers treat rejection as
+  // "no cached value" and fall back to seeding/localStorage.
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, "readonly");
-    const store = tx.objectStore(STORE_NAME);
-    const request = store.get(key);
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error("idbStorage.get timed out"));
+    }, 5000);
+    const finish = (fn, arg) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      fn(arg);
+    };
+    try {
+      const tx = db.transaction(STORE_NAME, "readonly");
+      const store = tx.objectStore(STORE_NAME);
+      const request = store.get(key);
+      request.onsuccess = () => finish(resolve, request.result);
+      request.onerror = () => finish(reject, request.error);
+    } catch (e) {
+      finish(reject, e);
+    }
   });
 }
 
@@ -143,7 +162,9 @@ async function migrateFromLocalStorage(userId) {
     const parsed = JSON.parse(lsData);
     await set(key, parsed);
 
-    console.log(`[idbStorage] Migrated user state from localStorage to IndexedDB: ${key}`);
+    if (import.meta.env?.DEV) {
+      console.log(`[idbStorage] Migrated user state from localStorage to IndexedDB: ${key}`);
+    }
     return true;
   } catch (err) {
     console.warn("[idbStorage] Migration from localStorage failed:", err?.message);

@@ -50,7 +50,11 @@ export function ToastProvider({ children }) {
   return (
     <ToastCtx.Provider value={value}>
       {children}
-      <div className="fixed inset-x-0 top-3 z-[10000] flex flex-col items-center gap-2 px-3 pointer-events-none">
+      <div
+        className="fixed inset-x-0 top-3 z-[10000] flex flex-col items-center gap-2 px-3 pointer-events-none"
+        aria-live="polite"
+        aria-atomic="false"
+      >
         {items.map((t) => {
           const Icon = ICONS[t.kind] || Info;
           return (
