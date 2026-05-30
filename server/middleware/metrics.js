@@ -44,17 +44,18 @@ export function metricsMiddleware(req, res, next) {
 async function recordMetrics({ userId, ip, bytesIn, bytesOut, durationMs }) {
   const pool = getPool();
   if (!pool) return;
+  if (!userId) return;
 
   try {
     await pool.query(
-      `INSERT INTO usage_daily (day, user_id, ip, requests, bytes_in, bytes_out, total_ms)
-       VALUES (CURRENT_DATE, $1, $2, 1, $3, $4, $5)
-       ON CONFLICT (day, user_id, ip) DO UPDATE SET
+      `INSERT INTO usage_daily (day, user_id, requests, bytes_in, bytes_out, total_ms)
+       VALUES (CURRENT_DATE, $1, 1, $2, $3, $4)
+       ON CONFLICT (day, user_id) DO UPDATE SET
          requests = usage_daily.requests + 1,
-         bytes_in = usage_daily.bytes_in + $3,
-         bytes_out = usage_daily.bytes_out + $4,
-         total_ms = usage_daily.total_ms + $5`,
-      [userId, ip, bytesIn, bytesOut, durationMs]
+         bytes_in = usage_daily.bytes_in + $2,
+         bytes_out = usage_daily.bytes_out + $3,
+         total_ms = usage_daily.total_ms + $4`,
+      [userId, bytesIn, bytesOut, durationMs]
     );
   } catch (e) {
     // Ignore errors - metrics are non-critical

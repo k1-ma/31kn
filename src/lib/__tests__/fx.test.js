@@ -19,7 +19,8 @@ describe("getRates", () => {
     });
     vi.stubGlobal("fetch", fetchSpy);
 
-    const rates = await getRates("UAH");
+    const { rates, stale } = await getRates("UAH");
+    expect(stale).toBe(false);
     expect(rates.UAH_USD).toBeCloseTo(0.024);
     expect(rates.USD_UAH).toBeCloseTo(1 / 0.024);
     expect(rates.UAH_EUR).toBeCloseTo(0.022);
@@ -27,7 +28,8 @@ describe("getRates", () => {
     // Second call should hit cache, not re-fetch
     fetchSpy.mockClear();
     const again = await getRates("UAH");
-    expect(again.UAH_USD).toBeCloseTo(0.024);
+    expect(again.rates.UAH_USD).toBeCloseTo(0.024);
+    expect(again.stale).toBe(false);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
@@ -48,30 +50,32 @@ describe("getRates", () => {
       })
     );
 
-    const rates = await getRates("USD");
+    const { rates } = await getRates("USD");
     expect(rates.USD_UAH).toBe(41);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("returns {} when the API fails and there's no cache", async () => {
+  it("returns empty rates when the API fails and there's no cache", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockRejectedValue(new Error("offline"))
     );
-    const rates = await getRates("UAH");
+    const { rates, stale } = await getRates("UAH");
     expect(rates).toEqual({});
+    expect(stale).toBe(true);
   });
 
   it("falls back to a stale cache when the API fails", async () => {
-    const stale = {
+    const cached = {
       base: "UAH",
       rates: { UAH_USD: 0.025 },
       fetchedAt: Date.now() - 24 * 60 * 60 * 1000, // 24h ago, past TTL
     };
-    localStorage.setItem("koshyk:fx", JSON.stringify(stale));
+    localStorage.setItem("koshyk:fx", JSON.stringify(cached));
 
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
-    const rates = await getRates("UAH");
+    const { rates, stale } = await getRates("UAH");
     expect(rates.UAH_USD).toBe(0.025);
+    expect(stale).toBe(true);
   });
 });

@@ -81,7 +81,7 @@ function AppShell() {
     <>
       <BudgetAlertWatcher />
       <PinLock>
-        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 md:flex">
+        <div className="app-aurora min-h-screen bg-slate-50 dark:bg-slate-950 md:flex">
           <SideNav />
           <main className="flex-1 has-bottom-nav">
             <div className="max-w-3xl md:max-w-5xl mx-auto px-4 md:px-8 py-5 md:py-8">

@@ -4,6 +4,7 @@ import { useAuth } from "@/auth/AuthProvider.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { apiJson } from "@/lib/api.js";
 import Input from "@/components/ui/Input.jsx";
+import PasswordInput from "@/components/ui/PasswordInput.jsx";
 import Button from "@/components/ui/Button.jsx";
 import LanguageSwitcher from "@/components/common/LanguageSwitcher.jsx";
 
@@ -14,14 +15,18 @@ export default function Register() {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [password2, setPassword2] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [pendingEmail, setPendingEmail] = useState("");
 
   if (user) return <Navigate to="/app/dashboard" replace />;
 
+  const pwMismatch = password2 && password !== password2;
+
   const onSubmit = async (e) => {
     e.preventDefault();
+    if (password !== password2) return setErr(t("auth.passwordMismatch"));
     setErr("");
     setBusy(true);
     try {
@@ -107,8 +112,7 @@ export default function Register() {
             </div>
             <div>
               <label className="text-xs text-slate-500 mb-1 inline-block">{t("auth.password")}</label>
-              <Input
-                type="password"
+              <PasswordInput
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="new-password"
@@ -116,12 +120,26 @@ export default function Register() {
                 minLength={8}
               />
             </div>
+            <div>
+              <label className="text-xs text-slate-500 mb-1 inline-block">{t("auth.confirmPassword")}</label>
+              <PasswordInput
+                value={password2}
+                onChange={(e) => setPassword2(e.target.value)}
+                autoComplete="new-password"
+                required
+                minLength={8}
+                invalid={pwMismatch}
+              />
+              {pwMismatch && (
+                <p className="text-xs text-red-500 mt-1">{t("auth.passwordMismatch")}</p>
+              )}
+            </div>
             {err && (
               <div className="text-sm text-red-600 bg-red-50 dark:bg-red-950 dark:text-red-300 px-3 py-2 rounded-xl">
                 {err}
               </div>
             )}
-            <Button type="submit" size="lg" className="w-full mt-2" disabled={busy}>
+            <Button type="submit" size="lg" className="w-full mt-2" disabled={busy || pwMismatch}>
               {busy ? t("common.loading") : t("auth.register")}
             </Button>
           </form>

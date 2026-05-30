@@ -6,6 +6,7 @@ import Button from "@/components/ui/Button.jsx";
 import Input from "@/components/ui/Input.jsx";
 import BottomSheet from "@/components/ui/BottomSheet.jsx";
 import EmptyState from "@/components/common/EmptyState.jsx";
+import ConfirmDialog from "@/components/ui/ConfirmDialog.jsx";
 import { useFinance, active } from "@/lib/finance/store.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { advance, dueRules, materialize } from "@/lib/finance/recurring.js";
@@ -193,9 +194,10 @@ function RecurringForm({ open, onClose, initial }) {
 
 export default function Recurring() {
   const { t, lang } = useI18n();
-  const { state, upsert, remove } = useFinance();
+  const { state, update, upsert, remove } = useFinance();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
   const rules = useMemo(() => active(state.recurring), [state.recurring]);
   const due = useMemo(() => dueRules(rules), [rules]);
@@ -212,12 +214,41 @@ export default function Recurring() {
     }
   }, [due, cats, t]);
 
+  // Materialize a transaction AND advance the rule's nextRunAt in a single
+  // store update, reading the live rule from `prev` so a rule can never be
+  // run twice for the same period (e.g. on a double-click). If the rule's
+  // current nextRunAt already differs from what the UI rendered, the run is a
+  // no-op: it was already materialized for this period.
   const runRule = (rule) => {
-    const txn = materialize(rule, rule.nextRunAt || new Date());
-    upsert("transactions", txn);
-    upsert("recurring", {
-      ...rule,
-      nextRunAt: advance(rule.nextRunAt || new Date(), rule.frequency, rule.every).toISOString(),
+    const ts = new Date().toISOString();
+    update((prev) => {
+      const list = prev.recurring || [];
+      const idx = list.findIndex((r) => r.id === rule.id);
+      if (idx < 0) return {};
+      const cur = list[idx];
+      const renderedNext = rule.nextRunAt || null;
+      const curNext = cur.nextRunAt || null;
+      // Already advanced past the period the UI offered — don't re-materialize.
+      if (renderedNext !== curNext) return {};
+      const runAt = cur.nextRunAt || new Date();
+      const id = `tra_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+      const txn = {
+        id,
+        createdAt: ts,
+        updatedAt: ts,
+        deletedAt: null,
+        ...materialize(cur, runAt),
+      };
+      const nextRules = list.slice();
+      nextRules[idx] = {
+        ...cur,
+        nextRunAt: advance(cur.nextRunAt || new Date(), cur.frequency, cur.every).toISOString(),
+        updatedAt: ts,
+      };
+      return {
+        transactions: [...(prev.transactions || []), txn],
+        recurring: nextRules,
+      };
     });
   };
 
@@ -318,7 +349,7 @@ export default function Recurring() {
                   <Pencil className="w-4 h-4" />
                 </button>
                 <button
-                  onClick={() => remove("recurring", rule.id)}
+                  onClick={() => setConfirmDelete(rule.id)}
                   className="p-2 text-slate-400 hover:text-red-500"
                   aria-label={t("common.delete")}
                 >
@@ -330,6 +361,14 @@ export default function Recurring() {
         </Card>
       )}
 
+      <ConfirmDialog
+        open={!!confirmDelete}
+        title={t("common.deleteTitle")}
+        message={t("common.deleteMessage")}
+        confirmLabel={t("common.delete")}
+        onConfirm={() => { remove("recurring", confirmDelete); setConfirmDelete(null); }}
+        onCancel={() => setConfirmDelete(null)}
+      />
       <RecurringForm
         key={editing?.id || "new"}
         open={open}

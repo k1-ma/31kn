@@ -6,6 +6,7 @@ import Button from "@/components/ui/Button.jsx";
 import Input from "@/components/ui/Input.jsx";
 import BottomSheet from "@/components/ui/BottomSheet.jsx";
 import EmptyState from "@/components/common/EmptyState.jsx";
+import ConfirmDialog from "@/components/ui/ConfirmDialog.jsx";
 import { useFinance, active } from "@/lib/finance/store.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { budgetSpent, budgetProgress } from "@/lib/finance/calc.js";
@@ -129,6 +130,7 @@ export default function Budgets() {
   const { state, remove } = useFinance();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null);
   const budgets = useMemo(() => active(state.budgets), [state.budgets]);
 
   return (
@@ -168,7 +170,7 @@ export default function Budgets() {
                       {t("common.edit")}
                     </button>
                     <button
-                      onClick={() => remove("budgets", b.id)}
+                      onClick={() => setConfirmDelete(b.id)}
                       className="p-2 text-slate-400 hover:text-red-500"
                       aria-label={t("common.delete")}
                     >
@@ -200,6 +202,14 @@ export default function Budgets() {
           })}
         </div>
       )}
+      <ConfirmDialog
+        open={!!confirmDelete}
+        title={t("common.deleteTitle")}
+        message={t("common.deleteMessage")}
+        confirmLabel={t("common.delete")}
+        onConfirm={() => { remove("budgets", confirmDelete); setConfirmDelete(null); }}
+        onCancel={() => setConfirmDelete(null)}
+      />
       <BudgetForm
         key={editing?.id || "new"}
         open={open}

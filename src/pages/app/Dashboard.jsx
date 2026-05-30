@@ -13,6 +13,7 @@ import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { walletBalance, rangeSummary, budgetProgress } from "@/lib/finance/calc.js";
 import { formatMoney, totalInBase } from "@/lib/money.js";
 import { useFxRates } from "@/lib/finance/useFxRates.js";
+import { useSpotlight } from "@/lib/useSpotlight.js";
 
 function monthRange() {
   const now = new Date();
@@ -39,7 +40,7 @@ export default function Dashboard() {
     return acc;
   }, [wallets, transactions]);
 
-  const rates = useFxRates(baseCurrency);
+  const { rates, stale: fxStale } = useFxRates(baseCurrency);
   const otherCurrencies = Object.keys(totals).filter((c) => c !== baseCurrency);
   const baseTotal = useMemo(() => {
     if (!rates) return null;
@@ -64,6 +65,7 @@ export default function Dashboard() {
 
   const catMap = useMemo(() => new Map(active(state.categories).map((c) => [c.id, c])), [state.categories]);
   const walMap = useMemo(() => new Map(wallets.map((w) => [w.id, w])), [wallets]);
+  const onSpotlight = useSpotlight();
 
   if (!loaded) {
     return (
@@ -122,8 +124,14 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {fxStale && otherCurrencies.length > 0 && (
+        <div className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200/60 dark:border-amber-900/40 rounded-xl px-3 py-2">
+          {t("dashboard.fxStale")}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-3">
-        <Card className="p-4">
+        <Card onMouseMove={onSpotlight} className="spotlight lift p-4">
           <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-slate-500 font-mono">
             <TrendingDown className="w-3.5 h-3.5 text-red-500" /> {t("dashboard.spentMonth")}
           </div>
@@ -131,7 +139,7 @@ export default function Dashboard() {
             <AmountDisplay cents={summary.expense} currency={baseCurrency} size="lg" />
           </div>
         </Card>
-        <Card className="p-4">
+        <Card onMouseMove={onSpotlight} className="spotlight lift p-4">
           <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-slate-500 font-mono">
             <TrendingUp className="w-3.5 h-3.5 text-emerald-500" /> {t("dashboard.earnedMonth")}
           </div>

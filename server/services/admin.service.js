@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import { getPool, getUserById, safeUser } from "./db.service.js";
 import { normalizeHexColor, validateEmail } from "../utils/validators.js";
 import { logAdmin } from "./audit.service.js";
+import { BCRYPT_COST } from "./auth.service.js";
 
 // In-memory cache for dashboard summary (key = "from|to", value = { data, ts })
 const _summaryCache = new Map();
@@ -68,7 +69,7 @@ export async function createUser({ username, nickname, password, role, role_colo
     return { error: e?.message || "Bad role_color" };
   }
 
-  const hash = await bcrypt.hash(String(password), 12);
+  const hash = await bcrypt.hash(String(password), BCRYPT_COST);
 
   try {
     const r = await pool.query(
@@ -145,7 +146,7 @@ export async function updateUser(id, { nickname, newPassword, role, role_color, 
     if (String(newPassword).length < 8) {
       return { error: "Password too short (min 8)" };
     }
-    const hash = await bcrypt.hash(String(newPassword), 12);
+    const hash = await bcrypt.hash(String(newPassword), BCRYPT_COST);
     await pool.query(
       `UPDATE users
        SET nickname = $1,

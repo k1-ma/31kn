@@ -95,7 +95,8 @@ export async function initDb({ admin } = {}) {
       totp_secret_pending TEXT,
       totp_confirmed_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      google_id TEXT
     );
     CREATE UNIQUE INDEX IF NOT EXISTS users_email_idx ON users(email) WHERE email IS NOT NULL;
   `);
@@ -123,8 +124,10 @@ export async function initDb({ admin } = {}) {
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       expires_at TIMESTAMPTZ NOT NULL,
+      remember BOOLEAN NOT NULL DEFAULT false,
       consumed BOOLEAN NOT NULL DEFAULT false
     );
+    ALTER TABLE login_challenges ADD COLUMN IF NOT EXISTS remember BOOLEAN NOT NULL DEFAULT false;
     CREATE TABLE IF NOT EXISTS backup_codes (
       id BIGSERIAL PRIMARY KEY,
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -133,10 +136,11 @@ export async function initDb({ admin } = {}) {
     );
     CREATE TABLE IF NOT EXISTS totp_used_codes (
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      code TEXT NOT NULL,
+      code_hash TEXT NOT NULL,
       used_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-      PRIMARY KEY (user_id, code)
+      PRIMARY KEY (user_id, code_hash)
     );
+    ALTER TABLE totp_used_codes ADD COLUMN IF NOT EXISTS code_hash TEXT;
     CREATE TABLE IF NOT EXISTS password_resets (
       token TEXT PRIMARY KEY,
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -181,9 +185,11 @@ export async function initDb({ admin } = {}) {
     CREATE TABLE IF NOT EXISTS usage_daily (
       day DATE NOT NULL,
       user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      ip TEXT,
       requests INTEGER NOT NULL DEFAULT 0,
       bytes_in BIGINT NOT NULL DEFAULT 0,
       bytes_out BIGINT NOT NULL DEFAULT 0,
+      total_ms BIGINT NOT NULL DEFAULT 0,
       PRIMARY KEY (day, user_id)
     );
     CREATE INDEX IF NOT EXISTS usage_daily_day_idx ON usage_daily(day);

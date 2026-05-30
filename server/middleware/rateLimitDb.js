@@ -301,6 +301,15 @@ function makeIpRateLimit(limiter, label) {
   };
 }
 
+// Strict limiter for 2FA / backup-code verification. A 6-digit TOTP has only
+// 1,000,000 combinations and the valid window is short, so the generic login
+// limiter (10/5min) is too loose. Cap hard: 5 attempts per 15 minutes per IP.
+const twoFactorLimiter = new SlidingWindowRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  maxRequests: 5,
+});
+
 export const loginRateLimit = makeIpRateLimit(loginLimiter, "login");
 export const adminLoginRateLimit = makeIpRateLimit(adminLoginLimiter, "admin login");
 export const registerRateLimit = makeIpRateLimit(registerLimiter, "registration");
+export const twoFactorRateLimit = makeIpRateLimit(twoFactorLimiter, "2FA");

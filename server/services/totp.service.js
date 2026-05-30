@@ -169,16 +169,16 @@ export async function createLoginChallenge(userId, remember = false) {
   const pool = getPool();
   if (!pool) return null;
 
-  const id = crypto.randomUUID();
+  const ticket = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
   try {
     await queryWithRecovery(
-      `INSERT INTO login_challenges (id, user_id, remember, expires_at) 
+      `INSERT INTO login_challenges (ticket, user_id, expires_at, remember)
        VALUES ($1, $2, $3, $4)`,
-      [id, userId, remember, expiresAt.toISOString()]
+      [ticket, userId, expiresAt.toISOString(), !!remember]
     );
-    return { id, expires_at: expiresAt };
+    return { id: ticket, expires_at: expiresAt, remember: !!remember };
   } catch (e) {
     console.error("[totp] createLoginChallenge error:", e?.message);
     return null;
@@ -194,16 +194,16 @@ export async function verifyLoginChallenge(ticketId) {
   if (!pool) return null;
 
   try {
-    // Get and delete in one transaction
     const r = await queryWithRecovery(
-      `DELETE FROM login_challenges 
-       WHERE id = $1 AND expires_at > now() 
+      `UPDATE login_challenges
+       SET consumed = true
+       WHERE ticket = $1 AND expires_at > now() AND consumed = false
        RETURNING user_id, remember`,
       [ticketId]
     );
     const row = r.rows?.[0];
     if (!row) return null;
-    return { user_id: row.user_id, remember: row.remember };
+    return { user_id: row.user_id, remember: !!row.remember };
   } catch (e) {
     console.error("[totp] verifyLoginChallenge error:", e?.message);
     return null;

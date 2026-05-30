@@ -16,7 +16,7 @@ import {
   setupTotp, enableTotp, disableTotp, hasTotpEnabled
 } from "../services/totp.service.js";
 import { requireAuth, COOKIE_NAME } from "../middleware/requireAuth.js";
-import { loginRateLimit, registerRateLimit } from "../middleware/rateLimitDb.js";
+import { loginRateLimit, registerRateLimit, twoFactorRateLimit } from "../middleware/rateLimitDb.js";
 import { sign, makeCookie, appendSetCookie, parseCookies, getCookieDomain, getCookieDomainFromHost } from "../utils/cookies.js";
 
 const router = Router();
@@ -646,7 +646,7 @@ router.patch("/username", requireAuth, loginRateLimit, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // POST /api/auth/2fa/verify-login - Verify 2FA code and complete login
-router.post("/2fa/verify-login", loginRateLimit, async (req, res) => {
+router.post("/2fa/verify-login", twoFactorRateLimit, async (req, res) => {
   let pool = getPool();
   if (!pool) {
     try { pool = await ensurePool(); } catch { /* retry failed */ }
@@ -728,7 +728,7 @@ router.post("/2fa/enable", requireAuth, loginRateLimit, async (req, res) => {
 });
 
 // POST /api/auth/2fa/disable - Disable 2FA (requires password + code)
-router.post("/2fa/disable", requireAuth, loginRateLimit, async (req, res) => {
+router.post("/2fa/disable", requireAuth, twoFactorRateLimit, async (req, res) => {
   const { password, code } = req.body || {};
   if (!password || !code) {
     return res.status(400).json({ error: "Password and 2FA code required" });
