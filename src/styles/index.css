@@ -158,6 +158,91 @@ input[type="number"] { -moz-appearance: textfield; }
   background-size: 32px 32px;
 }
 
+/* ───────────────────────────────────────────────────────────────────────────
+   Aurora drift background — borrowed from the Haunted CRM admin aesthetic.
+   Two soft, slowly-drifting brand blobs behind the app shell. Sits at z -1
+   so all content renders above it. Honors reduced-motion below.
+   ─────────────────────────────────────────────────────────────────────────── */
+.app-aurora {
+  position: relative;
+  isolation: isolate;
+}
+.app-aurora::before,
+.app-aurora::after {
+  content: "";
+  position: fixed;
+  z-index: -1;
+  width: 46vw;
+  height: 46vw;
+  max-width: 620px;
+  max-height: 620px;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.5;
+  pointer-events: none;
+}
+.app-aurora::before {
+  top: -12vw;
+  left: -8vw;
+  background: radial-gradient(circle at 50% 50%, var(--brand) 0%, transparent 68%);
+  animation: auroraDriftA 24s ease-in-out infinite;
+}
+.app-aurora::after {
+  bottom: -14vw;
+  right: -10vw;
+  background: radial-gradient(circle at 50% 50%, var(--brand-deep) 0%, transparent 68%);
+  animation: auroraDriftB 30s ease-in-out infinite;
+  opacity: 0.4;
+}
+html.dark .app-aurora::before { opacity: 0.32; }
+html.dark .app-aurora::after { opacity: 0.28; }
+@keyframes auroraDriftA {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(6vw, 4vw) scale(1.08); }
+}
+@keyframes auroraDriftB {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-5vw, -5vw) scale(1.1); }
+}
+
+/* Glassmorphic surface — translucent + blur, for hero/KPI cards. */
+.glass {
+  background: color-mix(in oklch, var(--surface) 72%, transparent);
+  backdrop-filter: blur(14px) saturate(135%);
+  -webkit-backdrop-filter: blur(14px) saturate(135%);
+  border: 1px solid color-mix(in oklch, var(--border-strong) 60%, transparent);
+}
+
+/* Spotlight KPI card — radial highlight tracks the cursor via --mx/--my.
+   Wire the JS by setting those CSS vars on pointermove (see useSpotlight). */
+.spotlight {
+  position: relative;
+  overflow: hidden;
+}
+.spotlight::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    320px circle at var(--mx, 50%) var(--my, 0%),
+    color-mix(in oklch, var(--brand) 22%, transparent),
+    transparent 60%
+  );
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+}
+.spotlight:hover::after { opacity: 1; }
+
+/* Card lift micro-interaction. */
+.lift {
+  transition: transform 0.2s cubic-bezier(0.32, 0.72, 0, 1), box-shadow 0.2s ease;
+}
+.lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--sh-4);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }

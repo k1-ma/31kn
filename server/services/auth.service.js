@@ -20,7 +20,7 @@ const PASSWORD_RESET_TOKEN_EXPIRY_HOURS = 1;
 // Cost factor for newly-created bcrypt hashes. Existing hashes (cost 12)
 // keep working; loginUser opportunistically rehashes them on the next
 // successful login so the migration is invisible to users.
-const BCRYPT_COST = 14;
+export const BCRYPT_COST = 14;
 const LEGACY_BCRYPT_COSTS = new Set([10, 11, 12, 13]);
 
 // Detect the cost embedded in a bcrypt hash. Returns null if not a bcrypt hash.

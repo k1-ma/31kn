@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import LanguageSwitcher from "@/components/common/LanguageSwitcher.jsx";
+import { useCountUp } from "@/lib/useCountUp.js";
 
 function Section({ children, className = "" }) {
   return (
@@ -136,6 +137,36 @@ function AnalyticsVignette() {
         ))}
       </div>
     </div>
+  );
+}
+
+function StatCounter({ end, suffix = "", decimals = 0, label }) {
+  const { ref, value } = useCountUp(end, { decimals });
+  const display = decimals > 0 ? value.toFixed(decimals) : Math.round(value).toLocaleString();
+  return (
+    <div ref={ref} className="text-center">
+      <div className="font-display font-mono-tabular text-3xl md:text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+        {display}
+        {suffix}
+      </div>
+      <div className="mt-1 text-xs font-mono uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+        {label}
+      </div>
+    </div>
+  );
+}
+
+function TrustStats() {
+  const { t } = useI18n();
+  return (
+    <Section className="py-12">
+      <div className="rounded-3xl glass px-6 py-8 md:py-10 grid grid-cols-2 md:grid-cols-4 gap-y-8 gap-x-4">
+        <StatCounter end={7} suffix=" " label={t("landing.statCurrencies")} />
+        <StatCounter end={100} suffix="%" label={t("landing.statOffline")} />
+        <StatCounter end={0} suffix="₴" label={t("landing.statPrice")} />
+        <StatCounter end={2} decimals={0} suffix="s" label={t("landing.statSpeed")} />
+      </div>
+    </Section>
   );
 }
 
@@ -355,6 +386,9 @@ export default function Landing() {
           </div>
         </Section>
       </section>
+
+      {/* Trust stats — animated count-up band */}
+      <TrustStats />
 
       {/* Features – alternating rows */}
       <Section className="py-16 md:py-20">

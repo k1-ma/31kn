@@ -174,11 +174,11 @@ export async function createLoginChallenge(userId, remember = false) {
 
   try {
     await queryWithRecovery(
-      `INSERT INTO login_challenges (ticket, user_id, expires_at)
-       VALUES ($1, $2, $3)`,
-      [ticket, userId, expiresAt.toISOString()]
+      `INSERT INTO login_challenges (ticket, user_id, expires_at, remember)
+       VALUES ($1, $2, $3, $4)`,
+      [ticket, userId, expiresAt.toISOString(), !!remember]
     );
-    return { id: ticket, expires_at: expiresAt, remember };
+    return { id: ticket, expires_at: expiresAt, remember: !!remember };
   } catch (e) {
     console.error("[totp] createLoginChallenge error:", e?.message);
     return null;
@@ -198,12 +198,12 @@ export async function verifyLoginChallenge(ticketId) {
       `UPDATE login_challenges
        SET consumed = true
        WHERE ticket = $1 AND expires_at > now() AND consumed = false
-       RETURNING user_id`,
+       RETURNING user_id, remember`,
       [ticketId]
     );
     const row = r.rows?.[0];
     if (!row) return null;
-    return { user_id: row.user_id };
+    return { user_id: row.user_id, remember: !!row.remember };
   } catch (e) {
     console.error("[totp] verifyLoginChallenge error:", e?.message);
     return null;

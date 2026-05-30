@@ -124,8 +124,10 @@ export async function initDb({ admin } = {}) {
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       expires_at TIMESTAMPTZ NOT NULL,
+      remember BOOLEAN NOT NULL DEFAULT false,
       consumed BOOLEAN NOT NULL DEFAULT false
     );
+    ALTER TABLE login_challenges ADD COLUMN IF NOT EXISTS remember BOOLEAN NOT NULL DEFAULT false;
     CREATE TABLE IF NOT EXISTS backup_codes (
       id BIGSERIAL PRIMARY KEY,
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -134,10 +136,11 @@ export async function initDb({ admin } = {}) {
     );
     CREATE TABLE IF NOT EXISTS totp_used_codes (
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      code TEXT NOT NULL,
+      code_hash TEXT NOT NULL,
       used_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-      PRIMARY KEY (user_id, code)
+      PRIMARY KEY (user_id, code_hash)
     );
+    ALTER TABLE totp_used_codes ADD COLUMN IF NOT EXISTS code_hash TEXT;
     CREATE TABLE IF NOT EXISTS password_resets (
       token TEXT PRIMARY KEY,
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
