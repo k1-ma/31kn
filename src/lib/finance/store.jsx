@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useCallback, useEffect, useMemo, useState } from "react";
+import React, { createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/auth/AuthProvider.jsx";
 import { idbStorage } from "@/lib/idbStorage.js";
 import { defaultCategories, defaultWallets } from "./seed.js";
@@ -90,11 +90,16 @@ export function FinanceProvider({ children }) {
     };
   }, [userId]);
 
-  // Persist on every change (debounced via microtask since IDB is async).
+  // Persist on change, debounced to avoid thrashing IDB on rapid edits.
+  const flushTimer = useRef(null);
   useEffect(() => {
     if (!loaded) return;
     const key = `${STATE_KEY_PREFIX}${userId}`;
-    idbStorage.set(key, state).catch(() => {});
+    clearTimeout(flushTimer.current);
+    flushTimer.current = setTimeout(() => {
+      idbStorage.set(key, state).catch(() => {});
+    }, 500);
+    return () => clearTimeout(flushTimer.current);
   }, [state, loaded, userId]);
 
   const update = useCallback((patch) => {

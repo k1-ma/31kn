@@ -3,7 +3,8 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import { createApp } from "./app.js";
-import { getPool } from "./services/db.service.js";
+import { getPool, queryWithRecovery } from "./services/db.service.js";
+import { cleanupExpiredChallenges, cleanupExpiredTotpCodes } from "./services/totp.service.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -53,6 +54,23 @@ const server = app.listen(PORT, () => {
   // eslint-disable-next-line no-console
   console.log("[server] http://localhost:" + PORT + " (" + NODE_ENV + ")");
 });
+
+// Periodic cleanup: expired sessions, tokens, idempotency keys (every hour)
+const CLEANUP_INTERVAL = 60 * 60 * 1000;
+const cleanupTimer = setInterval(async () => {
+  const pool = getPool();
+  if (!pool) return;
+  try {
+    await Promise.allSettled([
+      queryWithRecovery("DELETE FROM sessions WHERE expires_at < now()"),
+      queryWithRecovery("DELETE FROM password_resets WHERE expires_at < now()"),
+      queryWithRecovery("DELETE FROM idempotency_keys WHERE expires_at < now()"),
+      cleanupExpiredChallenges(),
+      cleanupExpiredTotpCodes(),
+    ]);
+  } catch {}
+}, CLEANUP_INTERVAL);
+cleanupTimer.unref();
 
 // Graceful shutdown. Railway sends SIGTERM on redeploys; without this handler
 // Node exits immediately on the next tick and drops any in-flight HTTP

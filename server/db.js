@@ -95,7 +95,8 @@ export async function initDb({ admin } = {}) {
       totp_secret_pending TEXT,
       totp_confirmed_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      google_id TEXT
     );
     CREATE UNIQUE INDEX IF NOT EXISTS users_email_idx ON users(email) WHERE email IS NOT NULL;
   `);
@@ -181,9 +182,11 @@ export async function initDb({ admin } = {}) {
     CREATE TABLE IF NOT EXISTS usage_daily (
       day DATE NOT NULL,
       user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      ip TEXT,
       requests INTEGER NOT NULL DEFAULT 0,
       bytes_in BIGINT NOT NULL DEFAULT 0,
       bytes_out BIGINT NOT NULL DEFAULT 0,
+      total_ms BIGINT NOT NULL DEFAULT 0,
       PRIMARY KEY (day, user_id)
     );
     CREATE INDEX IF NOT EXISTS usage_daily_day_idx ON usage_daily(day);

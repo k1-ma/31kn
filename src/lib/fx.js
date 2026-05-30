@@ -47,7 +47,7 @@ function buildRateMap(base, rates) {
  */
 export async function getRates(base = "UAH") {
   const cached = readCache();
-  if (cached?.base === base && cached?.rates) return cached.rates;
+  if (cached?.base === base && cached?.rates) return { rates: cached.rates, stale: false };
 
   try {
     const res = await fetch(
@@ -59,16 +59,18 @@ export async function getRates(base = "UAH") {
     if (!data?.rates) throw new Error("No rates in response");
     const rates = buildRateMap(base, data.rates);
     writeCache({ base, rates });
-    return rates;
+    return { rates, stale: false };
   } catch {
-    // Fall back to whatever we cached previously, even if expired.
     try {
       const raw = localStorage.getItem(CACHE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (parsed?.rates) return parsed.rates;
+        if (parsed?.rates) {
+          const ageMs = Date.now() - (parsed.fetchedAt || 0);
+          return { rates: parsed.rates, stale: true, ageMs };
+        }
       }
     } catch {}
-    return {};
+    return { rates: {}, stale: true, ageMs: Infinity };
   }
 }

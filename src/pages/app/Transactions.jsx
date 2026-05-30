@@ -7,6 +7,7 @@ import Button from "@/components/ui/Button.jsx";
 import EmptyState from "@/components/common/EmptyState.jsx";
 import TransactionSheet from "@/pages/app/TransactionSheet.jsx";
 import { useFinance, active } from "@/lib/finance/store.jsx";
+import ConfirmDialog from "@/components/ui/ConfirmDialog.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { formatMoney } from "@/lib/money.js";
 import { rangeFromPreset } from "@/lib/finance/range.js";
@@ -26,6 +27,7 @@ export default function Transactions({ autoOpen = false }) {
   const [walletId, setWalletId] = useState("all");
   const [categoryId, setCategoryId] = useState("all");
   const [preset, setPreset] = useState("month");
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
   useEffect(() => {
     if (autoOpen) setSheetOpen(true);
@@ -278,7 +280,7 @@ export default function Transactions({ autoOpen = false }) {
                         <Pencil className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => remove("transactions", tx.id)}
+                        onClick={() => setConfirmDelete(tx.id)}
                         className="p-2 text-slate-400 hover:text-red-500"
                         aria-label={t("common.delete")}
                       >
@@ -292,6 +294,15 @@ export default function Transactions({ autoOpen = false }) {
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!confirmDelete}
+        title={t("common.deleteTitle")}
+        message={t("common.deleteMessage")}
+        confirmLabel={t("common.delete")}
+        onConfirm={() => { remove("transactions", confirmDelete); setConfirmDelete(null); }}
+        onCancel={() => setConfirmDelete(null)}
+      />
 
       <TransactionSheet
         key={editing?.id || "new"}

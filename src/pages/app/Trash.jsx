@@ -1,9 +1,10 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { Trash2 } from "lucide-react";
 import PageHeader from "@/components/ui/PageHeader.jsx";
 import { Card } from "@/components/ui/Card.jsx";
 import Button from "@/components/ui/Button.jsx";
 import EmptyState from "@/components/common/EmptyState.jsx";
+import ConfirmDialog from "@/components/ui/ConfirmDialog.jsx";
 import { useFinance } from "@/lib/finance/store.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { formatMoney } from "@/lib/money.js";
@@ -13,6 +14,7 @@ const COLLECTIONS = ["transactions", "wallets", "categories", "budgets", "goals"
 export default function TrashPage() {
   const { t, lang } = useI18n();
   const { state, restore, purge } = useFinance();
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
   const items = useMemo(() => {
     const all = [];
@@ -41,7 +43,7 @@ export default function TrashPage() {
         <Button size="sm" variant="secondary" onClick={() => restore(collection, item.id)}>
           {t("trash.restore")}
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => purge(collection, item.id)}>
+        <Button size="sm" variant="ghost" onClick={() => setConfirmDelete({ collection, id: item.id })}>
           {t("common.delete")}
         </Button>
       </div>
@@ -51,6 +53,14 @@ export default function TrashPage() {
   return (
     <div className="page-enter space-y-4">
       <PageHeader title={t("nav.trash")} />
+      <ConfirmDialog
+        open={!!confirmDelete}
+        title={t("common.purgeTitle")}
+        message={t("common.purgeMessage")}
+        confirmLabel={t("common.delete")}
+        onConfirm={() => { purge(confirmDelete.collection, confirmDelete.id); setConfirmDelete(null); }}
+        onCancel={() => setConfirmDelete(null)}
+      />
       {items.length === 0 ? (
         <EmptyState icon={Trash2} title={t("trash.empty")} description={t("trash.emptyHint")} />
       ) : (

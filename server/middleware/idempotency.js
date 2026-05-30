@@ -104,9 +104,9 @@ export function idempotency() {
         const result = await client.query(
           `SELECT status_code, response_body
              FROM idempotency_keys
-             WHERE key = $1 AND expires_at > now()
+             WHERE key = $1 AND user_id IS NOT DISTINCT FROM $2 AND expires_at > now()
              LIMIT 1`,
-          [key]
+          [key, userId]
         );
         cachedRow = result.rows?.[0] ?? null;
         await client.query("COMMIT");

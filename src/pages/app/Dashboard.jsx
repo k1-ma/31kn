@@ -39,7 +39,7 @@ export default function Dashboard() {
     return acc;
   }, [wallets, transactions]);
 
-  const rates = useFxRates(baseCurrency);
+  const { rates, stale: fxStale } = useFxRates(baseCurrency);
   const otherCurrencies = Object.keys(totals).filter((c) => c !== baseCurrency);
   const baseTotal = useMemo(() => {
     if (!rates) return null;

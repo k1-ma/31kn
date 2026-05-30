@@ -6,6 +6,7 @@ import Button from "@/components/ui/Button.jsx";
 import Input from "@/components/ui/Input.jsx";
 import BottomSheet from "@/components/ui/BottomSheet.jsx";
 import EmptyState from "@/components/common/EmptyState.jsx";
+import ConfirmDialog from "@/components/ui/ConfirmDialog.jsx";
 import { useFinance, active } from "@/lib/finance/store.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { advance, dueRules, materialize } from "@/lib/finance/recurring.js";
@@ -196,6 +197,7 @@ export default function Recurring() {
   const { state, upsert, remove } = useFinance();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
   const rules = useMemo(() => active(state.recurring), [state.recurring]);
   const due = useMemo(() => dueRules(rules), [rules]);
@@ -318,7 +320,7 @@ export default function Recurring() {
                   <Pencil className="w-4 h-4" />
                 </button>
                 <button
-                  onClick={() => remove("recurring", rule.id)}
+                  onClick={() => setConfirmDelete(rule.id)}
                   className="p-2 text-slate-400 hover:text-red-500"
                   aria-label={t("common.delete")}
                 >
@@ -330,6 +332,14 @@ export default function Recurring() {
         </Card>
       )}
 
+      <ConfirmDialog
+        open={!!confirmDelete}
+        title={t("common.deleteTitle")}
+        message={t("common.deleteMessage")}
+        confirmLabel={t("common.delete")}
+        onConfirm={() => { remove("recurring", confirmDelete); setConfirmDelete(null); }}
+        onCancel={() => setConfirmDelete(null)}
+      />
       <RecurringForm
         key={editing?.id || "new"}
         open={open}

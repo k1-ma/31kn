@@ -483,9 +483,9 @@ export async function requestPasswordReset(email, ip, ua) {
 
   // Store reset token
   await pool.query(
-    `INSERT INTO password_resets (user_id, token, expires_at, ip, ua)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [user.id, token, expiresAt.toISOString(), ip || null, ua || null]
+    `INSERT INTO password_resets (user_id, token, expires_at)
+     VALUES ($1, $2, $3)`,
+    [user.id, token, expiresAt.toISOString()]
   );
 
   // Send email
@@ -518,7 +518,7 @@ export async function validatePasswordResetToken(token) {
   }
 
   const q = await pool.query(
-    `SELECT pr.id, pr.user_id, pr.expires_at, pr.used_at, u.username
+    `SELECT pr.user_id, pr.expires_at, pr.consumed, u.username
      FROM password_resets pr
      JOIN users u ON u.id = pr.user_id
      WHERE pr.token = $1`,
@@ -530,7 +530,7 @@ export async function validatePasswordResetToken(token) {
     return { valid: false, error: "Invalid token", errorCode: "TOKEN_INVALID" };
   }
 
-  if (reset.used_at) {
+  if (reset.consumed) {
     return { valid: false, error: "Token already used", errorCode: "TOKEN_USED" };
   }
 
@@ -570,23 +570,23 @@ export async function resetPasswordWithToken(token, newPassword, ip, ua) {
   // Prevents race where a stolen token is reused between validate + update.
   const claim = await pool.query(
     `UPDATE password_resets
-       SET used_at = now()
+       SET consumed = true
      WHERE token = $1
-       AND used_at IS NULL
+       AND consumed = false
        AND expires_at > now()
-     RETURNING id, user_id, expires_at`,
+     RETURNING user_id, expires_at`,
     [token]
   );
   const reset = claim.rows?.[0];
   if (!reset) {
     // Distinguish error reason for UX
     const probe = await pool.query(
-      `SELECT used_at, expires_at FROM password_resets WHERE token = $1`,
+      `SELECT consumed, expires_at FROM password_resets WHERE token = $1`,
       [token]
     );
     const row = probe.rows?.[0];
     if (!row) return { error: "Invalid token", errorCode: "TOKEN_INVALID" };
-    if (row.used_at) return { error: "Token already used", errorCode: "TOKEN_USED" };
+    if (row.consumed) return { error: "Token already used", errorCode: "TOKEN_USED" };
     return { error: "Token expired", errorCode: "TOKEN_EXPIRED" };
   }
   const userId = reset.user_id;

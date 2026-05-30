@@ -6,6 +6,7 @@ import Button from "@/components/ui/Button.jsx";
 import Input from "@/components/ui/Input.jsx";
 import BottomSheet from "@/components/ui/BottomSheet.jsx";
 import EmptyState from "@/components/common/EmptyState.jsx";
+import ConfirmDialog from "@/components/ui/ConfirmDialog.jsx";
 import { useFinance, active } from "@/lib/finance/store.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { reorderSiblings } from "@/lib/finance/reorder.js";
@@ -95,6 +96,7 @@ export default function Categories() {
   const [editing, setEditing] = useState(null);
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
   const cats = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -143,7 +145,7 @@ export default function Categories() {
             <ChevronDown className="w-4 h-4" />
           </button>
           <button
-            onClick={() => remove("categories", c.id)}
+            onClick={() => setConfirmDelete(c.id)}
             className="p-2 text-slate-400 hover:text-red-500"
             aria-label={t("common.delete")}
           >
@@ -191,6 +193,14 @@ export default function Categories() {
           )}
         </>
       )}
+      <ConfirmDialog
+        open={!!confirmDelete}
+        title={t("common.deleteTitle")}
+        message={t("common.deleteMessage")}
+        confirmLabel={t("common.delete")}
+        onConfirm={() => { remove("categories", confirmDelete); setConfirmDelete(null); }}
+        onCancel={() => setConfirmDelete(null)}
+      />
       <CategoryForm
         key={editing?.id || "new"}
         open={open}
