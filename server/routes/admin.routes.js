@@ -81,7 +81,8 @@ router.get("/dashboard/top-users", requireAdmin, async (req, res) => {
   return res.json({ users });
 });
 
-// Refresh user stats cache manually (triggers the expensive JSONB scan once)
+// Refresh user stats cache manually (indexed COUNT(*) aggregates over the
+// per-entity tables; rate-limited to once per 10 minutes)
 router.post("/dashboard/refresh-stats-cache", requireAdmin, async (req, res) => {
   try {
     const result = await refreshUserStatsCache();
