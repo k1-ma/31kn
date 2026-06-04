@@ -6,13 +6,12 @@ import { ensurePool, getPool, dbUnavailableResponse, queryWithRecovery } from ".
 import { sign, parseCookiesAll, getCookieDomainFromHost } from "./utils/cookies.js";
 import { banGuard } from "./middleware/banGuard.js";
 import { metricsMiddleware } from "./middleware/metrics.js";
-import { rateLimitDbMiddleware, writeRateLimit } from "./middleware/rateLimitDb.js";
+import { rateLimitDbMiddleware } from "./middleware/rateLimitDb.js";
 import { ensureDb } from "./middleware/ensureDb.js";
 
 // Routes
 import authRoutes from "./routes/auth.routes.js";
-import stateRoutes from "./routes/state.routes.js";
-import syncRoutes from "./routes/sync.routes.js";
+import financeRoutes from "./routes/finance.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import healthRoutes from "./routes/health.routes.js";
 import notificationsRoutes from "./routes/notifications.routes.js";
@@ -296,8 +295,9 @@ export async function createApp() {
   // Mount routes
   app.use("/api/ping", pingRoutes);
   app.use("/api/auth", authRoutes);
-  app.use("/api/state", writeRateLimit, stateRoutes);
-  app.use("/api/sync", writeRateLimit, syncRoutes);
+  // v2 finance domain: normalized per-entity REST (wallets, transactions, …),
+  // preferences and bulk import. Replaces the old /api/state + /api/sync blob.
+  app.use("/api", financeRoutes);
   app.use("/api/admin", adminRoutes);
   app.use("/api/health", healthRoutes);
   app.use("/api/notifications", notificationsRoutes);

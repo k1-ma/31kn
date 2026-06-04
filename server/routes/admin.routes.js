@@ -425,52 +425,10 @@ router.put("/settings", requireAdmin, async (req, res) => {
   });
 });
 
-// Restore user state - Admin sets a user's state_json and bumps the version
-// so the client detects the change on next fetch and treats it as authoritative.
-router.put("/users/:id/state", requireAdmin, async (req, res) => {
-  let pool = getPool();
-  if (!pool) {
-    try { pool = await ensurePool(); } catch { /* retry failed */ }
-  }
-  if (!pool) return res.status(503).json(dbUnavailableResponse());
-
-  const id = Number(req.params.id);
-  if (!Number.isFinite(id)) return res.status(400).json({ error: "Bad id" });
-
-  const { state } = req.body || {};
-  if (state === undefined) return res.status(400).json({ error: "state is required" });
-
-  try {
-    // Verify user exists
-    const userCheck = await pool.query("SELECT id, username FROM users WHERE id = $1", [id]);
-    if (!userCheck.rows?.length) return res.status(404).json({ error: "User not found" });
-
-    // Upsert state with version bump so the client's serverVersionChanged fires
-    const result = await pool.query(
-      `INSERT INTO states (user_id, state_json, updated_at, version)
-       VALUES ($1, $2, now(), 1)
-       ON CONFLICT (user_id) DO UPDATE SET
-         state_json = EXCLUDED.state_json,
-         updated_at = now(),
-         version = states.version + 1
-       RETURNING updated_at, version`,
-      [id, state]
-    );
-
-    const newVersion = result.rows?.[0]?.version ?? 1;
-    const txCount = Array.isArray(state?.transactions) ? state.transactions.length : 0;
-
-    await logAdmin(req.adminUser?.id, "user.state_restore", id, {
-      txCount,
-      version: newVersion,
-    });
-
-    return res.json({ ok: true, version: newVersion, txCount });
-  } catch (err) {
-    console.error("[admin] restore state error:", err?.message || err);
-    return res.status(500).json({ error: "Failed to restore state" });
-  }
-});
+// NOTE: the legacy `PUT /users/:id/state` admin route was removed in the v2
+// migration. It wrote the deprecated single-blob `states` table, which no
+// longer backs the app. Per-user data now lives in the normalized per-entity
+// tables; bulk restore goes through finance.routes.js → POST /api/import.
 
 // Log client-side errors (for error boundary)
 router.post("/log-client-error", requireAdmin, async (req, res) => {
