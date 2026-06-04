@@ -8,6 +8,7 @@ import BottomSheet from "@/components/ui/BottomSheet.jsx";
 import EmptyState from "@/components/common/EmptyState.jsx";
 import ConfirmDialog from "@/components/ui/ConfirmDialog.jsx";
 import { useFinance, active } from "@/lib/finance/store.jsx";
+import ListSkeleton from "@/components/common/ListSkeleton.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { budgetSpent, budgetProgress } from "@/lib/finance/calc.js";
 import { formatMoney, toCents } from "@/lib/money.js";
@@ -133,12 +134,13 @@ function BudgetForm({ open, onClose, initial }) {
 
 export default function Budgets() {
   const { t, lang } = useI18n();
-  const { state, remove } = useFinance();
+  const { state, loaded, remove } = useFinance();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const budgets = useMemo(() => active(state.budgets), [state.budgets]);
 
+  if (!loaded) return <ListSkeleton title={t("nav.budgets")} />;
   return (
     <div className="page-enter space-y-4">
       <PageHeader

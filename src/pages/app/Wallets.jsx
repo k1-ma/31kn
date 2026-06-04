@@ -9,6 +9,7 @@ import BottomSheet from "@/components/ui/BottomSheet.jsx";
 import EmptyState from "@/components/common/EmptyState.jsx";
 import ConfirmDialog from "@/components/ui/ConfirmDialog.jsx";
 import { useFinance, active } from "@/lib/finance/store.jsx";
+import ListSkeleton from "@/components/common/ListSkeleton.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { reorderSiblings } from "@/lib/finance/reorder.js";
 import { walletBalance } from "@/lib/finance/calc.js";
@@ -140,7 +141,7 @@ function WalletForm({ open, onClose, initial }) {
 
 export default function Wallets() {
   const { t, lang } = useI18n();
-  const { state, upsert, remove } = useFinance();
+  const { state, loaded, upsert, remove } = useFinance();
   const [editing, setEditing] = useState(null);
   const [open, setOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -159,6 +160,7 @@ export default function Wallets() {
     swap.forEach((x) => upsert("wallets", x));
   };
 
+  if (!loaded) return <ListSkeleton title={t("nav.wallets")} />;
   return (
     <div className="page-enter space-y-4">
       <PageHeader

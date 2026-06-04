@@ -8,6 +8,7 @@ import BottomSheet from "@/components/ui/BottomSheet.jsx";
 import EmptyState from "@/components/common/EmptyState.jsx";
 import ConfirmDialog from "@/components/ui/ConfirmDialog.jsx";
 import { useFinance, active } from "@/lib/finance/store.jsx";
+import ListSkeleton from "@/components/common/ListSkeleton.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { goalProgress } from "@/lib/finance/calc.js";
 import { recordNotification } from "@/lib/finance/recordNotification.js";
@@ -202,13 +203,14 @@ function ContributeSheet({ open, onClose, goal, onContribute }) {
 
 export default function Goals() {
   const { t, lang } = useI18n();
-  const { state, upsert, remove } = useFinance();
+  const { state, loaded, upsert, remove } = useFinance();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [contributingGoal, setContributingGoal] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const goals = useMemo(() => active(state.goals), [state.goals]);
 
+  if (!loaded) return <ListSkeleton title={t("nav.goals")} />;
   return (
     <div className="page-enter space-y-4">
       <PageHeader

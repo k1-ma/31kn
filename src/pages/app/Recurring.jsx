@@ -8,6 +8,7 @@ import BottomSheet from "@/components/ui/BottomSheet.jsx";
 import EmptyState from "@/components/common/EmptyState.jsx";
 import ConfirmDialog from "@/components/ui/ConfirmDialog.jsx";
 import { useFinance, active } from "@/lib/finance/store.jsx";
+import ListSkeleton from "@/components/common/ListSkeleton.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { advance, dueRules, materialize } from "@/lib/finance/recurring.js";
 import { recordNotification } from "@/lib/finance/recordNotification.js";
@@ -197,7 +198,7 @@ function RecurringForm({ open, onClose, initial }) {
 
 export default function Recurring() {
   const { t, lang } = useI18n();
-  const { state, upsert, remove } = useFinance();
+  const { state, loaded, upsert, remove } = useFinance();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -243,6 +244,7 @@ export default function Recurring() {
     });
   };
 
+  if (!loaded) return <ListSkeleton title={t("nav.recurring")} />;
   return (
     <div className="page-enter space-y-4">
       <PageHeader
