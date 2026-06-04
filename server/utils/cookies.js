@@ -25,7 +25,7 @@ function pickSessionSecret() {
 
   if (!envSecret || envSecret.length < MIN_SECRET_LENGTH) {
     const ephemeral = crypto.randomBytes(48).toString("hex");
-    // eslint-disable-next-line no-console
+
     console.error(
       "[cookies] WARNING: SESSION_SECRET is " +
         (!envSecret ? "not set" : `only ${envSecret.length} chars (min ${MIN_SECRET_LENGTH})`) +

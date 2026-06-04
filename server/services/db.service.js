@@ -47,18 +47,18 @@ function isConnectionError(err) {
  */
 export async function resetPool() {
   const currentPool = globalThis.__koshyk_pool;
-  
+
   // Clear references first to prevent new requests from using the old pool
   globalThis.__koshyk_pool = null;
   globalThis.__koshyk_db_init_promise = null;
-  
+
   if (currentPool) {
     try {
       await currentPool.end();
       // eslint-disable-next-line no-console
       console.log("[db] pool reset complete");
     } catch (err) {
-      // eslint-disable-next-line no-console
+
       console.warn("[db] pool.end() error (ignored):", err?.message);
     }
   }
@@ -74,18 +74,18 @@ export async function ensurePool() {
   if (globalThis.__koshyk_pool) {
     return globalThis.__koshyk_pool;
   }
-  
+
   // Wait for in-progress initialization
   if (globalThis.__koshyk_db_init_promise) {
     return globalThis.__koshyk_db_init_promise;
   }
-  
+
   // Start new initialization
   globalThis.__koshyk_db_init_promise = (async () => {
     try {
       globalThis.__koshyk_db_error = null; // Clear previous error before retry
       let pool;
-      
+
       if (RUN_MIGRATIONS_ON_BOOT) {
         // Full init with schema creation (dev/local only)
         // eslint-disable-next-line no-console
@@ -97,7 +97,7 @@ export async function ensurePool() {
         // eslint-disable-next-line no-console
         console.log("[db] pool created (no migrations)");
       }
-      
+
       globalThis.__koshyk_pool = pool;
       globalThis.__koshyk_db_error = null;
       return pool;
@@ -107,7 +107,7 @@ export async function ensurePool() {
       throw err;
     }
   })();
-  
+
   return globalThis.__koshyk_db_init_promise;
 }
 
@@ -117,17 +117,17 @@ export async function ensurePool() {
  */
 export async function queryWithRecovery(sql, params) {
   let pool = await ensurePool();
-  
+
   try {
     return await pool.query(sql, params);
   } catch (err) {
     if (isConnectionError(err)) {
-      // eslint-disable-next-line no-console
+
       console.warn("[db] connection error detected, resetting pool:", err?.message?.slice(0, 80));
-      
+
       await resetPool();
       pool = await ensurePool();
-      
+
       // Retry once after reset
       return await pool.query(sql, params);
     }
@@ -154,7 +154,7 @@ const DB_UNAVAILABLE_MSG = "Database unavailable";
 export function dbUnavailableResponse() {
   const dbError = getDbError();
   const errorMsg = dbError?.message || "DB connection is not established";
-  
+
   // Classify error type for better diagnostics
   let details = errorMsg;
   if (errorMsg.includes("timeout") || errorMsg.includes("ETIMEDOUT")) {
@@ -168,7 +168,7 @@ export function dbUnavailableResponse() {
   } else if (!process.env.DATABASE_URL && !process.env.POSTGRES_URL) {
     details = "DATABASE_URL environment variable is not set";
   }
-  
+
   return {
     ok: false,
     code: DB_UNAVAILABLE_ERROR,
@@ -187,7 +187,7 @@ export async function getUserById(id) {
   if (!pool) return null;
   try {
     const r = await queryWithRecovery(
-      `SELECT id, username, nickname, role, role_color, is_disabled, email, 
+      `SELECT id, username, nickname, role, role_color, is_disabled, email,
               disabled_reason, disabled_until, totp_enabled, email_verified,
               display_name, display_name_changed_at, google_id,
               username_changed_at
@@ -265,6 +265,6 @@ export function safeUser(u) {
 
 // Initialize pool on module load (don't fail hard)
 ensurePool().catch((err) => {
-  // eslint-disable-next-line no-console
+
   console.warn("[db.service] init skipped:", err?.message || err);
 });

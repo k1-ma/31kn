@@ -17,18 +17,18 @@ export async function getAllUsers() {
   const pool = getPool();
   if (!pool) return [];
   const r = await pool.query(`
-    SELECT 
-      u.id, 
-      u.username, 
-      u.nickname, 
-      u.role, 
-      u.role_color, 
-      u.is_disabled, 
-      u.disabled_reason, 
-      u.disabled_until, 
-      u.email, 
+    SELECT
+      u.id,
+      u.username,
+      u.nickname,
+      u.role,
+      u.role_color,
+      u.is_disabled,
+      u.disabled_reason,
+      u.disabled_until,
+      u.email,
       u.created_ip,
-      u.created_at, 
+      u.created_at,
       u.updated_at,
       COALESCE(w.cnt, 0) AS wallets_count,
       COALESCE(t.cnt, 0) AS transactions_count,
@@ -126,7 +126,7 @@ export async function updateUser(id, { nickname, newPassword, role, role_color, 
     }
   }
   const nextDisabled = is_disabled !== undefined ? !!is_disabled : !!u.is_disabled;
-  
+
   // Handle email update with validation
   let nextEmail = u.email;
   if (changingEmail) {
@@ -270,9 +270,9 @@ export async function banUser(id, { reason, disabled_until, adminId }) {
   if (u.role === "admin") return { error: "Cannot ban admin" };
 
   await pool.query(
-    `UPDATE users 
-     SET is_disabled = true, 
-         disabled_reason = $1, 
+    `UPDATE users
+     SET is_disabled = true,
+         disabled_reason = $1,
          disabled_until = $2,
          updated_at = now()
      WHERE id = $3`,
@@ -294,9 +294,9 @@ export async function unbanUser(id, adminId) {
   if (!u) return { error: "User not found" };
 
   await pool.query(
-    `UPDATE users 
-     SET is_disabled = false, 
-         disabled_reason = NULL, 
+    `UPDATE users
+     SET is_disabled = false,
+         disabled_reason = NULL,
          disabled_until = NULL,
          updated_at = now()
      WHERE id = $1`,
@@ -359,7 +359,7 @@ export async function isIpBanned(ip) {
   if (!ip) return null;
 
   const r = await pool.query(
-    `SELECT id, ip, reason, expires_at FROM ip_bans 
+    `SELECT id, ip, reason, expires_at FROM ip_bans
      WHERE ip = $1 AND (expires_at IS NULL OR expires_at > now())`,
     [String(ip)]
   );
@@ -392,7 +392,7 @@ export async function getUsageStats({ dayFrom, dayTo, userId }) {
   }
 
   const sql = `
-    SELECT 
+    SELECT
       u.day,
       u.user_id,
       u.ip,
@@ -412,7 +412,7 @@ export async function getUsageStats({ dayFrom, dayTo, userId }) {
 
   // Get totals
   const totalsSql = `
-    SELECT 
+    SELECT
       COALESCE(SUM(requests), 0) as total_requests,
       COALESCE(SUM(bytes_in), 0) as total_bytes_in,
       COALESCE(SUM(bytes_out), 0) as total_bytes_out,
@@ -438,10 +438,10 @@ export async function getDashboardStats() {
     pool.query("SELECT COUNT(DISTINCT user_id) as count FROM sessions WHERE revoked = false AND expires_at > now()"),
     pool.query("SELECT COALESCE(reltuples, 0)::bigint as count FROM pg_class WHERE relname = 'admin_logs'"),
     pool.query(`
-      SELECT 
+      SELECT
         COALESCE(SUM(requests), 0) as requests_today,
         COALESCE(SUM(bytes_out), 0) as bytes_today
-      FROM usage_daily 
+      FROM usage_daily
       WHERE day = CURRENT_DATE
     `),
     pool.query(`
@@ -519,7 +519,7 @@ export async function refreshUserStatsCache() {
 }
 
 // Range metrics: counts of new transactions/wallets/categories/active users
-// over the requested window. Reads timestamps embedded in state_json.
+// over the requested window. Reads created_at on the normalized per-entity tables.
 export async function getDashboardSummary(fromDate, toDate) {
   const pool = getPool();
   if (!pool) return null;

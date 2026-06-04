@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { getPool, ensurePool, dbUnavailableResponse } from "../services/db.service.js";
 import { requireAdmin } from "../middleware/requireAdmin.js";
-import { 
+import {
   getAllUsers, createUser, updateUser, deleteUser, fullDeleteUser, logoutAllUserSessions,
   banUser, unbanUser, getIpBans, createIpBan, deleteIpBan,
   getUsageStats, getDashboardStats, getDashboardSummary, getTopUsers, refreshUserStatsCache
@@ -32,23 +32,23 @@ router.get("/dashboard", requireAdmin, async (req, res) => {
 // Dashboard Summary - metrics by date range
 router.get("/dashboard/summary", requireAdmin, async (req, res) => {
   const { from, to } = req.query;
-  
+
   // Parse and validate dates
   const today = new Date().toISOString().split("T")[0];
   const fromDate = from || today;
   const toDate = to || today;
-  
+
   // Validate date format (YYYY-MM-DD)
   const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
   if (!dateRegex.test(fromDate) || !dateRegex.test(toDate)) {
     return res.status(400).json({ error: "Invalid date format. Use YYYY-MM-DD" });
   }
-  
+
   // Validate from <= to
   if (fromDate > toDate) {
     return res.status(400).json({ error: "From date must be less than or equal to To date" });
   }
-  
+
   // Validate range does not exceed 180 days to prevent heavy DB queries
   const MS_PER_DAY = 1000 * 60 * 60 * 24;
   const fromTs = new Date(fromDate).getTime();
@@ -58,7 +58,7 @@ router.get("/dashboard/summary", requireAdmin, async (req, res) => {
   if (rangeDays > maxRangeDays) {
     return res.status(400).json({ error: `Date range cannot exceed ${maxRangeDays} days` });
   }
-  
+
   try {
     const summary = await getDashboardSummary(fromDate, toDate);
     if (!summary) {
@@ -310,7 +310,7 @@ router.get("/backups", requireAdmin, async (req, res) => {
     const backups = await listBackups(pool);
     return res.json({ backups });
   } catch (err) {
-    // eslint-disable-next-line no-console
+
     console.error("[admin] list backups error:", err?.message || err);
     return res.status(500).json({ error: "Failed to list backups" });
   }
@@ -335,7 +335,7 @@ router.post("/backups", requireAdmin, async (req, res) => {
 
     return res.json({ ok: true, name, size_bytes: gzBuffer.length });
   } catch (err) {
-    // eslint-disable-next-line no-console
+
     console.error("[admin] create backup error:", err?.message || err);
     return res.status(500).json({ error: "Failed to create backup" });
   }
@@ -354,7 +354,7 @@ router.get("/backups/:name", requireAdmin, async (req, res) => {
   // Reject anything outside the canonical backup name format produced by
   // generateBackupName(). This blocks header injection (CR/LF, quotes) into
   // Content-Disposition and rejects bogus DB lookups in one check.
-  if (!name || !/^koshyk_backup_[\w\-]+\.json\.gz$/.test(name) || name.length > 128) {
+  if (!name || !/^koshyk_backup_[\w-]+\.json\.gz$/.test(name) || name.length > 128) {
     return res.status(400).json({ error: "Invalid backup name" });
   }
 
@@ -371,7 +371,7 @@ router.get("/backups/:name", requireAdmin, async (req, res) => {
     res.set("Cache-Control", "no-store");
     return res.send(backup.content);
   } catch (err) {
-    // eslint-disable-next-line no-console
+
     console.error("[admin] download backup error:", err?.message || err);
     return res.status(500).json({ error: "Failed to download backup" });
   }
@@ -399,7 +399,7 @@ router.get("/backup", requireAdmin, async (req, res) => {
     res.set("Cache-Control", "no-store");
     return res.send(gzBuffer);
   } catch (err) {
-    // eslint-disable-next-line no-console
+
     console.error("[admin] fresh backup error:", err?.message || err);
     return res.status(500).json({ error: "Failed to generate backup" });
   }
@@ -414,12 +414,12 @@ router.get("/settings", requireAdmin, async (req, res) => {
 
 router.put("/settings", requireAdmin, async (req, res) => {
   const { registrationEnabled } = req.body || {};
-  
+
   if (registrationEnabled !== undefined) {
     setRegistrationEnabled(registrationEnabled);
     await logAdmin(req.adminUser?.id, "settings.registration", null, { enabled: registrationEnabled });
   }
-  
+
   return res.json({
     ok: true,
     registrationEnabled: isRegistrationEnabled(),
@@ -436,17 +436,17 @@ router.post("/log-client-error", requireAdmin, async (req, res) => {
   try {
     const { action, meta } = req.body || {};
     const adminId = req.adminUser?.id || null;
-    
+
     // Log to console for debugging
     console.error("[client-error]", {
       adminId,
       action: action || "client_error",
       meta: meta || {},
     });
-    
+
     // Log to admin_logs table
     await logAdmin(adminId, action || "client_error", null, meta || {});
-    
+
     return res.json({ ok: true });
   } catch (err) {
     // Don't fail the request even if logging fails

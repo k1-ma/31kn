@@ -81,7 +81,7 @@ export async function createApp() {
   try {
     await ensurePool();
   } catch (err) {
-    // eslint-disable-next-line no-console
+
     console.warn("[db] init skipped:", err?.message || err);
   }
 
@@ -257,7 +257,7 @@ export async function createApp() {
   // Apply global middleware
   app.use(banGuard);
   app.use(metricsMiddleware);
-  
+
   // Apply rate limiting to API routes
   app.use("/api", rateLimitDbMiddleware);
 
@@ -285,7 +285,7 @@ export async function createApp() {
       "/auth/registration-status",
       "/auth/google/status",
     ];
-    
+
     if (skipPaths.some((p) => req.path === p || req.path.startsWith(p + "/"))) {
       return next();
     }
@@ -315,7 +315,7 @@ export async function createApp() {
   // ─────────────────────────────────────────────────────────────────────────────
   // ERROR HANDLERS - Must be at the end of middleware stack
   // ─────────────────────────────────────────────────────────────────────────────
-  
+
   // Handle payload too large errors (413) with JSON response
   // This catches errors from express.json body parser
   // eslint-disable-next-line no-unused-vars
@@ -329,7 +329,7 @@ export async function createApp() {
         useChunkedSync: true,
       });
     }
-    
+
     // Handle JSON parsing errors
     if (err.type === "entity.parse.failed") {
       return res.status(400).json({
@@ -337,12 +337,12 @@ export async function createApp() {
         code: "INVALID_JSON",
       });
     }
-    
+
     // Log unexpected errors in development
     if (!IS_PROD) {
       console.error("[app] Unhandled error:", err?.message || err);
     }
-    
+
     // Generic error response
     return res.status(500).json({
       error: "Internal server error",

@@ -3,14 +3,14 @@ import bcrypt from "bcryptjs";
 import { getPool, getUserByUsername, getUserByEmail, getUserByGoogleId, safeUser, DB_UNAVAILABLE_MSG } from "./db.service.js";
 import { validateUsername, validatePassword, validateEmail } from "../utils/validators.js";
 import { logAdmin } from "./audit.service.js";
-import { 
-  sendVerificationEmail, 
-  sendPasswordResetEmail, 
+import {
+  sendVerificationEmail,
+  sendPasswordResetEmail,
   sendPasswordChangedEmail,
   sendEmailChangeConfirmation,
   sendEmailChangeNotification,
   sendEmailChangedNotification,
-  isEmailServiceEnabled 
+  isEmailServiceEnabled
 } from "./email.service.js";
 
 // Token expiration times
@@ -101,7 +101,7 @@ export async function registerUser({ username, password, nickname, email, ip }) 
   const hash = await bcrypt.hash(String(password), BCRYPT_COST);
   const r = await pool.query(
     `INSERT INTO users (
-      username, nickname, password_hash, role, email, is_disabled, created_ip, 
+      username, nickname, password_hash, role, email, is_disabled, created_ip,
       email_verified, email_verify_token, email_verify_token_expires_at,
       created_at, updated_at
     )
@@ -111,20 +111,20 @@ export async function registerUser({ username, password, nickname, email, ip }) 
   );
 
   const user = r.rows?.[0];
-  
+
   // Send verification email (don't fail registration if email fails)
   try {
     await sendVerificationEmail(emailCheck.normalized, verifyToken, user?.nickname || user?.username);
   } catch (e) {
-    // eslint-disable-next-line no-console
+
     console.error("[auth] Failed to send verification email:", e?.message || e);
   }
-  
+
   // Log registration
   try {
     await logAdmin(null, "auth.register", user?.id, { ip, username: usernameCheck.normalized });
   } catch {}
-  
+
   return { user: safeUser(user), emailVerificationRequired: true };
 }
 
@@ -138,7 +138,7 @@ export async function loginUser({ username, password }) {
   if (!identifier) {
     return { error: "Invalid credentials", status: 401 };
   }
-  
+
   let u;
   if (identifier.includes("@")) {
     // Login by email
@@ -147,7 +147,7 @@ export async function loginUser({ username, password }) {
     // Login by username
     u = await getUserByUsername(identifier);
   }
-  
+
   if (!u) {
     // Equalize timing: still run a bcrypt comparison so that a non-existent
     // user takes roughly the same time as a wrong-password attempt against a
@@ -183,7 +183,7 @@ export async function loginUser({ username, password }) {
         )
       )
       .catch((e) => {
-        // eslint-disable-next-line no-console
+
         console.warn("[auth] opportunistic rehash failed:", e?.message || e);
       });
   }
@@ -191,9 +191,9 @@ export async function loginUser({ username, password }) {
   // Check if email is verified (only if email service is enabled)
   // Users created before email verification feature are grandfathered in
   if (isEmailServiceEnabled() && u.email && u.email_verified === false) {
-    return { 
-      error: "Email not verified", 
-      status: 403, 
+    return {
+      error: "Email not verified",
+      status: 403,
       errorCode: "EMAIL_NOT_VERIFIED",
       email: u.email,
       userId: u.id
@@ -297,7 +297,7 @@ async function generateUniqueUsername(base) {
 
   let username = sanitized;
   let counter = 0;
-  
+
   while (true) {
     const existing = await pool.query("SELECT id FROM users WHERE username = $1", [username]);
     if (!existing.rows?.length) break;
@@ -308,7 +308,7 @@ async function generateUniqueUsername(base) {
       break;
     }
   }
-  
+
   return username;
 }
 
@@ -331,11 +331,11 @@ export async function verifyEmail(token) {
 
   // Find user with this token
   const q = await pool.query(
-    `SELECT id, email, email_verified, email_verify_token_expires_at 
+    `SELECT id, email, email_verified, email_verify_token_expires_at
      FROM users WHERE email_verify_token = $1`,
     [token]
   );
-  
+
   const user = q.rows?.[0];
   if (!user) {
     return { error: "Invalid or expired token", errorCode: "TOKEN_INVALID" };
@@ -353,8 +353,8 @@ export async function verifyEmail(token) {
 
   // Mark email as verified
   await pool.query(
-    `UPDATE users SET 
-       email_verified = true, 
+    `UPDATE users SET
+       email_verified = true,
        email_verified_at = now(),
        email_verify_token = NULL,
        email_verify_token_expires_at = NULL,
@@ -436,7 +436,7 @@ export async function resendVerificationEmail(userId) {
 
   // Send email
   const result = await sendVerificationEmail(user.email, verifyToken, user.nickname || user.username);
-  
+
   if (result?.error) {
     return { error: "Failed to send email", errorCode: "EMAIL_SEND_FAILED" };
   }
@@ -466,7 +466,7 @@ export async function requestPasswordReset(email, ip, ua) {
   }
 
   const user = await getUserByEmail(emailCheck.normalized);
-  
+
   // Don't reveal if email exists
   if (!user) {
     return { ok: true };
@@ -492,7 +492,7 @@ export async function requestPasswordReset(email, ip, ua) {
   try {
     await sendPasswordResetEmail(user.email, token, user.nickname || user.username);
   } catch (e) {
-    // eslint-disable-next-line no-console
+
     console.error("[auth] Failed to send password reset email:", e?.message || e);
   }
 
@@ -615,7 +615,7 @@ export async function resetPasswordWithToken(token, newPassword, ip, ua) {
     try {
       await sendPasswordChangedEmail(user.email, user.nickname || user.username, { ip, ua, isReset: true });
     } catch (e) {
-      // eslint-disable-next-line no-console
+
       console.error("[auth] Failed to send password changed notification:", e?.message || e);
     }
   }
@@ -661,7 +661,7 @@ export async function changePasswordWithNotification(userId, oldPassword, newPas
           );
         }
       } catch (e) {
-        // eslint-disable-next-line no-console
+
         console.error("[auth] Failed to revoke other sessions after password change:", e?.message || e);
       }
 
@@ -681,7 +681,7 @@ export async function changePasswordWithNotification(userId, oldPassword, newPas
             isReset: false
           });
         } catch (e) {
-          // eslint-disable-next-line no-console
+
           console.error("[auth] Failed to send password changed notification:", e?.message || e);
         }
       }
@@ -746,7 +746,7 @@ export async function requestEmailChange(userId, newEmail, password) {
 
   // Store pending email
   await pool.query(
-    `UPDATE users SET 
+    `UPDATE users SET
        pending_email = $1,
        pending_email_token = $2,
        pending_email_token_expires_at = $3,
@@ -759,7 +759,7 @@ export async function requestEmailChange(userId, newEmail, password) {
   try {
     await sendEmailChangeConfirmation(emailCheck.normalized, token, user.nickname || user.username);
   } catch (e) {
-    // eslint-disable-next-line no-console
+
     console.error("[auth] Failed to send email change confirmation:", e?.message || e);
   }
 
@@ -768,16 +768,16 @@ export async function requestEmailChange(userId, newEmail, password) {
     try {
       await sendEmailChangeNotification(user.email, emailCheck.normalized, user.nickname || user.username);
     } catch (e) {
-      // eslint-disable-next-line no-console
+
       console.error("[auth] Failed to send email change notification:", e?.message || e);
     }
   }
 
   // Log request
   try {
-    await logAdmin(userId, "auth.email_change_requested", userId, { 
-      oldEmail: user.email, 
-      newEmail: emailCheck.normalized 
+    await logAdmin(userId, "auth.email_change_requested", userId, {
+      oldEmail: user.email,
+      newEmail: emailCheck.normalized
     });
   } catch {}
 
@@ -799,11 +799,11 @@ export async function confirmEmailChange(token) {
 
   // Find user with this pending token
   const q = await pool.query(
-    `SELECT id, email, pending_email, pending_email_token_expires_at, username, nickname 
+    `SELECT id, email, pending_email, pending_email_token_expires_at, username, nickname
      FROM users WHERE pending_email_token = $1`,
     [token]
   );
-  
+
   const user = q.rows?.[0];
   if (!user) {
     return { error: "Invalid or expired token", errorCode: "TOKEN_INVALID" };
@@ -823,7 +823,7 @@ export async function confirmEmailChange(token) {
 
   // Update email
   await pool.query(
-    `UPDATE users SET 
+    `UPDATE users SET
        email = pending_email,
        email_verified = true,
        email_verified_at = now(),
@@ -840,7 +840,7 @@ export async function confirmEmailChange(token) {
     try {
       await sendEmailChangedNotification(oldEmail, newEmail, user.nickname || user.username);
     } catch (e) {
-      // eslint-disable-next-line no-console
+
       console.error("[auth] Failed to send email changed notification:", e?.message || e);
     }
   }

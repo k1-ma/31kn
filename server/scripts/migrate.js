@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
  * Database Migration Script
- * 
+ *
  * Run this script to apply database migrations:
  *   node server/scripts/migrate.js
- * 
+ *
  * Or via npm script:
  *   npm run migrate
- * 
+ *
  * This script is idempotent - safe to run multiple times.
  * It creates tables, indexes, and applies schema changes.
  */
@@ -25,7 +25,7 @@ const admin = {
 };
 
 async function runMigrations() {
-  // eslint-disable-next-line no-console
+
   console.log("[migrate] Starting database migrations...");
 
   // Pre-flight: log the target host so we visually confirm we're hitting
@@ -36,36 +36,36 @@ async function runMigrations() {
   if (url) {
     try {
       const u = new URL(url);
-      // eslint-disable-next-line no-console
+
       console.log(`[migrate] Target: ${u.username}@${u.hostname}${u.pathname}`);
     } catch {}
   } else {
-    // eslint-disable-next-line no-console
+
     console.warn('[migrate] No DATABASE_URL / POSTGRES_URL / POSTGRES_PRISMA_URL / POSTGRES_URL_NON_POOLING found in env');
   }
 
   try {
     const pool = await initDb({ admin });
-    
-    // eslint-disable-next-line no-console
+
+
     console.log("[migrate] ✓ All migrations completed successfully");
-    
+
     // Clean up
     await pool.end();
-    
-    // eslint-disable-next-line no-console
+
+
     console.log("[migrate] ✓ Database connection closed");
-    
+
     process.exit(0);
   } catch (err) {
-    // eslint-disable-next-line no-console
+
     console.error("[migrate] ✗ Migration failed:", err?.message || err);
-    
+
     if (err?.stack) {
-      // eslint-disable-next-line no-console
+
       console.error("[migrate] Stack:", err.stack);
     }
-    
+
     process.exit(1);
   }
 }

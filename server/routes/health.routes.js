@@ -28,7 +28,7 @@ function checkEnvVars() {
 router.get("/", async (req, res) => {
   const uptime = Math.floor((Date.now() - startTime) / 1000);
   const env = checkEnvVars();
-  
+
   let pool = getPool();
   let dbStatus = "down";
   let dbLatencyMs = null;
@@ -40,7 +40,7 @@ router.get("/", async (req, res) => {
       pool = await ensurePool();
     } catch (err) {
       dbError = err?.message?.slice(0, 100);
-      // eslint-disable-next-line no-console
+
       console.warn("[health] Pool init failed:", err?.message);
     }
   }
@@ -55,7 +55,7 @@ router.get("/", async (req, res) => {
     } catch (err) {
       dbStatus = "error";
       dbError = err?.message?.slice(0, 100);
-      // eslint-disable-next-line no-console
+
       console.error("[health] DB query failed:", err?.message);
     }
   }

@@ -1,10 +1,10 @@
 import { Router } from "express";
 import crypto from "crypto";
-import { 
-  ensurePool, getPool, getUserById, safeUser, dbUnavailableResponse, DB_UNAVAILABLE_MSG 
+import {
+  ensurePool, getPool, getUserById, safeUser, dbUnavailableResponse, DB_UNAVAILABLE_MSG
 } from "../services/db.service.js";
-import { 
-  loginUser, registerUser, createSession, revokeSession, 
+import {
+  loginUser, registerUser, createSession, revokeSession,
   changePassword, changePasswordWithNotification, isRegistrationEnabled, findOrCreateGoogleUser,
   verifyEmail, resendVerificationEmail,
   requestPasswordReset, validatePasswordResetToken, resetPasswordWithToken,
@@ -119,7 +119,7 @@ function clearSessionCookie(res, req = null) {
     secure: IS_PROD,
     maxAge: 0,
   };
-  // Clear the domain-scoped cookie 
+  // Clear the domain-scoped cookie
   if (domain) {
     appendSetCookie(res, makeCookie(COOKIE_NAME, "", { ...opts, domain }));
   }
@@ -185,8 +185,8 @@ router.post(
     if (result.error) {
       // Handle email not verified
       if (result.errorCode === "EMAIL_NOT_VERIFIED") {
-        return res.status(403).json({ 
-          error: result.error, 
+        return res.status(403).json({
+          error: result.error,
           errorCode: "EMAIL_NOT_VERIFIED",
           email: result.email,
           userId: result.userId
@@ -259,7 +259,7 @@ router.post("/register", registerRateLimit, async (req, res) => {
 
   const { username, password, nickname, email } = req.body || {};
   const result = await registerUser({ username, password, nickname, email, ip });
-  
+
   if (result.error) {
     return res.status(400).json({ error: result.error, errorCode: result.errorCode });
   }
@@ -267,8 +267,8 @@ router.post("/register", registerRateLimit, async (req, res) => {
   // If email verification is required, don't create session
   // User needs to verify email before logging in
   if (result.emailVerificationRequired && isEmailServiceEnabled()) {
-    return res.json({ 
-      user: result.user, 
+    return res.json({
+      user: result.user,
       emailVerificationRequired: true,
       message: "Please check your email to verify your account"
     });
@@ -336,7 +336,7 @@ router.post("/forgot-password", loginRateLimit, async (req, res) => {
   const ua = req.get("user-agent") || null;
 
   const result = await requestPasswordReset(email, ip, ua);
-  
+
   // Always return success to prevent email enumeration
   return res.json({ ok: true, message: "If this email exists, a reset link has been sent" });
 });
@@ -476,14 +476,14 @@ router.patch("/display-name", requireAuth, loginRateLimit, async (req, res) => {
   }
 
   const { displayName } = req.body || {};
-  
+
   // Validation
   if (displayName === undefined || displayName === null) {
     return res.status(400).json({ error: "Display name is required" });
   }
-  
+
   const trimmed = String(displayName).trim();
-  
+
   // Allow empty string to clear display name
   if (trimmed !== "") {
     // Length validation
@@ -493,7 +493,7 @@ router.patch("/display-name", requireAuth, loginRateLimit, async (req, res) => {
     if (trimmed.length > 30) {
       return res.status(400).json({ error: "Display name must be at most 30 characters" });
     }
-    
+
     // Character validation - allow letters, numbers, spaces, hyphen, underscore
     // Allow any Unicode letters (Cyrillic, Latin, etc.)
     const validPattern = /^[\p{L}\p{N}\s\-_]+$/u;
@@ -501,7 +501,7 @@ router.patch("/display-name", requireAuth, loginRateLimit, async (req, res) => {
       return res.status(400).json({ error: "Display name can only contain letters, numbers, spaces, hyphens, and underscores" });
     }
   }
-  
+
   try {
     // Get current user data
     const userQuery = await pool.query(
@@ -512,42 +512,42 @@ router.patch("/display-name", requireAuth, loginRateLimit, async (req, res) => {
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
-    
+
     // Check cooldown (7 days)
     if (user.display_name_changed_at) {
       const lastChange = new Date(user.display_name_changed_at);
       const now = new Date();
       const daysSinceChange = (now - lastChange) / (1000 * 60 * 60 * 24);
-      
+
       if (daysSinceChange < DISPLAY_NAME_COOLDOWN_DAYS) {
         const daysRemaining = Math.ceil(DISPLAY_NAME_COOLDOWN_DAYS - daysSinceChange);
-        return res.status(429).json({ 
+        return res.status(429).json({
           error: "Display name can only be changed once every 7 days",
           days_remaining: daysRemaining,
         });
       }
     }
-    
+
     // Update display name
     const updateResult = await pool.query(
-      `UPDATE users 
-       SET display_name = $1, display_name_changed_at = now(), updated_at = now() 
-       WHERE id = $2 
+      `UPDATE users
+       SET display_name = $1, display_name_changed_at = now(), updated_at = now()
+       WHERE id = $2
        RETURNING *`,
       [trimmed || null, req.session.userId]
     );
-    
+
     const updatedUser = updateResult.rows?.[0];
     if (!updatedUser) {
       return res.status(500).json({ error: "Failed to update display name" });
     }
-    
-    return res.json({ 
-      ok: true, 
+
+    return res.json({
+      ok: true,
       user: safeUser(updatedUser),
     });
   } catch (error) {
-    // eslint-disable-next-line no-console
+
     console.error("[auth] display-name update error:", error?.message || error);
     return res.status(500).json({ error: "Failed to update display name" });
   }
@@ -564,13 +564,13 @@ router.patch("/username", requireAuth, loginRateLimit, async (req, res) => {
   }
 
   const { username } = req.body || {};
-  
+
   if (!username) {
     return res.status(400).json({ error: "Username is required" });
   }
-  
+
   const trimmed = String(username).trim().toLowerCase();
-  
+
   if (trimmed.length < 3) {
     return res.status(400).json({ error: "Username must be at least 3 characters" });
   }
@@ -580,7 +580,7 @@ router.patch("/username", requireAuth, loginRateLimit, async (req, res) => {
   if (!/^[a-z0-9_]+$/.test(trimmed)) {
     return res.status(400).json({ error: "Username can only contain lowercase letters, numbers, and underscores" });
   }
-  
+
   try {
     // Check if username already exists (case-insensitive)
     const existingUser = await pool.query(
@@ -590,7 +590,7 @@ router.patch("/username", requireAuth, loginRateLimit, async (req, res) => {
     if (existingUser.rows.length > 0) {
       return res.status(409).json({ error: "Username already taken" });
     }
-    
+
     // Get current user data for cooldown check
     const userQuery = await pool.query(
       "SELECT username_changed_at FROM users WHERE id = $1",
@@ -600,42 +600,42 @@ router.patch("/username", requireAuth, loginRateLimit, async (req, res) => {
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
-    
+
     // Check cooldown (30 days)
     if (user.username_changed_at) {
       const lastChange = new Date(user.username_changed_at);
       const now = new Date();
       const daysSinceChange = (now - lastChange) / (1000 * 60 * 60 * 24);
-      
+
       if (daysSinceChange < USERNAME_COOLDOWN_DAYS) {
         const daysRemaining = Math.ceil(USERNAME_COOLDOWN_DAYS - daysSinceChange);
-        return res.status(429).json({ 
+        return res.status(429).json({
           error: "Username can only be changed once every 30 days",
           days_remaining: daysRemaining,
         });
       }
     }
-    
+
     // Update username
     const updateResult = await pool.query(
-      `UPDATE users 
-       SET username = $1, username_changed_at = now(), updated_at = now() 
-       WHERE id = $2 
+      `UPDATE users
+       SET username = $1, username_changed_at = now(), updated_at = now()
+       WHERE id = $2
        RETURNING *`,
       [trimmed, req.session.userId]
     );
-    
+
     const updatedUser = updateResult.rows?.[0];
     if (!updatedUser) {
       return res.status(500).json({ error: "Failed to update username" });
     }
-    
-    return res.json({ 
-      ok: true, 
+
+    return res.json({
+      ok: true,
       user: safeUser(updatedUser),
     });
   } catch (error) {
-    // eslint-disable-next-line no-console
+
     console.error("[auth] username update error:", error?.message || error);
     return res.status(500).json({ error: "Failed to update username" });
   }
@@ -754,10 +754,10 @@ router.get("/sessions", requireAuth, async (req, res) => {
   try {
     // Get unique sessions - use DISTINCT ON to keep only the most recent session per (ip, ua) combo
     const r = await pool.query(
-      `SELECT DISTINCT ON (COALESCE(ip, ''), COALESCE(ua, '')) 
-         sid, created_at, last_seen_at, ip, ua, expires_at 
-       FROM sessions 
-       WHERE user_id = $1 AND revoked = false 
+      `SELECT DISTINCT ON (COALESCE(ip, ''), COALESCE(ua, ''))
+         sid, created_at, last_seen_at, ip, ua, expires_at
+       FROM sessions
+       WHERE user_id = $1 AND revoked = false
        ORDER BY COALESCE(ip, ''), COALESCE(ua, ''), last_seen_at DESC NULLS LAST`,
       [req.session.userId]
     );
@@ -862,12 +862,12 @@ router.post("/sessions/logout-all", requireAuth, async (req, res) => {
 router.get("/google/start", loginRateLimit, (req, res) => {
   const config = checkGoogleOAuthConfig();
   if (!config.available) {
-    // eslint-disable-next-line no-console
+
     console.warn("[google/start] OAuth not configured - missing:", config.missing.join(", "));
-    return res.status(501).json({ 
-      ok: false, 
+    return res.status(501).json({
+      ok: false,
       error: "GOOGLE_OAUTH_ENV_MISSING",
-      details: `Missing env vars: ${config.missing.join(", ")}` 
+      details: `Missing env vars: ${config.missing.join(", ")}`
     });
   }
 
@@ -898,17 +898,17 @@ router.get("/google/start", loginRateLimit, (req, res) => {
 
 router.get("/google/callback", loginRateLimit, async (req, res) => {
   const { code, state, error: googleError, error_description } = req.query;
-  
+
   // Handle Google OAuth errors (e.g., user denied access)
   if (googleError) {
-    // eslint-disable-next-line no-console
+
     console.warn("[google/callback] Google returned error:", googleError, error_description);
     return res.redirect(`/login?error=google_denied&reason=${encodeURIComponent(error_description || googleError)}`);
   }
-  
+
   const config = checkGoogleOAuthConfig();
   if (!config.available) {
-    // eslint-disable-next-line no-console
+
     console.warn("[google/callback] OAuth not configured - missing:", config.missing.join(", "));
     return res.redirect("/login?error=oauth_not_configured");
   }
@@ -917,7 +917,7 @@ router.get("/google/callback", loginRateLimit, async (req, res) => {
   const cookies = parseCookies(req);
   const savedState = cookies.oauth_state;
   if (!savedState || savedState !== state) {
-    // eslint-disable-next-line no-console
+
     console.warn("[google/callback] Invalid state - saved:", !!savedState, "matches:", savedState === state);
     return res.redirect("/login?error=invalid_state");
   }
@@ -934,7 +934,7 @@ router.get("/google/callback", loginRateLimit, async (req, res) => {
   appendSetCookie(res, clearState);
 
   if (!code) {
-    // eslint-disable-next-line no-console
+
     console.warn("[google/callback] No authorization code received");
     return res.redirect("/login?error=no_code");
   }
@@ -946,7 +946,7 @@ router.get("/google/callback", loginRateLimit, async (req, res) => {
       try { pool = await ensurePool(); } catch { /* retry failed */ }
     }
     if (!pool) {
-      // eslint-disable-next-line no-console
+
       console.error("[google/callback] DB unavailable");
       return res.redirect("/login?error=db_unavailable");
     }
@@ -967,9 +967,9 @@ router.get("/google/callback", loginRateLimit, async (req, res) => {
     const tokenData = await tokenRes.json();
 
     if (!tokenRes.ok) {
-      // eslint-disable-next-line no-console
+
       console.error("[google/callback] Token exchange failed:", tokenRes.status, tokenData);
-      
+
       // Check for redirect_uri_mismatch specifically
       if (tokenData.error === "redirect_uri_mismatch") {
         return res.redirect("/login?error=redirect_uri_mismatch");
@@ -986,7 +986,7 @@ router.get("/google/callback", loginRateLimit, async (req, res) => {
     });
 
     if (!userInfoRes.ok) {
-      // eslint-disable-next-line no-console
+
       console.error("[google/callback] User info fetch failed:", userInfoRes.status);
       return res.redirect("/login?error=userinfo_failed");
     }
@@ -1001,7 +1001,7 @@ router.get("/google/callback", loginRateLimit, async (req, res) => {
     });
 
     if (result.error) {
-      // eslint-disable-next-line no-console
+
       console.error("[google/callback] findOrCreateGoogleUser error:", result.error);
       if (result.error === DB_UNAVAILABLE_MSG) {
         return res.redirect("/login?error=db_unavailable");
@@ -1015,7 +1015,7 @@ router.get("/google/callback", loginRateLimit, async (req, res) => {
       // Create a login challenge ticket for 2FA
       const challenge = await createLoginChallenge(result.user.id, true);
       if (!challenge) {
-        // eslint-disable-next-line no-console
+
         console.error("[google/callback] Failed to create 2FA challenge for user:", result.user.id);
         return res.redirect("/login?error=2fa_challenge_failed");
       }
@@ -1026,18 +1026,18 @@ router.get("/google/callback", loginRateLimit, async (req, res) => {
     // Create session
     const session = await createSession(result.user.id, req.ip, req.get("user-agent"), true);
     if (!session) {
-      // eslint-disable-next-line no-console
+
       console.error("[google/callback] Session creation failed for user:", result.user.id);
       return res.redirect("/login?error=session_failed");
     }
 
     setSessionCookie(res, session.sid, true, req);
-    // eslint-disable-next-line no-console
+
     console.info("[google/callback] Success - user:", result.user.id, "email:", userInfo.email);
     return res.redirect("/?login=google");
 
   } catch (e) {
-    // eslint-disable-next-line no-console
+
     console.error("[google/callback] Unexpected error:", e?.message || e);
     return res.redirect("/login?error=oauth_error");
   }
@@ -1053,7 +1053,7 @@ router.get("/google/status", loginRateLimit, async (req, res) => {
 
   // Log configuration status for debugging (only if unavailable)
   if (!config.available) {
-    // eslint-disable-next-line no-console
+
     console.info(`[auth] Google OAuth disabled - missing env vars: ${config.missing.join(", ")}`);
   }
 

@@ -45,7 +45,7 @@ if (IS_PROD) {
       return res.sendFile(path.join(dist, "index.html"));
     });
   } else {
-    // eslint-disable-next-line no-console
+
     console.warn('[server] dist/ not found. Run "npm run build" first.');
   }
 }
@@ -100,7 +100,7 @@ async function shutdown(signal) {
   // without it the timer keeps the event loop alive and prevents normal
   // exit on the happy path.
   setTimeout(() => {
-    // eslint-disable-next-line no-console
+
     console.error("[server] hard-exit after 25s — graceful shutdown stalled");
     process.exit(1);
   }, 25_000).unref();
@@ -121,11 +121,11 @@ async function shutdown(signal) {
       // eslint-disable-next-line no-console
       console.log("[server] HTTP server closed cleanly");
     } else {
-      // eslint-disable-next-line no-console
+
       console.warn("[server] no server instance to close (received signal during boot)");
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
+
     console.warn("[server] HTTP server close failed:", err?.message || err);
     exitCode = 1;
   }
@@ -137,7 +137,7 @@ async function shutdown(signal) {
     // eslint-disable-next-line no-console
     console.log("[server] pg pool ended");
   } catch (err) {
-    // eslint-disable-next-line no-console
+
     console.warn("[server] pool.end() failed:", err?.message || err);
     exitCode = 1;
   }
