@@ -33,6 +33,7 @@ function RecurringForm({ open, onClose, initial }) {
   const [startDate, setStartDate] = useState(
     initial?.startDate ? initial.startDate.slice(0, 10) : new Date().toISOString().slice(0, 10)
   );
+  const [err, setErr] = useState("");
 
   const cats = useMemo(
     () =>
@@ -54,6 +55,7 @@ function RecurringForm({ open, onClose, initial }) {
       setStartDate(
         initial?.startDate ? initial.startDate.slice(0, 10) : new Date().toISOString().slice(0, 10)
       );
+      setErr("");
     }
   }, [open, initial, wallets]);
 
@@ -91,7 +93,7 @@ function RecurringForm({ open, onClose, initial }) {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-xs text-slate-500 mb-1 inline-block">{t("tx.amount")}</label>
-            <Input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
+            <Input type="number" step="0.01" value={amount} onChange={(e) => { setAmount(e.target.value); if (err) setErr(""); }} invalid={!!err} />
           </div>
           <div>
             <label className="text-xs text-slate-500 mb-1 inline-block">{t("tx.wallet")}</label>
@@ -152,6 +154,7 @@ function RecurringForm({ open, onClose, initial }) {
           <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
         </div>
 
+        {err && <p className="text-xs text-red-500">{err}</p>}
         <div className="flex gap-2 pt-2">
           <Button variant="secondary" size="lg" className="flex-1" onClick={onClose}>
             {t("common.cancel")}
@@ -161,9 +164,9 @@ function RecurringForm({ open, onClose, initial }) {
             className="flex-1"
             onClick={() => {
               const wallet = wallets.find((w) => w.id === walletId);
-              if (!wallet) return;
+              if (!wallet) { setErr(t("validation.selectWallet")); return; }
               const cents = toCents(amount);
-              if (cents <= 0) return;
+              if (cents <= 0) { setErr(t("validation.amountRequired")); return; }
               const nextRunIso = new Date(startDate).toISOString();
               upsert("recurring", {
                 id: initial?.id,

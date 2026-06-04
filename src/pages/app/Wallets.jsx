@@ -25,6 +25,7 @@ function WalletForm({ open, onClose, initial }) {
   const [currency, setCurrency] = useState(initial?.currency || "UAH");
   const [icon, setIcon] = useState(initial?.icon || "💵");
   const [balance, setBalance] = useState(initial ? String((initial.balance_cents || 0) / 100) : "0");
+  const [err, setErr] = useState("");
 
   React.useEffect(() => {
     if (open) {
@@ -33,6 +34,7 @@ function WalletForm({ open, onClose, initial }) {
       setCurrency(initial?.currency || "UAH");
       setIcon(initial?.icon || "💵");
       setBalance(initial ? String((initial.balance_cents || 0) / 100) : "0");
+      setErr("");
     }
   }, [open, initial]);
 
@@ -41,7 +43,8 @@ function WalletForm({ open, onClose, initial }) {
       <div className="space-y-3">
         <div>
           <label className="text-xs text-slate-500 mb-1 inline-block">{t("wallets.name")}</label>
-          <Input value={name} onChange={(e) => setName(e.target.value)} required />
+          <Input value={name} onChange={(e) => { setName(e.target.value); if (err) setErr(""); }} invalid={!!err} required />
+          {err && <p className="text-xs text-red-500 mt-1">{err}</p>}
         </div>
         <div>
           <label className="text-xs text-slate-500 mb-1 inline-block">{t("wallets.type")}</label>
@@ -112,7 +115,7 @@ function WalletForm({ open, onClose, initial }) {
             size="lg"
             className="flex-1"
             onClick={() => {
-              if (!name.trim()) return;
+              if (!name.trim()) { setErr(t("validation.nameRequired")); return; }
               upsert("wallets", {
                 id: initial?.id,
                 name: name.trim(),

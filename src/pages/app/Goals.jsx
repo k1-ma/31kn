@@ -26,6 +26,7 @@ function GoalForm({ open, onClose, initial }) {
     initial?.target_date ? initial.target_date.slice(0, 10) : ""
   );
   const [icon, setIcon] = useState(initial?.icon || "🎯");
+  const [err, setErr] = useState("");
 
   useEffect(() => {
     if (open) {
@@ -35,13 +36,17 @@ function GoalForm({ open, onClose, initial }) {
       setCurrency(initial?.currency || state.prefs?.baseCurrency || "UAH");
       setDeadline(initial?.target_date ? initial.target_date.slice(0, 10) : "");
       setIcon(initial?.icon || "🎯");
+      setErr("");
     }
   }, [open, initial, state.prefs]);
 
   return (
     <BottomSheet open={open} onClose={onClose} title={initial ? t("common.edit") : t("goals.add")}>
       <div className="space-y-3">
-        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("wallets.name")} />
+        <div>
+          <Input value={name} onChange={(e) => { setName(e.target.value); if (err) setErr(""); }} invalid={!!err} placeholder={t("wallets.name")} />
+          {err && <p className="text-xs text-red-500 mt-1">{err}</p>}
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-xs text-slate-500 mb-1 inline-block">{t("goals.target")}</label>
@@ -97,7 +102,7 @@ function GoalForm({ open, onClose, initial }) {
             size="lg"
             className="flex-1"
             onClick={() => {
-              if (!name.trim()) return;
+              if (!name.trim()) { setErr(t("validation.nameRequired")); return; }
               upsert("goals", {
                 id: initial?.id,
                 name: name.trim(),

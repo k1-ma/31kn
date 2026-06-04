@@ -25,6 +25,7 @@ function BudgetForm({ open, onClose, initial }) {
   const [currency, setCurrency] = useState(initial?.currency || state.prefs?.baseCurrency || "UAH");
   const [categoryIds, setCategoryIds] = useState(initial?.categoryIds || []);
   const [alertAt, setAlertAt] = useState(initial?.alertAt || 80);
+  const [err, setErr] = useState("");
 
   React.useEffect(() => {
     if (open) {
@@ -34,6 +35,7 @@ function BudgetForm({ open, onClose, initial }) {
       setCurrency(initial?.currency || state.prefs?.baseCurrency || "UAH");
       setCategoryIds(initial?.categoryIds || []);
       setAlertAt(initial?.alertAt || 80);
+      setErr("");
     }
   }, [open, initial, state.prefs]);
 
@@ -44,7 +46,10 @@ function BudgetForm({ open, onClose, initial }) {
   return (
     <BottomSheet open={open} onClose={onClose} title={initial ? t("common.edit") : t("budgets.add")}>
       <div className="space-y-3">
-        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("wallets.name")} />
+        <div>
+          <Input value={name} onChange={(e) => { setName(e.target.value); if (err) setErr(""); }} invalid={!!err} placeholder={t("wallets.name")} />
+          {err && <p className="text-xs text-red-500 mt-1">{err}</p>}
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-xs text-slate-500 mb-1 inline-block">{t("budgets.limit")}</label>
@@ -103,7 +108,8 @@ function BudgetForm({ open, onClose, initial }) {
             size="lg"
             className="flex-1"
             onClick={() => {
-              if (!name.trim()) return;
+              if (!name.trim()) { setErr(t("validation.nameRequired")); return; }
+              if (categoryIds.length === 0) { setErr(t("validation.categoriesRequired")); return; }
               upsert("budgets", {
                 id: initial?.id,
                 name: name.trim(),

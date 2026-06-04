@@ -19,19 +19,24 @@ function CategoryForm({ open, onClose, initial }) {
   const [name, setName] = useState(initial?.name || "");
   const [kind, setKind] = useState(initial?.kind || "expense");
   const [icon, setIcon] = useState(initial?.icon || "❓");
+  const [err, setErr] = useState("");
 
   React.useEffect(() => {
     if (open) {
       setName(initial?.name || "");
       setKind(initial?.kind || "expense");
       setIcon(initial?.icon || "❓");
+      setErr("");
     }
   }, [open, initial]);
 
   return (
     <BottomSheet open={open} onClose={onClose} title={initial ? t("common.edit") : t("categories.add")}>
       <div className="space-y-3">
-        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("wallets.name")} />
+        <div>
+          <Input value={name} onChange={(e) => { setName(e.target.value); if (err) setErr(""); }} invalid={!!err} placeholder={t("wallets.name")} />
+          {err && <p className="text-xs text-red-500 mt-1">{err}</p>}
+        </div>
         <div className="grid grid-cols-2 gap-2">
           {["expense", "income"].map((k) => (
             <button
@@ -70,7 +75,7 @@ function CategoryForm({ open, onClose, initial }) {
             size="lg"
             className="flex-1"
             onClick={() => {
-              if (!name.trim()) return;
+              if (!name.trim()) { setErr(t("validation.nameRequired")); return; }
               upsert("categories", {
                 id: initial?.id,
                 name: name.trim(),

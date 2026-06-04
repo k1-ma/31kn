@@ -47,6 +47,13 @@ const UK = {
     purgeTitle: "Видалити назавжди?",
     purgeMessage: "Цю дію не можна скасувати.",
   },
+  validation: {
+    nameRequired: "Введіть назву",
+    selectWallet: "Оберіть гаманець",
+    amountRequired: "Введіть суму більше нуля",
+    sameWallet: "Оберіть два різні гаманці",
+    categoriesRequired: "Оберіть хоча б одну категорію",
+  },
   nav: {
     dashboard: "Головна",
     transactions: "Транзакції",
@@ -372,6 +379,13 @@ const EN = {
     deleteMessage: "You can restore this from trash.",
     purgeTitle: "Delete permanently?",
     purgeMessage: "This cannot be undone.",
+  },
+  validation: {
+    nameRequired: "Enter a name",
+    selectWallet: "Select a wallet",
+    amountRequired: "Enter an amount greater than zero",
+    sameWallet: "Choose two different wallets",
+    categoriesRequired: "Select at least one category",
   },
   nav: {
     dashboard: "Dashboard",
