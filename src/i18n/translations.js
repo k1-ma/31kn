@@ -54,6 +54,14 @@ const UK = {
     sameWallet: "Оберіть два різні гаманці",
     categoriesRequired: "Оберіть хоча б одну категорію",
   },
+  onboarding: {
+    title: "Ласкаво просимо до Koshyk!",
+    body: "Кілька кроків — і ваші фінанси під контролем.",
+    step1: "Гаманці та категорії вже створені — змініть їх під себе",
+    step2: "Додайте першу транзакцію",
+    step3: "Налаштуйте бюджет, щоб тримати витрати в межах",
+    cta: "Додати транзакцію",
+  },
   nav: {
     dashboard: "Головна",
     transactions: "Транзакції",
@@ -386,6 +394,14 @@ const EN = {
     amountRequired: "Enter an amount greater than zero",
     sameWallet: "Choose two different wallets",
     categoriesRequired: "Select at least one category",
+  },
+  onboarding: {
+    title: "Welcome to Koshyk!",
+    body: "A few quick steps and your money is under control.",
+    step1: "Your wallets and categories are ready — tweak them to fit",
+    step2: "Add your first transaction",
+    step3: "Set a budget to keep spending in check",
+    cta: "Add a transaction",
   },
   nav: {
     dashboard: "Dashboard",
