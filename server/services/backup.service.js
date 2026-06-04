@@ -70,7 +70,7 @@ export async function generateBackupPayload(pool) {
 
   for (const { name, orderBy } of tables) {
     if (!SAFE_IDENT_RE.test(name) || !SAFE_ORDER_RE.test(orderBy)) {
-      // eslint-disable-next-line no-console
+
       console.warn(`[backup] Refusing unsafe identifier in backup config: ${name}/${orderBy}`);
       payload.tables[name] = [];
       continue;
@@ -80,7 +80,7 @@ export async function generateBackupPayload(pool) {
       payload.tables[name] = result.rows || [];
     } catch (err) {
       // Table might not exist yet, store empty array
-      // eslint-disable-next-line no-console
+
       console.warn(`[backup] Could not backup table ${name}`);
       payload.tables[name] = [];
     }

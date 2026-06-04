@@ -17,24 +17,29 @@ export async function getAllUsers() {
   const pool = getPool();
   if (!pool) return [];
   const r = await pool.query(`
-    SELECT 
-      u.id, 
-      u.username, 
-      u.nickname, 
-      u.role, 
-      u.role_color, 
-      u.is_disabled, 
-      u.disabled_reason, 
-      u.disabled_until, 
-      u.email, 
+    SELECT
+      u.id,
+      u.username,
+      u.nickname,
+      u.role,
+      u.role_color,
+      u.is_disabled,
+      u.disabled_reason,
+      u.disabled_until,
+      u.email,
       u.created_ip,
-      u.created_at, 
+      u.created_at,
       u.updated_at,
-      COALESCE(jsonb_array_length(s.state_json->'wallets'), 0) AS wallets_count,
-      COALESCE(jsonb_array_length(s.state_json->'transactions'), 0) AS transactions_count,
+      COALESCE(w.cnt, 0) AS wallets_count,
+      COALESCE(t.cnt, 0) AS transactions_count,
       ls.ip AS last_ip
     FROM users u
-    LEFT JOIN states s ON s.user_id = u.id
+    LEFT JOIN (
+      SELECT user_id, count(*) AS cnt FROM wallets WHERE deleted_at IS NULL GROUP BY user_id
+    ) w ON w.user_id = u.id
+    LEFT JOIN (
+      SELECT user_id, count(*) AS cnt FROM transactions WHERE deleted_at IS NULL GROUP BY user_id
+    ) t ON t.user_id = u.id
     LEFT JOIN (
       SELECT DISTINCT ON (user_id) user_id, ip
       FROM sessions
@@ -121,7 +126,7 @@ export async function updateUser(id, { nickname, newPassword, role, role_color, 
     }
   }
   const nextDisabled = is_disabled !== undefined ? !!is_disabled : !!u.is_disabled;
-  
+
   // Handle email update with validation
   let nextEmail = u.email;
   if (changingEmail) {
@@ -265,9 +270,9 @@ export async function banUser(id, { reason, disabled_until, adminId }) {
   if (u.role === "admin") return { error: "Cannot ban admin" };
 
   await pool.query(
-    `UPDATE users 
-     SET is_disabled = true, 
-         disabled_reason = $1, 
+    `UPDATE users
+     SET is_disabled = true,
+         disabled_reason = $1,
          disabled_until = $2,
          updated_at = now()
      WHERE id = $3`,
@@ -289,9 +294,9 @@ export async function unbanUser(id, adminId) {
   if (!u) return { error: "User not found" };
 
   await pool.query(
-    `UPDATE users 
-     SET is_disabled = false, 
-         disabled_reason = NULL, 
+    `UPDATE users
+     SET is_disabled = false,
+         disabled_reason = NULL,
          disabled_until = NULL,
          updated_at = now()
      WHERE id = $1`,
@@ -354,7 +359,7 @@ export async function isIpBanned(ip) {
   if (!ip) return null;
 
   const r = await pool.query(
-    `SELECT id, ip, reason, expires_at FROM ip_bans 
+    `SELECT id, ip, reason, expires_at FROM ip_bans
      WHERE ip = $1 AND (expires_at IS NULL OR expires_at > now())`,
     [String(ip)]
   );
@@ -387,7 +392,7 @@ export async function getUsageStats({ dayFrom, dayTo, userId }) {
   }
 
   const sql = `
-    SELECT 
+    SELECT
       u.day,
       u.user_id,
       u.ip,
@@ -407,7 +412,7 @@ export async function getUsageStats({ dayFrom, dayTo, userId }) {
 
   // Get totals
   const totalsSql = `
-    SELECT 
+    SELECT
       COALESCE(SUM(requests), 0) as total_requests,
       COALESCE(SUM(bytes_in), 0) as total_bytes_in,
       COALESCE(SUM(bytes_out), 0) as total_bytes_out,
@@ -433,10 +438,10 @@ export async function getDashboardStats() {
     pool.query("SELECT COUNT(DISTINCT user_id) as count FROM sessions WHERE revoked = false AND expires_at > now()"),
     pool.query("SELECT COALESCE(reltuples, 0)::bigint as count FROM pg_class WHERE relname = 'admin_logs'"),
     pool.query(`
-      SELECT 
+      SELECT
         COALESCE(SUM(requests), 0) as requests_today,
         COALESCE(SUM(bytes_out), 0) as bytes_today
-      FROM usage_daily 
+      FROM usage_daily
       WHERE day = CURRENT_DATE
     `),
     pool.query(`
@@ -460,9 +465,10 @@ export async function getDashboardStats() {
   };
 }
 
-// Refresh the user_stats_cache table from the live states table.
-// This is the one place that does the expensive JSONB full-scan, but it is
-// rate-limited to at most once per 10 minutes.
+// Refresh the user_stats_cache table from the normalized per-entity tables.
+// In the v1 blob model this was an expensive JSONB full-scan (and timed out
+// on large accounts); in v2 it is three indexed COUNT(*) aggregates. Still
+// rate-limited to once per 10 minutes to keep load predictable.
 export async function refreshUserStatsCache() {
   const pool = getPool();
   if (!pool) return { error: "Database unavailable" };
@@ -484,13 +490,15 @@ export async function refreshUserStatsCache() {
     const r = await client.query(`
       INSERT INTO user_stats_cache (user_id, transactions_count, wallets_count, categories_count, updated_at)
       SELECT
-        s.user_id,
-        COALESCE(jsonb_array_length(COALESCE(s.state_json->'transactions',    '[]'::jsonb)), 0),
-        COALESCE(jsonb_array_length(COALESCE(s.state_json->'wallets',  '[]'::jsonb)), 0),
-        COALESCE(jsonb_array_length(COALESCE(s.state_json->'categories', '[]'::jsonb)), 0),
+        u.id,
+        COALESCE(t.cnt, 0),
+        COALESCE(w.cnt, 0),
+        COALESCE(c.cnt, 0),
         now()
-      FROM states s
-      WHERE s.state_json IS NOT NULL
+      FROM users u
+      LEFT JOIN (SELECT user_id, count(*) cnt FROM transactions WHERE deleted_at IS NULL GROUP BY user_id) t ON t.user_id = u.id
+      LEFT JOIN (SELECT user_id, count(*) cnt FROM wallets      WHERE deleted_at IS NULL GROUP BY user_id) w ON w.user_id = u.id
+      LEFT JOIN (SELECT user_id, count(*) cnt FROM categories   WHERE deleted_at IS NULL GROUP BY user_id) c ON c.user_id = u.id
       ON CONFLICT (user_id) DO UPDATE SET
         transactions_count    = EXCLUDED.transactions_count,
         wallets_count  = EXCLUDED.wallets_count,
@@ -511,7 +519,7 @@ export async function refreshUserStatsCache() {
 }
 
 // Range metrics: counts of new transactions/wallets/categories/active users
-// over the requested window. Reads timestamps embedded in state_json.
+// over the requested window. Reads created_at on the normalized per-entity tables.
 export async function getDashboardSummary(fromDate, toDate) {
   const pool = getPool();
   if (!pool) return null;
@@ -522,10 +530,6 @@ export async function getDashboardSummary(fromDate, toDate) {
   if (cached && Date.now() - cached.ts < SUMMARY_CACHE_TTL) {
     return cached.data;
   }
-
-  // Convert dates to milliseconds for JSONB createdAt comparison
-  const fromMs = new Date(fromDate).setUTCHours(0, 0, 0, 0);
-  const toMs = new Date(toDate).setUTCHours(23, 59, 59, 999);
 
   // Convert dates to UTC ISO for SQL date comparisons
   const fromDateObj = new Date(fromDate);
@@ -546,64 +550,32 @@ export async function getDashboardSummary(fromDate, toDate) {
     console.error("[admin] getDashboardSummary lightweight queries error:", err?.message || err);
   }
 
-  // Heavy JSONB query for period-filtered finance entities.
-  // Uses a dedicated client with raised statement_timeout + JS-side timeout
+  // Period-filtered finance entity counts. In v1 this was a JSONB
+  // jsonb_array_elements full-scan that routinely timed out; in v2 each is a
+  // single indexed COUNT(*) over created_at, so no statement_timeout dance or
+  // JS-side race is needed.
   let transactionsCreated = null;
   let walletsCreated = null;
   let categoriesCreated = null;
 
-  const client = await pool.connect();
   try {
-    await client.query("SET statement_timeout = '30s'");
-
-    // JS-side timeout is shorter (25s) so we can release the client gracefully
-    // before the PostgreSQL statement_timeout (30s) fires.
-    const jsTimeout = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("JSONB query timed out after 25s")), 25_000)
-    );
-
-    const jsonbQuery = client.query(
+    const countsResult = await pool.query(
       `SELECT
-        COUNT(*) FILTER (WHERE elem_type = 'transaction') AS trades_created,
-        COUNT(*) FILTER (WHERE elem_type = 'wallet') AS accounts_created,
-        COUNT(*) FILTER (WHERE elem_type = 'category') AS documents_created
-      FROM (
-        SELECT 'transaction' AS elem_type
-        FROM states s, jsonb_array_elements(COALESCE(s.state_json->'transactions', '[]'::jsonb)) AS elem
-        WHERE s.state_json IS NOT NULL
-          AND (elem->>'createdAt')::bigint BETWEEN $1 AND $2
-          AND (elem->>'deletedAt') IS NULL
-        UNION ALL
-        SELECT 'account' AS elem_type
-        FROM states s, jsonb_array_elements(COALESCE(s.state_json->'wallets', '[]'::jsonb)) AS elem
-        WHERE s.state_json IS NOT NULL
-          AND (elem->>'createdAt')::bigint BETWEEN $1 AND $2
-          AND (elem->>'deletedAt') IS NULL
-          AND (elem->>'archivedAt') IS NULL
-        UNION ALL
-        SELECT 'category' AS elem_type
-        FROM states s, jsonb_array_elements(COALESCE(s.state_json->'categories', '[]'::jsonb)) AS elem
-        WHERE s.state_json IS NOT NULL
-          AND (elem->>'createdAt')::bigint BETWEEN $1 AND $2
-          AND (elem->>'deletedAt') IS NULL
-      ) combined`,
-      [fromMs, toMs]
+        (SELECT count(*) FROM transactions WHERE deleted_at IS NULL AND created_at BETWEEN $1 AND $2) AS transactions_created,
+        (SELECT count(*) FROM wallets      WHERE deleted_at IS NULL AND created_at BETWEEN $1 AND $2) AS wallets_created,
+        (SELECT count(*) FROM categories   WHERE deleted_at IS NULL AND created_at BETWEEN $1 AND $2) AS categories_created`,
+      [fromDateObj.toISOString(), toDateObj.toISOString()]
     );
-
-    const jsonbResult = await Promise.race([jsonbQuery, jsTimeout]);
-    const row = jsonbResult.rows?.[0] || {};
-    transactionsCreated = parseInt(row.trades_created || 0);
-    walletsCreated = parseInt(row.accounts_created || 0);
-    categoriesCreated = parseInt(row.documents_created || 0);
+    const row = countsResult.rows?.[0] || {};
+    transactionsCreated = parseInt(row.transactions_created || 0);
+    walletsCreated = parseInt(row.wallets_created || 0);
+    categoriesCreated = parseInt(row.categories_created || 0);
   } catch (err) {
-    console.error("[admin] getDashboardSummary JSONB query error:", err?.message || err);
+    console.error("[admin] getDashboardSummary counts query error:", err?.message || err);
     // Return null to signal frontend to show "—" instead of misleading "0"
     transactionsCreated = null;
     walletsCreated = null;
     categoriesCreated = null;
-  } finally {
-    await client.query("SET statement_timeout = '10s'").catch(() => {});
-    client.release();
   }
 
   const result = {

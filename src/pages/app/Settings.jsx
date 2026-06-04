@@ -35,7 +35,7 @@ function applyTheme(theme) {
 export default function Settings() {
   const { t, lang, setLang } = useI18n();
   const { user, logout } = useAuth();
-  const { state, setPrefs, upsert, update } = useFinance();
+  const { state, setPrefs, upsert, importBackup } = useFinance();
   const toast = useToast();
   const jsonInputRef = useRef(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -96,7 +96,7 @@ export default function Settings() {
       const restored = parseBackup(text);
       const ok = window.confirm(t("settings.restoreConfirm"));
       if (!ok) return;
-      update(restored);
+      await importBackup(restored);
       toast.push({ kind: "success", title: t("toasts.restored") });
     } catch (err) {
       toast.push({ kind: "error", title: err?.message || t("errors.generic") });

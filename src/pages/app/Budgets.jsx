@@ -8,6 +8,7 @@ import BottomSheet from "@/components/ui/BottomSheet.jsx";
 import EmptyState from "@/components/common/EmptyState.jsx";
 import ConfirmDialog from "@/components/ui/ConfirmDialog.jsx";
 import { useFinance, active } from "@/lib/finance/store.jsx";
+import ListSkeleton from "@/components/common/ListSkeleton.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { budgetSpent, budgetProgress } from "@/lib/finance/calc.js";
 import { formatMoney, toCents } from "@/lib/money.js";
@@ -25,6 +26,7 @@ function BudgetForm({ open, onClose, initial }) {
   const [currency, setCurrency] = useState(initial?.currency || state.prefs?.baseCurrency || "UAH");
   const [categoryIds, setCategoryIds] = useState(initial?.categoryIds || []);
   const [alertAt, setAlertAt] = useState(initial?.alertAt || 80);
+  const [err, setErr] = useState("");
 
   React.useEffect(() => {
     if (open) {
@@ -34,6 +36,7 @@ function BudgetForm({ open, onClose, initial }) {
       setCurrency(initial?.currency || state.prefs?.baseCurrency || "UAH");
       setCategoryIds(initial?.categoryIds || []);
       setAlertAt(initial?.alertAt || 80);
+      setErr("");
     }
   }, [open, initial, state.prefs]);
 
@@ -44,7 +47,10 @@ function BudgetForm({ open, onClose, initial }) {
   return (
     <BottomSheet open={open} onClose={onClose} title={initial ? t("common.edit") : t("budgets.add")}>
       <div className="space-y-3">
-        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("wallets.name")} />
+        <div>
+          <Input value={name} onChange={(e) => { setName(e.target.value); if (err) setErr(""); }} invalid={!!err} placeholder={t("wallets.name")} />
+          {err && <p className="text-xs text-red-500 mt-1">{err}</p>}
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-xs text-slate-500 mb-1 inline-block">{t("budgets.limit")}</label>
@@ -103,7 +109,8 @@ function BudgetForm({ open, onClose, initial }) {
             size="lg"
             className="flex-1"
             onClick={() => {
-              if (!name.trim()) return;
+              if (!name.trim()) { setErr(t("validation.nameRequired")); return; }
+              if (categoryIds.length === 0) { setErr(t("validation.categoriesRequired")); return; }
               upsert("budgets", {
                 id: initial?.id,
                 name: name.trim(),
@@ -127,12 +134,13 @@ function BudgetForm({ open, onClose, initial }) {
 
 export default function Budgets() {
   const { t, lang } = useI18n();
-  const { state, remove } = useFinance();
+  const { state, loaded, remove } = useFinance();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const budgets = useMemo(() => active(state.budgets), [state.budgets]);
 
+  if (!loaded) return <ListSkeleton title={t("nav.budgets")} />;
   return (
     <div className="page-enter space-y-4">
       <PageHeader

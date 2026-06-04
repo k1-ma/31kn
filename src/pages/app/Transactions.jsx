@@ -7,6 +7,7 @@ import Button from "@/components/ui/Button.jsx";
 import EmptyState from "@/components/common/EmptyState.jsx";
 import TransactionSheet from "@/pages/app/TransactionSheet.jsx";
 import { useFinance, active } from "@/lib/finance/store.jsx";
+import ListSkeleton from "@/components/common/ListSkeleton.jsx";
 import ConfirmDialog from "@/components/ui/ConfirmDialog.jsx";
 import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { formatMoney } from "@/lib/money.js";
@@ -17,7 +18,7 @@ const TYPE_OPTIONS = ["all", "income", "expense", "transfer"];
 
 export default function Transactions({ autoOpen = false }) {
   const { t, lang } = useI18n();
-  const { state, remove } = useFinance();
+  const { state, loaded, remove } = useFinance();
 
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState(null);
@@ -86,6 +87,7 @@ export default function Transactions({ autoOpen = false }) {
   const filtersActive =
     type !== "all" || walletId !== "all" || categoryId !== "all" || preset !== "month" || typeof preset === "object";
 
+  if (!loaded) return <ListSkeleton title={t("nav.transactions")} />;
   return (
     <div className="page-enter space-y-4">
       <PageHeader

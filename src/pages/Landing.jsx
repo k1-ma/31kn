@@ -274,13 +274,16 @@ function CompareCell({ value }) {
 
 export default function Landing() {
   const { t } = useI18n();
+  // Honest comparison against the two things people actually use to track
+  // money: a spreadsheet and their bank's own app. No invented competitors.
   const compareRows = [
-    ["Безкоштовно назавжди", true, false, false],
-    ["Працює офлайн (PWA)", true, "частково", false],
-    ["Без реклами", true, false, "частково"],
+    ["Гаманці, бюджети й цілі в одному", true, "вручну", "частково"],
+    ["Усі рахунки разом, не один банк", true, true, false],
+    ["Працює офлайн (PWA)", true, true, false],
+    ["Мульти-валюта з курсами", true, "вручну", "частково"],
+    ["Без реклами й продажу даних", true, true, false],
     ["Open-source", true, false, false],
-    ["Мульти-валюта", true, true, true],
-    ["Приватність даних", "локально", "хмара", "хмара"],
+    ["Дані лишаються у вас", "локально", "локально", "у банку"],
   ];
   return (
     <div className="min-h-screen bg-[color:var(--bg)] text-[color:var(--text)]">
@@ -341,7 +344,7 @@ export default function Landing() {
               transition={{ duration: 0.5 }}
             >
               <span className="inline-flex items-center rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider">
-                v2 · оновлено
+                Безкоштовно · Open-source
               </span>
               <h1 className="font-display mt-4 text-4xl md:text-6xl font-bold tracking-tight text-slate-900 dark:text-slate-100 leading-[1.02]">
                 {t("landing.heroTitle")}
@@ -475,8 +478,8 @@ export default function Landing() {
           <div className="grid grid-cols-[2fr,1fr,1fr,1fr] gap-2 px-5 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/40 font-mono text-[11px] uppercase tracking-wider text-slate-500">
             <span />
             <span className="text-center text-indigo-600 dark:text-indigo-400">Koshyk</span>
-            <span className="text-center">App A</span>
-            <span className="text-center">App B</span>
+            <span className="text-center">Таблиця</span>
+            <span className="text-center">Банк-застосунок</span>
           </div>
         </div>
       </Section>

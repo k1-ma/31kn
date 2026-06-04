@@ -37,7 +37,7 @@ function createFallbackApp(err) {
 const appPromise =
   globalThis.__tradej_app_promise ||
   createApp().catch((err) => {
-    // eslint-disable-next-line no-console
+
     console.error("[api] boot error:", err);
     return createFallbackApp(err);
   });

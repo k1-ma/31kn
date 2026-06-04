@@ -5,6 +5,7 @@ import PageHeader from "@/components/ui/PageHeader.jsx";
 import { Card } from "@/components/ui/Card.jsx";
 import AmountDisplay from "@/components/ui/AmountDisplay.jsx";
 import EmptyState from "@/components/common/EmptyState.jsx";
+import OnboardingCard from "@/components/common/OnboardingCard.jsx";
 import Skeleton, { SkeletonCard } from "@/components/ui/Skeleton.jsx";
 import ProgressRing from "@/components/ui/ProgressRing.jsx";
 import { useFinance, active } from "@/lib/finance/store.jsx";
@@ -85,6 +86,8 @@ export default function Dashboard() {
   return (
     <div className="page-enter space-y-5">
       <PageHeader title={greeting} subtitle={new Date().toLocaleDateString(lang === "uk" ? "uk-UA" : "en-US", { weekday: "long", day: "numeric", month: "long" })} />
+
+      <OnboardingCard />
 
       {/* Hero balance card with brand gradient — net worth front and center. */}
       <div className="relative overflow-hidden rounded-3xl bg-brand-gradient text-white p-6 shadow-brand">

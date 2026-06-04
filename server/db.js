@@ -359,6 +359,15 @@ export async function initDb({ admin } = {}) {
     );
     CREATE INDEX IF NOT EXISTS debts_user_idx ON debts(user_id) WHERE deleted_at IS NULL;
 
+    -- Per-user UI preferences (base currency, theme). One row per user, small
+    -- opaque JSONB (≤ 2 KB) — the allowed use of JSONB: settings, NOT an
+    -- entity collection. Replaces the prefs field of the old state blob.
+    CREATE TABLE IF NOT EXISTS user_preferences (
+      user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      prefs JSONB NOT NULL DEFAULT '{}'::jsonb,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
     CREATE TABLE IF NOT EXISTS exchange_rates_cache (
       base TEXT NOT NULL,
       quote TEXT NOT NULL,

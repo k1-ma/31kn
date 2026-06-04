@@ -1,28 +1,29 @@
-import React, { createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { createContext, useContext, useCallback, useEffect, useMemo, useRef } from "react";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/auth/AuthProvider.jsx";
-import { idbStorage } from "@/lib/idbStorage.js";
+import { useToast } from "@/components/common/ToastProvider.jsx";
+import { useI18n } from "@/i18n/I18nProvider.jsx";
 import { apiJson } from "@/lib/api.js";
+import { ENTITY_NAMES, fetchEntity, fetchPrefs, qk } from "@/queries/finance.js";
 import { defaultCategories, defaultWallets } from "./seed.js";
 
 /**
- * The finance store holds the entire user-scoped finance state in a single
- * object: wallets, categories, transactions, budgets, goals, recurring rules,
- * debts, plus user prefs (base currency, theme).
+ * Finance store — v2.
  *
- * State is persisted to IndexedDB (via idbStorage) on every change for
- * instant offline-first reads. For authenticated users the same blob is also
- * mirrored to /api/state using a last-write-wins-by-timestamp strategy at the
- * whole-blob level: a top-level `updatedAt` bumps on every mutation, and on
- * load we adopt whichever side (local IDB vs server) is newer. All network
- * calls are best-effort and never block or throw to the UI, so the app keeps
- * working with no network.
+ * The user's finance data lives in normalized per-entity tables on the server
+ * (wallets, categories, transactions, …). This provider is a thin facade over
+ * TanStack Query: one query per collection feeds a combined `state` object
+ * with the exact shape the pages already consume, and every mutation is an
+ * O(1-row) REST call with an optimistic cache update for instant UX.
+ *
+ * There is no client-side merge/reconcile/sync layer and no IndexedDB blob —
+ * that was the v1 anti-pattern this rebuild removes. TanStack Query owns the
+ * cache; the server owns the truth.
  */
 
-const STATE_KEY_PREFIX = "koshyk:state:";
+const DEFAULT_PREFS = { baseCurrency: "UAH", theme: "system" };
 
-const EMPTY_STATE = {
-  // ISO timestamp of the last local mutation; used for last-write-wins sync.
-  updatedAt: null,
+const EMPTY_LISTS = {
   wallets: [],
   categories: [],
   transactions: [],
@@ -30,10 +31,6 @@ const EMPTY_STATE = {
   goals: [],
   recurring: [],
   debts: [],
-  prefs: {
-    baseCurrency: "UAH",
-    theme: "system", // light | dark | system
-  },
 };
 
 function newId(prefix) {
@@ -44,200 +41,221 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function seedState() {
-  const state = structuredClone(EMPTY_STATE);
-  state.categories = defaultCategories().map((c) => ({
-    id: newId("cat"),
-    createdAt: nowIso(),
-    updatedAt: nowIso(),
-    deletedAt: null,
-    ...c,
-  }));
-  state.wallets = defaultWallets().map((w) => ({
-    id: newId("wal"),
-    createdAt: nowIso(),
-    updatedAt: nowIso(),
-    deletedAt: null,
-    ...w,
-  }));
-  return state;
-}
-
 const FinanceCtx = createContext(null);
 
 export function FinanceProvider({ children }) {
   const { user } = useAuth();
-  const [state, setState] = useState(EMPTY_STATE);
-  const [loaded, setLoaded] = useState(false);
-  const userId = user?.id || "anon";
-  const isAuthed = !!user && userId !== "anon";
+  const qc = useQueryClient();
+  const toast = useToast();
+  const { t } = useI18n();
+  const userId = user?.id ?? "anon";
+  const enabled = !!user;
 
-  // Millisecond timestamp of a state blob's `updatedAt` (0 if unset/invalid).
-  const stateTime = (s) => {
-    const t = s?.updatedAt ? new Date(s.updatedAt).getTime() : 0;
-    return Number.isFinite(t) ? t : 0;
-  };
+  const entityQueries = useQueries({
+    queries: ENTITY_NAMES.map((name) => ({
+      queryKey: qk.entity(name, userId),
+      queryFn: () => fetchEntity(name),
+      enabled,
+    })),
+  });
 
-  useEffect(() => {
-    let alive = true;
-    setLoaded(false);
-    (async () => {
-      const key = `${STATE_KEY_PREFIX}${userId}`;
-      // 1) Load from IDB first for instant render.
-      let local;
-      try {
-        const cached = await idbStorage.get(key);
-        if (!alive) return;
-        if (cached && typeof cached === "object" && Array.isArray(cached.transactions)) {
-          local = { ...EMPTY_STATE, ...cached };
-        } else {
-          local = seedState();
-          await idbStorage.set(key, local);
-        }
-      } catch {
-        local = seedState();
-      }
-      if (!alive) return;
-      setState(local);
-      setLoaded(true);
+  const prefsQuery = useQuery({
+    queryKey: qk.prefs(userId),
+    queryFn: fetchPrefs,
+    enabled,
+  });
 
-      // 2) For authenticated users, reconcile with the server (last-write-wins
-      //    at the whole-blob level). Never block the UI; swallow network errors.
-      if (!isAuthed) return;
-      try {
-        const res = await apiJson("/api/state");
-        if (!alive) return;
-        const serverState = res?.state;
-        const hasServerState =
-          serverState &&
-          typeof serverState === "object" &&
-          Array.isArray(serverState.transactions);
-        // Server may persist its own row updated_at; prefer the blob's own
-        // updatedAt, falling back to the row's updatedAt envelope.
-        const serverTime = hasServerState
-          ? stateTime(serverState) || (res?.updatedAt ? new Date(res.updatedAt).getTime() : 0)
-          : 0;
-        if (hasServerState && serverTime > stateTime(local)) {
-          // Server is newer — adopt it locally and persist to IDB.
-          const merged = { ...EMPTY_STATE, ...serverState };
-          setState(merged);
-          idbStorage.set(key, merged).catch(() => {});
-        } else {
-          // Local is newer or equal (or server empty) — push local up.
-          await apiJson("/api/state", {
-            method: "PUT",
-            body: JSON.stringify({ state: local }),
-          });
-        }
-      } catch {
-        // Offline or server error: keep local state, sync again on next change.
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [userId, isAuthed]);
+  // Loaded once every collection (and prefs) has resolved at least once —
+  // errored queries count as "settled" so a network blip shows the (empty)
+  // UI instead of an infinite spinner.
+  const loaded =
+    enabled && entityQueries.every((q) => !q.isLoading) && !prefsQuery.isLoading;
 
-  // Persist on change, debounced to avoid thrashing IDB on rapid edits.
-  const flushTimer = useRef(null);
+  // Assemble the combined state object the pages expect. Memoized on the raw
+  // query data so it only changes when something actually changed.
+  const dataDeps = entityQueries.map((q) => q.data);
+  const state = useMemo(() => {
+    const next = { updatedAt: nowIso() };
+    ENTITY_NAMES.forEach((name, i) => {
+      next[name] = entityQueries[i].data || EMPTY_LISTS[name];
+    });
+    next.prefs = { ...DEFAULT_PREFS, ...(prefsQuery.data || {}) };
+    return next;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [...dataDeps, prefsQuery.data]);
+
+  // Apply the user's theme app-wide as soon as preferences load. Previously
+  // this only happened on the Settings page, so a saved dark/light choice was
+  // ignored everywhere else until the user opened Settings.
+  const theme = state.prefs.theme;
   useEffect(() => {
     if (!loaded) return;
-    const key = `${STATE_KEY_PREFIX}${userId}`;
-    clearTimeout(flushTimer.current);
-    flushTimer.current = setTimeout(() => {
-      idbStorage.set(key, state).catch(() => {});
-    }, 500);
-    return () => clearTimeout(flushTimer.current);
-  }, [state, loaded, userId]);
+    const root = document.documentElement;
+    if (theme === "dark") {
+      root.classList.add("dark");
+    } else if (theme === "light") {
+      root.classList.remove("dark");
+    } else {
+      const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)")?.matches;
+      root.classList.toggle("dark", !!prefersDark);
+    }
+  }, [theme, loaded]);
 
-  // Push to the server on change, debounced longer (~2s) than the IDB write.
-  // Authenticated users only; errors are swallowed so the UI never blocks.
-  const syncTimer = useRef(null);
-  useEffect(() => {
-    if (!loaded || !isAuthed) return;
-    clearTimeout(syncTimer.current);
-    syncTimer.current = setTimeout(() => {
-      apiJson("/api/state", {
-        method: "PUT",
-        body: JSON.stringify({ state }),
-      }).catch(() => {});
-    }, 2000);
-    return () => clearTimeout(syncTimer.current);
-  }, [state, loaded, isAuthed]);
+  const onError = useCallback(() => {
+    toast.push({ kind: "error", title: t("errors.generic") });
+  }, [toast, t]);
 
-  const update = useCallback((patch) => {
-    setState((prev) => ({
-      ...prev,
-      ...(typeof patch === "function" ? patch(prev) : patch),
-      updatedAt: nowIso(),
-    }));
-  }, []);
+  const setList = useCallback(
+    (name, updater) => {
+      qc.setQueryData(qk.entity(name, userId), (old) => updater(old || []));
+    },
+    [qc, userId]
+  );
 
-  // Generic CRUD on a named collection.
-  const upsert = useCallback((collection, item) => {
-    setState((prev) => {
-      const list = prev[collection] || [];
+  // Create-or-update one entity. Optimistic, then reconciled with the server
+  // row; rolls back the cache on failure.
+  const upsert = useCallback(
+    (name, item) => {
+      const key = qk.entity(name, userId);
+      const list = qc.getQueryData(key) || [];
       const ts = nowIso();
-      const existingIdx = item.id ? list.findIndex((x) => x.id === item.id) : -1;
-      if (existingIdx >= 0) {
-        const next = list.slice();
-        next[existingIdx] = { ...next[existingIdx], ...item, updatedAt: ts };
-        return { ...prev, [collection]: next, updatedAt: ts };
+      const isUpdate = item.id && list.some((x) => x.id === item.id);
+      const prev = list;
+
+      if (isUpdate) {
+        setList(name, (l) => l.map((x) => (x.id === item.id ? { ...x, ...item, updatedAt: ts } : x)));
+        apiJson(`/api/${name}/${item.id}`, { method: "PUT", body: JSON.stringify(item) })
+          .then((res) => {
+            if (res?.item) setList(name, (l) => l.map((x) => (x.id === item.id ? res.item : x)));
+          })
+          .catch(() => {
+            qc.setQueryData(key, prev);
+            onError();
+          });
+      } else {
+        const id = item.id || newId(name.slice(0, 3));
+        const optimistic = { ...item, id, createdAt: ts, updatedAt: ts, deletedAt: null };
+        setList(name, (l) => [...l, optimistic]);
+        apiJson(`/api/${name}`, { method: "POST", body: JSON.stringify(optimistic) })
+          .then((res) => {
+            if (res?.item) setList(name, (l) => l.map((x) => (x.id === id ? res.item : x)));
+          })
+          .catch(() => {
+            qc.setQueryData(key, prev);
+            onError();
+          });
       }
-      const created = {
-        id: item.id || newId(collection.slice(0, 3)),
-        createdAt: ts,
-        updatedAt: ts,
-        deletedAt: null,
-        ...item,
-      };
-      return { ...prev, [collection]: [...list, created], updatedAt: ts };
-    });
-  }, []);
+    },
+    [qc, userId, setList, onError]
+  );
 
-  const remove = useCallback((collection, id) => {
-    setState((prev) => {
-      const list = prev[collection] || [];
+  const remove = useCallback(
+    (name, id) => {
+      const key = qk.entity(name, userId);
+      const prev = qc.getQueryData(key) || [];
       const ts = nowIso();
-      return {
-        ...prev,
-        [collection]: list.map((x) => (x.id === id ? { ...x, deletedAt: ts, updatedAt: ts } : x)),
-        updatedAt: ts,
-      };
-    });
-  }, []);
+      setList(name, (l) => l.map((x) => (x.id === id ? { ...x, deletedAt: ts, updatedAt: ts } : x)));
+      apiJson(`/api/${name}/${id}`, { method: "DELETE" })
+        .then((res) => {
+          if (res?.item) setList(name, (l) => l.map((x) => (x.id === id ? res.item : x)));
+        })
+        .catch(() => {
+          qc.setQueryData(key, prev);
+          onError();
+        });
+    },
+    [qc, userId, setList, onError]
+  );
 
-  const restore = useCallback((collection, id) => {
-    setState((prev) => {
-      const list = prev[collection] || [];
+  const restore = useCallback(
+    (name, id) => {
+      const key = qk.entity(name, userId);
+      const prev = qc.getQueryData(key) || [];
       const ts = nowIso();
-      return {
-        ...prev,
-        [collection]: list.map((x) => (x.id === id ? { ...x, deletedAt: null, updatedAt: ts } : x)),
-        updatedAt: ts,
-      };
-    });
-  }, []);
+      setList(name, (l) => l.map((x) => (x.id === id ? { ...x, deletedAt: null, updatedAt: ts } : x)));
+      apiJson(`/api/${name}/${id}/restore`, { method: "POST" })
+        .then((res) => {
+          if (res?.item) setList(name, (l) => l.map((x) => (x.id === id ? res.item : x)));
+        })
+        .catch(() => {
+          qc.setQueryData(key, prev);
+          onError();
+        });
+    },
+    [qc, userId, setList, onError]
+  );
 
-  const purge = useCallback((collection, id) => {
-    setState((prev) => ({
-      ...prev,
-      [collection]: (prev[collection] || []).filter((x) => x.id !== id),
-      updatedAt: nowIso(),
-    }));
-  }, []);
+  const purge = useCallback(
+    (name, id) => {
+      const key = qk.entity(name, userId);
+      const prev = qc.getQueryData(key) || [];
+      setList(name, (l) => l.filter((x) => x.id !== id));
+      apiJson(`/api/${name}/${id}/purge`, { method: "DELETE" }).catch(() => {
+        qc.setQueryData(key, prev);
+        onError();
+      });
+    },
+    [qc, userId, setList, onError]
+  );
 
-  const setPrefs = useCallback((patch) => {
-    setState((prev) => ({
-      ...prev,
-      prefs: { ...(prev.prefs || {}), ...patch },
-      updatedAt: nowIso(),
-    }));
-  }, []);
+  const setPrefs = useCallback(
+    (patch) => {
+      const key = qk.prefs(userId);
+      const prev = qc.getQueryData(key) || {};
+      const next = { ...DEFAULT_PREFS, ...prev, ...patch };
+      qc.setQueryData(key, next);
+      apiJson(`/api/preferences`, { method: "PUT", body: JSON.stringify({ prefs: next }) }).catch(() => {
+        qc.setQueryData(key, prev);
+        onError();
+      });
+    },
+    [qc, userId, onError]
+  );
+
+  // Whole-account restore from a backup file. A single transactional bulk
+  // import on the server, then refetch everything.
+  const importBackup = useCallback(
+    async (payload) => {
+      await apiJson(`/api/import`, { method: "POST", body: JSON.stringify({ data: payload }) });
+      await qc.invalidateQueries({ queryKey: qk.all(userId) });
+    },
+    [qc, userId]
+  );
+
+  // First-run seeding: a brand-new account (every collection empty) gets the
+  // default categories + wallets so the app isn't a blank slate. Guarded by a
+  // per-user flag so we never re-seed after a user intentionally clears data.
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (!loaded || !enabled || seededRef.current) return;
+    seededRef.current = true;
+    const flag = `koshyk:seeded:${userId}`;
+    try {
+      if (localStorage.getItem(flag)) return;
+    } catch {}
+    const allEmpty = ENTITY_NAMES.every((n) => (qc.getQueryData(qk.entity(n, userId)) || []).length === 0);
+    if (!allEmpty) {
+      try { localStorage.setItem(flag, "1"); } catch {}
+      return;
+    }
+    const ts = nowIso();
+    const categories = defaultCategories().map((c) => ({ id: newId("cat"), createdAt: ts, updatedAt: ts, deletedAt: null, ...c }));
+    const wallets = defaultWallets().map((w) => ({ id: newId("wal"), createdAt: ts, updatedAt: ts, deletedAt: null, ...w }));
+    qc.setQueryData(qk.entity("categories", userId), categories);
+    qc.setQueryData(qk.entity("wallets", userId), wallets);
+    apiJson(`/api/import`, { method: "POST", body: JSON.stringify({ data: { categories, wallets } }) })
+      .then(() => {
+        try { localStorage.setItem(flag, "1"); } catch {}
+      })
+      .catch(() => {
+        // Leave the flag unset so seeding is retried on the next load.
+        seededRef.current = false;
+      });
+  }, [loaded, enabled, userId, qc]);
 
   const value = useMemo(
-    () => ({ state, loaded, update, upsert, remove, restore, purge, setPrefs }),
-    [state, loaded, update, upsert, remove, restore, purge, setPrefs]
+    () => ({ state, loaded, upsert, remove, restore, purge, setPrefs, importBackup }),
+    [state, loaded, upsert, remove, restore, purge, setPrefs, importBackup]
   );
 
   return <FinanceCtx.Provider value={value}>{children}</FinanceCtx.Provider>;

@@ -6,13 +6,12 @@ import { ensurePool, getPool, dbUnavailableResponse, queryWithRecovery } from ".
 import { sign, parseCookiesAll, getCookieDomainFromHost } from "./utils/cookies.js";
 import { banGuard } from "./middleware/banGuard.js";
 import { metricsMiddleware } from "./middleware/metrics.js";
-import { rateLimitDbMiddleware, writeRateLimit } from "./middleware/rateLimitDb.js";
+import { rateLimitDbMiddleware } from "./middleware/rateLimitDb.js";
 import { ensureDb } from "./middleware/ensureDb.js";
 
 // Routes
 import authRoutes from "./routes/auth.routes.js";
-import stateRoutes from "./routes/state.routes.js";
-import syncRoutes from "./routes/sync.routes.js";
+import financeRoutes from "./routes/finance.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import healthRoutes from "./routes/health.routes.js";
 import notificationsRoutes from "./routes/notifications.routes.js";
@@ -82,7 +81,7 @@ export async function createApp() {
   try {
     await ensurePool();
   } catch (err) {
-    // eslint-disable-next-line no-console
+
     console.warn("[db] init skipped:", err?.message || err);
   }
 
@@ -258,7 +257,7 @@ export async function createApp() {
   // Apply global middleware
   app.use(banGuard);
   app.use(metricsMiddleware);
-  
+
   // Apply rate limiting to API routes
   app.use("/api", rateLimitDbMiddleware);
 
@@ -286,7 +285,7 @@ export async function createApp() {
       "/auth/registration-status",
       "/auth/google/status",
     ];
-    
+
     if (skipPaths.some((p) => req.path === p || req.path.startsWith(p + "/"))) {
       return next();
     }
@@ -296,8 +295,9 @@ export async function createApp() {
   // Mount routes
   app.use("/api/ping", pingRoutes);
   app.use("/api/auth", authRoutes);
-  app.use("/api/state", writeRateLimit, stateRoutes);
-  app.use("/api/sync", writeRateLimit, syncRoutes);
+  // v2 finance domain: normalized per-entity REST (wallets, transactions, …),
+  // preferences and bulk import. Replaces the old /api/state + /api/sync blob.
+  app.use("/api", financeRoutes);
   app.use("/api/admin", adminRoutes);
   app.use("/api/health", healthRoutes);
   app.use("/api/notifications", notificationsRoutes);
@@ -315,7 +315,7 @@ export async function createApp() {
   // ─────────────────────────────────────────────────────────────────────────────
   // ERROR HANDLERS - Must be at the end of middleware stack
   // ─────────────────────────────────────────────────────────────────────────────
-  
+
   // Handle payload too large errors (413) with JSON response
   // This catches errors from express.json body parser
   // eslint-disable-next-line no-unused-vars
@@ -329,7 +329,7 @@ export async function createApp() {
         useChunkedSync: true,
       });
     }
-    
+
     // Handle JSON parsing errors
     if (err.type === "entity.parse.failed") {
       return res.status(400).json({
@@ -337,12 +337,12 @@ export async function createApp() {
         code: "INVALID_JSON",
       });
     }
-    
+
     // Log unexpected errors in development
     if (!IS_PROD) {
       console.error("[app] Unhandled error:", err?.message || err);
     }
-    
+
     // Generic error response
     return res.status(500).json({
       error: "Internal server error",

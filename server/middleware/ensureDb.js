@@ -1,6 +1,6 @@
 /**
  * ensureDb middleware - ensures database connection is ready before handling requests
- * 
+ *
  * Features:
  * - 3 attempts with exponential backoff (200ms, 500ms, 1000ms) + jitter
  * - Returns 503 with structured error response if DB is unavailable after retries
@@ -36,7 +36,7 @@ function sleep(ms) {
  */
 function classifyError(err) {
   const msg = err?.message || String(err);
-  
+
   if (msg.includes("ECONNRESET") || msg.includes("Connection terminated")) {
     return "CONNECTION_RESET";
   }
@@ -64,19 +64,19 @@ function classifyError(err) {
  */
 export async function ensureDb(req, res, next) {
   let lastError = null;
-  
+
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     try {
       await ensurePool();
       return next();
     } catch (err) {
       lastError = err;
-      
+
       // Log attempt (without secrets)
       const errorType = classifyError(err);
       const requestId = req.headers["x-request-id"] || req.headers["x-vercel-id"] || "";
-      
-      // eslint-disable-next-line no-console
+
+
       console.warn(
         `[db] ensurePool attempt ${attempt + 1}/${MAX_ATTEMPTS} failed`,
         JSON.stringify({
@@ -87,7 +87,7 @@ export async function ensureDb(req, res, next) {
           ...(IS_DEV && { stack: err?.stack?.slice(0, 500) }),
         })
       );
-      
+
       // If we have retries left, wait with backoff + jitter
       if (attempt < MAX_ATTEMPTS - 1) {
         const delay = addJitter(RETRY_DELAYS[attempt]);
@@ -95,11 +95,11 @@ export async function ensureDb(req, res, next) {
       }
     }
   }
-  
+
   // All retries exhausted - return 503
   const errorType = classifyError(lastError);
-  
-  // eslint-disable-next-line no-console
+
+
   console.error(
     "[db] unavailable after all retries",
     JSON.stringify({
@@ -109,7 +109,7 @@ export async function ensureDb(req, res, next) {
       method: req.method,
     })
   );
-  
+
   return res.status(503).json({
     ok: false,
     code: "DB_UNAVAILABLE",

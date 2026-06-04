@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { getPool, ensurePool, dbUnavailableResponse } from "../services/db.service.js";
 import { requireAdmin } from "../middleware/requireAdmin.js";
-import { 
+import {
   getAllUsers, createUser, updateUser, deleteUser, fullDeleteUser, logoutAllUserSessions,
   banUser, unbanUser, getIpBans, createIpBan, deleteIpBan,
   getUsageStats, getDashboardStats, getDashboardSummary, getTopUsers, refreshUserStatsCache
@@ -32,23 +32,23 @@ router.get("/dashboard", requireAdmin, async (req, res) => {
 // Dashboard Summary - metrics by date range
 router.get("/dashboard/summary", requireAdmin, async (req, res) => {
   const { from, to } = req.query;
-  
+
   // Parse and validate dates
   const today = new Date().toISOString().split("T")[0];
   const fromDate = from || today;
   const toDate = to || today;
-  
+
   // Validate date format (YYYY-MM-DD)
   const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
   if (!dateRegex.test(fromDate) || !dateRegex.test(toDate)) {
     return res.status(400).json({ error: "Invalid date format. Use YYYY-MM-DD" });
   }
-  
+
   // Validate from <= to
   if (fromDate > toDate) {
     return res.status(400).json({ error: "From date must be less than or equal to To date" });
   }
-  
+
   // Validate range does not exceed 180 days to prevent heavy DB queries
   const MS_PER_DAY = 1000 * 60 * 60 * 24;
   const fromTs = new Date(fromDate).getTime();
@@ -58,7 +58,7 @@ router.get("/dashboard/summary", requireAdmin, async (req, res) => {
   if (rangeDays > maxRangeDays) {
     return res.status(400).json({ error: `Date range cannot exceed ${maxRangeDays} days` });
   }
-  
+
   try {
     const summary = await getDashboardSummary(fromDate, toDate);
     if (!summary) {
@@ -81,7 +81,8 @@ router.get("/dashboard/top-users", requireAdmin, async (req, res) => {
   return res.json({ users });
 });
 
-// Refresh user stats cache manually (triggers the expensive JSONB scan once)
+// Refresh user stats cache manually (indexed COUNT(*) aggregates over the
+// per-entity tables; rate-limited to once per 10 minutes)
 router.post("/dashboard/refresh-stats-cache", requireAdmin, async (req, res) => {
   try {
     const result = await refreshUserStatsCache();
@@ -309,7 +310,7 @@ router.get("/backups", requireAdmin, async (req, res) => {
     const backups = await listBackups(pool);
     return res.json({ backups });
   } catch (err) {
-    // eslint-disable-next-line no-console
+
     console.error("[admin] list backups error:", err?.message || err);
     return res.status(500).json({ error: "Failed to list backups" });
   }
@@ -334,7 +335,7 @@ router.post("/backups", requireAdmin, async (req, res) => {
 
     return res.json({ ok: true, name, size_bytes: gzBuffer.length });
   } catch (err) {
-    // eslint-disable-next-line no-console
+
     console.error("[admin] create backup error:", err?.message || err);
     return res.status(500).json({ error: "Failed to create backup" });
   }
@@ -353,7 +354,7 @@ router.get("/backups/:name", requireAdmin, async (req, res) => {
   // Reject anything outside the canonical backup name format produced by
   // generateBackupName(). This blocks header injection (CR/LF, quotes) into
   // Content-Disposition and rejects bogus DB lookups in one check.
-  if (!name || !/^koshyk_backup_[\w\-]+\.json\.gz$/.test(name) || name.length > 128) {
+  if (!name || !/^koshyk_backup_[\w-]+\.json\.gz$/.test(name) || name.length > 128) {
     return res.status(400).json({ error: "Invalid backup name" });
   }
 
@@ -370,7 +371,7 @@ router.get("/backups/:name", requireAdmin, async (req, res) => {
     res.set("Cache-Control", "no-store");
     return res.send(backup.content);
   } catch (err) {
-    // eslint-disable-next-line no-console
+
     console.error("[admin] download backup error:", err?.message || err);
     return res.status(500).json({ error: "Failed to download backup" });
   }
@@ -398,7 +399,7 @@ router.get("/backup", requireAdmin, async (req, res) => {
     res.set("Cache-Control", "no-store");
     return res.send(gzBuffer);
   } catch (err) {
-    // eslint-disable-next-line no-console
+
     console.error("[admin] fresh backup error:", err?.message || err);
     return res.status(500).json({ error: "Failed to generate backup" });
   }
@@ -413,81 +414,39 @@ router.get("/settings", requireAdmin, async (req, res) => {
 
 router.put("/settings", requireAdmin, async (req, res) => {
   const { registrationEnabled } = req.body || {};
-  
+
   if (registrationEnabled !== undefined) {
     setRegistrationEnabled(registrationEnabled);
     await logAdmin(req.adminUser?.id, "settings.registration", null, { enabled: registrationEnabled });
   }
-  
+
   return res.json({
     ok: true,
     registrationEnabled: isRegistrationEnabled(),
   });
 });
 
-// Restore user state - Admin sets a user's state_json and bumps the version
-// so the client detects the change on next fetch and treats it as authoritative.
-router.put("/users/:id/state", requireAdmin, async (req, res) => {
-  let pool = getPool();
-  if (!pool) {
-    try { pool = await ensurePool(); } catch { /* retry failed */ }
-  }
-  if (!pool) return res.status(503).json(dbUnavailableResponse());
-
-  const id = Number(req.params.id);
-  if (!Number.isFinite(id)) return res.status(400).json({ error: "Bad id" });
-
-  const { state } = req.body || {};
-  if (state === undefined) return res.status(400).json({ error: "state is required" });
-
-  try {
-    // Verify user exists
-    const userCheck = await pool.query("SELECT id, username FROM users WHERE id = $1", [id]);
-    if (!userCheck.rows?.length) return res.status(404).json({ error: "User not found" });
-
-    // Upsert state with version bump so the client's serverVersionChanged fires
-    const result = await pool.query(
-      `INSERT INTO states (user_id, state_json, updated_at, version)
-       VALUES ($1, $2, now(), 1)
-       ON CONFLICT (user_id) DO UPDATE SET
-         state_json = EXCLUDED.state_json,
-         updated_at = now(),
-         version = states.version + 1
-       RETURNING updated_at, version`,
-      [id, state]
-    );
-
-    const newVersion = result.rows?.[0]?.version ?? 1;
-    const txCount = Array.isArray(state?.transactions) ? state.transactions.length : 0;
-
-    await logAdmin(req.adminUser?.id, "user.state_restore", id, {
-      txCount,
-      version: newVersion,
-    });
-
-    return res.json({ ok: true, version: newVersion, txCount });
-  } catch (err) {
-    console.error("[admin] restore state error:", err?.message || err);
-    return res.status(500).json({ error: "Failed to restore state" });
-  }
-});
+// NOTE: the legacy `PUT /users/:id/state` admin route was removed in the v2
+// migration. It wrote the deprecated single-blob `states` table, which no
+// longer backs the app. Per-user data now lives in the normalized per-entity
+// tables; bulk restore goes through finance.routes.js → POST /api/import.
 
 // Log client-side errors (for error boundary)
 router.post("/log-client-error", requireAdmin, async (req, res) => {
   try {
     const { action, meta } = req.body || {};
     const adminId = req.adminUser?.id || null;
-    
+
     // Log to console for debugging
     console.error("[client-error]", {
       adminId,
       action: action || "client_error",
       meta: meta || {},
     });
-    
+
     // Log to admin_logs table
     await logAdmin(adminId, action || "client_error", null, meta || {});
-    
+
     return res.json({ ok: true });
   } catch (err) {
     // Don't fail the request even if logging fails

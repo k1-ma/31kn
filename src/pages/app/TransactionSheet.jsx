@@ -28,6 +28,7 @@ export default function TransactionSheet({ open, onClose, initial = null }) {
   const [date, setDate] = useState(
     initial?.date ? initial.date.slice(0, 10) : new Date().toISOString().slice(0, 10)
   );
+  const [err, setErr] = useState("");
 
   const tagSuggestions = useMemo(() => {
     const counts = new Map();
@@ -67,9 +68,10 @@ export default function TransactionSheet({ open, onClose, initial = null }) {
 
   const submit = () => {
     const cents = toCents(amount);
-    if (cents <= 0) return;
-    if (!walletId) return;
-    if (type === "transfer" && (!toWalletId || toWalletId === walletId)) return;
+    if (cents <= 0) { setErr(t("validation.amountRequired")); return; }
+    if (!walletId) { setErr(t("validation.selectWallet")); return; }
+    if (type === "transfer" && (!toWalletId || toWalletId === walletId)) { setErr(t("validation.sameWallet")); return; }
+    setErr("");
     upsert("transactions", {
       id: initial?.id,
       type,
@@ -113,9 +115,10 @@ export default function TransactionSheet({ open, onClose, initial = null }) {
             </span>
           </div>
           <div className="text-xs text-slate-500 mt-1">{t("tx.amount")}</div>
+          {err && <p className="text-xs text-red-500 mt-1">{err}</p>}
         </div>
 
-        <NumPad value={amount} onChange={setAmount} />
+        <NumPad value={amount} onChange={(v) => { setAmount(v); if (err) setErr(""); }} />
 
         <div>
           <label className="text-xs text-slate-500 mb-1 inline-block">
@@ -123,7 +126,7 @@ export default function TransactionSheet({ open, onClose, initial = null }) {
           </label>
           <select
             value={walletId}
-            onChange={(e) => setWalletId(e.target.value)}
+            onChange={(e) => { setWalletId(e.target.value); if (err) setErr(""); }}
             className="h-12 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-base"
           >
             {wallets.map((w) => (
