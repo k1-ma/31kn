@@ -9,10 +9,11 @@ Mobile-first PWA, works offline.
 ## Stack
 
 - **Front**: Vite + React 18 + Tailwind + framer-motion + recharts
+- **Data**: TanStack Query over a per-entity REST API (server-authoritative)
 - **PWA**: vite-plugin-pwa (Workbox)
 - **API**: Node/Express
-- **DB**: Postgres (`DATABASE_URL`)
-- **Storage**: IndexedDB on the client; mirrored JSON state on the server
+- **DB**: Postgres (`DATABASE_URL`) — normalized per-entity tables, one per
+  collection (see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md))
 
 ## Local development
 
