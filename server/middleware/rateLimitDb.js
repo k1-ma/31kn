@@ -138,7 +138,8 @@ function getRateLimitKey(req) {
 }
 
 /**
- * Middleware: rate limit writes on /api/state, /api/sync/*
+ * Middleware: rate limit mutating writes on the per-entity finance routes
+ * (POST/PUT/PATCH/DELETE /api/:entity, /api/preferences, /api/import).
  * 60 writes/min per user.
  */
 export function writeRateLimit(req, res, next) {
