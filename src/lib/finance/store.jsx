@@ -84,6 +84,23 @@ export function FinanceProvider({ children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...dataDeps, prefsQuery.data]);
 
+  // Apply the user's theme app-wide as soon as preferences load. Previously
+  // this only happened on the Settings page, so a saved dark/light choice was
+  // ignored everywhere else until the user opened Settings.
+  const theme = state.prefs.theme;
+  useEffect(() => {
+    if (!loaded) return;
+    const root = document.documentElement;
+    if (theme === "dark") {
+      root.classList.add("dark");
+    } else if (theme === "light") {
+      root.classList.remove("dark");
+    } else {
+      const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)")?.matches;
+      root.classList.toggle("dark", !!prefersDark);
+    }
+  }, [theme, loaded]);
+
   const onError = useCallback(() => {
     toast.push({ kind: "error", title: t("errors.generic") });
   }, [toast, t]);
