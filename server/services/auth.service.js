@@ -10,7 +10,7 @@ import {
   sendEmailChangeConfirmation,
   sendEmailChangeNotification,
   sendEmailChangedNotification,
-  isEmailServiceEnabled
+  isEmailVerificationRequired
 } from "./email.service.js";
 
 // Token expiration times
@@ -188,9 +188,9 @@ export async function loginUser({ username, password }) {
       });
   }
 
-  // Check if email is verified (only if email service is enabled)
+  // Check if email is verified (only when verification is required)
   // Users created before email verification feature are grandfathered in
-  if (isEmailServiceEnabled() && u.email && u.email_verified === false) {
+  if (isEmailVerificationRequired() && u.email && u.email_verified === false) {
     return {
       error: "Email not verified",
       status: 403,

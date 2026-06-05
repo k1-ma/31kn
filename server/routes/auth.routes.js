@@ -10,7 +10,7 @@ import {
   requestPasswordReset, validatePasswordResetToken, resetPasswordWithToken,
   requestEmailChange, confirmEmailChange
 } from "../services/auth.service.js";
-import { isEmailServiceEnabled } from "../services/email.service.js";
+import { isEmailServiceEnabled, isEmailVerificationRequired } from "../services/email.service.js";
 import {
   createLoginChallenge, verifyLoginChallenge, verifyUserTotp,
   setupTotp, enableTotp, disableTotp, hasTotpEnabled
@@ -266,7 +266,7 @@ router.post("/register", registerRateLimit, async (req, res) => {
 
   // If email verification is required, don't create session
   // User needs to verify email before logging in
-  if (result.emailVerificationRequired && isEmailServiceEnabled()) {
+  if (result.emailVerificationRequired && isEmailVerificationRequired()) {
     return res.json({
       user: result.user,
       emailVerificationRequired: true,

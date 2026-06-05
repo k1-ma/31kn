@@ -1,9 +1,8 @@
-import { Resend } from "resend";
-
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const BREVO_API_KEY = process.env.BREVO_API_KEY;
 const EMAIL_FROM = process.env.EMAIL_FROM;
 const IS_PROD = process.env.NODE_ENV === "production";
 const VERCEL_ENV = process.env.VERCEL_ENV;
+const BREVO_ENDPOINT = "https://api.brevo.com/v3/smtp/email";
 
 function isVercelPreviewUrl(url) {
   if (!url) return false;
@@ -31,15 +30,66 @@ function getAppUrl() {
   return baseUrl.replace(/\/+$/, "");
 }
 
-let resendClient = null;
-function getResend() {
-  if (!RESEND_API_KEY) return null;
-  if (!resendClient) resendClient = new Resend(RESEND_API_KEY);
-  return resendClient;
+export function isEmailServiceEnabled() {
+  return !!BREVO_API_KEY && !!EMAIL_FROM;
 }
 
-export function isEmailServiceEnabled() {
-  return !!RESEND_API_KEY && !!EMAIL_FROM;
+// Email verification (blocking login/registration until the address is
+// confirmed) is opt-in. It is only enforced when the operator sets the flag
+// AND email delivery is actually configured — otherwise users could register
+// but never receive the link, locking themselves out. Off by default so the
+// app works without a verified sending domain.
+const REQUIRE_EMAIL_VERIFICATION = /^(1|true|yes|on)$/i.test(
+  String(process.env.REQUIRE_EMAIL_VERIFICATION || "").trim()
+);
+
+export function isEmailVerificationRequired() {
+  return isEmailServiceEnabled() && REQUIRE_EMAIL_VERIFICATION;
+}
+
+// EMAIL_FROM may be a bare address ("noreply@koshyk.app") or a named address
+// ("Koshyk <noreply@koshyk.app>"). Brevo expects { email, name } for the sender.
+function parseSender() {
+  const raw = String(EMAIL_FROM || "").trim();
+  const named = raw.match(/^\s*(.*?)\s*<\s*([^>]+)\s*>\s*$/);
+  if (named) return { name: named[1] || "Koshyk", email: named[2] };
+  return { name: "Koshyk", email: raw };
+}
+
+// Single transport seam: every template function funnels through here, so the
+// provider lives in exactly one place. Returns { sent, id } / { skipped } / { error }.
+async function sendEmail({ to, subject, html }) {
+  if (!BREVO_API_KEY || !EMAIL_FROM) return { skipped: true };
+  try {
+    const res = await fetch(BREVO_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "api-key": BREVO_API_KEY,
+        "content-type": "application/json",
+        accept: "application/json"
+      },
+      body: JSON.stringify({
+        sender: parseSender(),
+        to: [{ email: to }],
+        subject,
+        htmlContent: html
+      })
+    });
+    if (!res.ok) {
+      let detail = "";
+      try {
+        const body = await res.json();
+        detail = body?.message || body?.code || "";
+      } catch {
+        detail = await res.text().catch(() => "");
+      }
+      return { error: `Brevo responded ${res.status}${detail ? `: ${detail}` : ""}` };
+    }
+    const data = await res.json().catch(() => ({}));
+    return { sent: true, id: data?.messageId };
+  } catch (error) {
+    return { error: error?.message || "Failed to send email" };
+  }
 }
 
 function escHtml(value) {
@@ -95,9 +145,8 @@ function wrapEmailHtml(content) {
 }
 
 export async function sendVerificationEmail(to, token, username) {
-  const resend = getResend();
-  if (!resend) {
-    console.warn("[email] RESEND_API_KEY not configured, skipping verification email");
+  if (!isEmailServiceEnabled()) {
+    console.warn("[email] BREVO_API_KEY not configured, skipping verification email");
     return { skipped: true };
   }
   const verifyUrl = `${getAppUrl()}/verify-email?token=${encodeURIComponent(token)}`;
@@ -109,17 +158,10 @@ export async function sendVerificationEmail(to, token, username) {
     <div class="info">⏰ Посилання діє 24 години. Якщо ти не реєструвався — просто проігноруй цей лист.</div>
     <p class="fallback">Не працює кнопка? Скопіюй посилання:<br>${verifyUrl}</p>
   `);
-  try {
-    const result = await resend.emails.send({ from: EMAIL_FROM, to, subject: "Підтверди email — Koshyk", html });
-    return { sent: true, id: result?.data?.id };
-  } catch (error) {
-    return { error: error?.message || "Failed to send email" };
-  }
+  return sendEmail({ to, subject: "Підтверди email — Koshyk", html });
 }
 
 export async function sendPasswordResetEmail(to, token, username) {
-  const resend = getResend();
-  if (!resend) return { skipped: true };
   const resetUrl = `${getAppUrl()}/reset-password?token=${encodeURIComponent(token)}`;
   const html = wrapEmailHtml(`
     <h1>Новий пароль</h1>
@@ -130,17 +172,10 @@ export async function sendPasswordResetEmail(to, token, username) {
     <div class="info">⏰ Посилання діє 1 годину. Після скидання всі активні сесії будуть закриті.</div>
     <p class="fallback">Не працює кнопка?<br>${resetUrl}</p>
   `);
-  try {
-    const result = await resend.emails.send({ from: EMAIL_FROM, to, subject: "Скидання пароля — Koshyk", html });
-    return { sent: true, id: result?.data?.id };
-  } catch (error) {
-    return { error: error?.message || "Failed to send email" };
-  }
+  return sendEmail({ to, subject: "Скидання пароля — Koshyk", html });
 }
 
 export async function sendPasswordChangedEmail(to, username, options = {}) {
-  const resend = getResend();
-  if (!resend) return { skipped: true };
   const { ip, ua, isReset = false } = options;
   const action = isReset ? "скинуто" : "змінено";
   const now = new Date().toISOString();
@@ -155,17 +190,10 @@ export async function sendPasswordChangedEmail(to, username, options = {}) {
     </div>
     <div class="warn">Це був не ти? Негайно зміни пароль і звернися до підтримки.</div>
   `);
-  try {
-    const result = await resend.emails.send({ from: EMAIL_FROM, to, subject: `Пароль ${action} — Koshyk`, html });
-    return { sent: true, id: result?.data?.id };
-  } catch (error) {
-    return { error: error?.message || "Failed to send email" };
-  }
+  return sendEmail({ to, subject: `Пароль ${action} — Koshyk`, html });
 }
 
 export async function sendEmailChangeConfirmation(to, token, username) {
-  const resend = getResend();
-  if (!resend) return { skipped: true };
   const confirmUrl = `${getAppUrl()}/confirm-email-change?token=${encodeURIComponent(token)}`;
   const html = wrapEmailHtml(`
     <h1>Підтверди новий email</h1>
@@ -175,17 +203,10 @@ export async function sendEmailChangeConfirmation(to, token, username) {
     <div class="info">⏰ Посилання діє 24 години.</div>
     <p class="fallback">Не працює кнопка?<br>${confirmUrl}</p>
   `);
-  try {
-    const result = await resend.emails.send({ from: EMAIL_FROM, to, subject: "Підтверди новий email — Koshyk", html });
-    return { sent: true, id: result?.data?.id };
-  } catch (error) {
-    return { error: error?.message || "Failed to send email" };
-  }
+  return sendEmail({ to, subject: "Підтверди новий email — Koshyk", html });
 }
 
 export async function sendEmailChangeNotification(to, newEmail, username) {
-  const resend = getResend();
-  if (!resend) return { skipped: true };
   const masked = String(newEmail).replace(/^(.{2})(.*)(@.*)$/, (_, s, m, d) => s + "*".repeat(Math.min(m.length, 5)) + d);
   const html = wrapEmailHtml(`
     <h1>Запит на зміну email</h1>
@@ -194,27 +215,15 @@ export async function sendEmailChangeNotification(to, newEmail, username) {
     <div class="info">📧 Новий адрес: ${masked}</div>
     <div class="warn">Це був не ти? Негайно увійди в акаунт і зміни пароль.</div>
   `);
-  try {
-    const result = await resend.emails.send({ from: EMAIL_FROM, to, subject: "Запит на зміну email — Koshyk", html });
-    return { sent: true, id: result?.data?.id };
-  } catch (error) {
-    return { error: error?.message || "Failed to send email" };
-  }
+  return sendEmail({ to, subject: "Запит на зміну email — Koshyk", html });
 }
 
 export async function sendEmailChangedNotification(to, newEmail, username) {
-  const resend = getResend();
-  if (!resend) return { skipped: true };
   const html = wrapEmailHtml(`
     <h1>Email змінено</h1>
     <p>Привіт${username ? `, <strong>${escHtml(username)}</strong>` : ""}!</p>
     <p>Email-адресу твого акаунта в Koshyk успішно змінено на <strong>${escHtml(newEmail)}</strong>.</p>
     <div class="warn">Це був не ти? Негайно зв'яжися з підтримкою.</div>
   `);
-  try {
-    const result = await resend.emails.send({ from: EMAIL_FROM, to, subject: "Email змінено — Koshyk", html });
-    return { sent: true, id: result?.data?.id };
-  } catch (error) {
-    return { error: error?.message || "Failed to send email" };
-  }
+  return sendEmail({ to, subject: "Email змінено — Koshyk", html });
 }
