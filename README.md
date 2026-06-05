@@ -38,6 +38,7 @@ npm start              # serve dist/ + API on :8080
 | `DATABASE_URL` | Postgres connection string |
 | `SESSION_SECRET` | required in production (32+ chars) |
 | `BREVO_API_KEY`, `EMAIL_FROM` | optional — enables transactional email via [Brevo](https://www.brevo.com) (free tier: 300/day) |
+| `REQUIRE_EMAIL_VERIFICATION` | optional — when `1`/`true` **and** email is configured, users must confirm their email before logging in. Off by default |
 | `APP_URL` | required in production for verification links |
 | `COOKIE_DOMAIN` | optional — share session cookie across subdomains |
 

@@ -34,6 +34,19 @@ export function isEmailServiceEnabled() {
   return !!BREVO_API_KEY && !!EMAIL_FROM;
 }
 
+// Email verification (blocking login/registration until the address is
+// confirmed) is opt-in. It is only enforced when the operator sets the flag
+// AND email delivery is actually configured — otherwise users could register
+// but never receive the link, locking themselves out. Off by default so the
+// app works without a verified sending domain.
+const REQUIRE_EMAIL_VERIFICATION = /^(1|true|yes|on)$/i.test(
+  String(process.env.REQUIRE_EMAIL_VERIFICATION || "").trim()
+);
+
+export function isEmailVerificationRequired() {
+  return isEmailServiceEnabled() && REQUIRE_EMAIL_VERIFICATION;
+}
+
 // EMAIL_FROM may be a bare address ("noreply@koshyk.app") or a named address
 // ("Koshyk <noreply@koshyk.app>"). Brevo expects { email, name } for the sender.
 function parseSender() {
