@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertTriangle } from "lucide-react";
 import Button from "./Button.jsx";
@@ -6,7 +7,10 @@ import Button from "./Button.jsx";
 export default function ConfirmDialog({ open, onConfirm, onCancel, title, message, confirmLabel, variant = "danger" }) {
   if (!open) return null;
 
-  return (
+  // Portal to document.body so the fixed overlay escapes any transformed
+  // ancestor (e.g. the .page-enter wrapper) that would otherwise capture
+  // `position: fixed` and shove the dialog off-screen.
+  return createPortal(
     <AnimatePresence>
       {open && (
         <>
@@ -42,6 +46,7 @@ export default function ConfirmDialog({ open, onConfirm, onCancel, title, messag
           </motion.div>
         </>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }
