@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence, useMotionValue, useTransform, useAnimation } from "framer-motion";
 import { X } from "lucide-react";
 
@@ -27,7 +28,11 @@ export default function BottomSheet({ open, onClose, title, children, footer, ma
     }
   }
 
-  return (
+  // Rendered in a portal on document.body so the fixed-position overlay
+  // escapes any transformed ancestor (e.g. the .page-enter animation wrapper,
+  // which keeps a lingering transform and would otherwise become the
+  // containing block for `position: fixed`, pushing the sheet off-screen).
+  return createPortal(
     <AnimatePresence>
       {open && (
         <>
@@ -88,6 +93,7 @@ export default function BottomSheet({ open, onClose, title, children, footer, ma
           </motion.div>
         </>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }
