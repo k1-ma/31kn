@@ -17,6 +17,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "migrate:backfill": "node server/scripts/backfill-entities.js",
+    "seed:demo": "node server/scripts/seed-demo.js",
     "lint": "eslint .",
     "check:patterns": "bash scripts/check-patterns.sh"
   },
